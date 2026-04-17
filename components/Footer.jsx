@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Link from "next/link";
 
@@ -9,22 +9,22 @@ export default function Footer() {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="f-logo">
-              <div className="logo-badge">SSR</div>
+              <img src="/ssrlogo.jpeg" alt="SSR Logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
               <div className="logo-text-block">
                 <span>SSR Business Solutions</span>
-                <span>SAP Authorized Training Center</span>
+                <span>SAP Authorized Training | Placements Center</span>
               </div>
             </div>
             <h4>Contact Address</h4>
             <ul className="footer-contact-list">
               <li>
-                <span className="f-icon">??</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Opp Pizza Hut, Visakhapatnam-530016
+                <span className="f-icon">-&gt;</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Opp Pizza Hut, Visakhapatnam-530016
               </li>
               <li>
-                <span className="f-icon">??</span>+91 7013749901 / +91 9010062578
+                <span className="f-icon">-&gt;</span>+91 7013749901 / +91 90100 62578
               </li>
               <li>
-                <span className="f-icon">??</span>info@ssrbusinesssolutions.com
+                <span className="f-icon">-&gt;</span>sales@ssrbusinesssolutions.com
               </li>
             </ul>
           </div>

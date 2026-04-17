@@ -48,7 +48,7 @@ export default function PlacementsPage() {
               <aside className="fade-right">
                 <div className="sidebar-card"><h3>Our Services</h3><ul className="sidebar-links"><li><a href="/training">Training</a></li><li><a href="/placements">Staffing &amp; Solutions</a></li><li><a href="/development">Development</a></li></ul></div>
                 <div className="sidebar-cta"><h3>Hire with SSR</h3><p>Looking for quality IT talent? Contact us today!</p><a href="/contact-us">Get In Touch</a></div>
-                <div className="sidebar-card"><h3>Contact Info</h3><div className="contact-info-card"><p><span className="icon">📞</span>+91 7013749901</p><p><span className="icon">📞</span>+91 9010062578</p><p><span className="icon">✉️</span>info@ssrbusinesssolutions.com</p></div></div>
+                <div className="sidebar-card"><h3>Contact Info</h3><div className="contact-info-card"><p><span className="icon">📞</span>+91 7013749901</p><p><span className="icon">📞</span>+91 90100 62578</p><p><span className="icon">✉️</span>sales@ssrbusinesssolutions.com</p></div></div>
               </aside>
             </div>
           </div>

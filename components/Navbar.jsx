@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -42,11 +42,11 @@ export default function Navbar() {
     <nav className="navbar" ref={navRef}>
       <div className="container">
         <div className="nav-inner">
-          <Link href="/" className="nav-logo" onClick={closeMenu}>
-            <div className="logo-badge">SSR</div>
+          <Link href="/" className="nav-logo flex items-center gap-3" onClick={closeMenu}>
+            <img src="/ssrlogo.jpeg" alt="SSR Logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
             <div className="logo-text-block">
               <span>SSR Business Solutions</span>
-              <span>SAP Authorized Training Center</span>
+              <span>SAP Authorized Training | Placements Center</span>
             </div>
           </Link>
 
@@ -66,33 +66,10 @@ export default function Navbar() {
                 Home
               </Link>
             </li>
-
-            <li
-              className={`has-dropdown ${openDropdown === "company" ? "open" : ""}`}
-            >
-              <Link href="#" onClick={toggleDropdown("company")}>
-                Company
+            <li>
+              <Link href="/showcase" className={pathname === "/showcase" ? "active" : ""} onClick={closeMenu}>
+                Showcase
               </Link>
-              <ul className="dropdown-menu">
-                <li>
-                  <Link
-                    href="/about-us"
-                    className={pathname === "/about-us" ? "active" : ""}
-                    onClick={closeMenu}
-                  >
-                    About Us
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="/why-us"
-                    className={pathname === "/why-us" ? "active" : ""}
-                    onClick={closeMenu}
-                  >
-                    Why Us?
-                  </Link>
-                </li>
-              </ul>
             </li>
 
             <li>
@@ -171,41 +148,6 @@ export default function Navbar() {
               </Link>
             </li>
 
-            <li
-              className={`has-dropdown ${openDropdown === "theme" ? "open" : ""} theme-switcher`}
-            >
-              <button className="theme-trigger" onClick={toggleDropdown("theme")} type="button">
-                Theme
-              </button>
-              <ul className="dropdown-menu theme-menu">
-                <li>
-                  <button
-                    type="button"
-                    className={theme === "dark" ? "active" : ""}
-                    onClick={() => {
-                      setTheme("dark");
-                      setOpenDropdown(null);
-                      closeMenu();
-                    }}
-                  >
-                    Dark (Blue)
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className={theme === "light" ? "active" : ""}
-                    onClick={() => {
-                      setTheme("light");
-                      setOpenDropdown(null);
-                      closeMenu();
-                    }}
-                  >
-                    Light (Salt &amp; Pepper)
-                  </button>
-                </li>
-              </ul>
-            </li>
           </ul>
         </div>
       </div>

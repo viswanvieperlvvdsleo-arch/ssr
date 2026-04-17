@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -640,6 +640,9 @@ section { padding: 100px 0; }
   height: 100vh;
   overflow: hidden;
   background: #0D2440;
+  background-image: linear-gradient(180deg, rgba(13,36,64,0.18), rgba(13,36,64,0.18)), url("/it/ezgif-frame-001.jpg");
+  background-position: center;
+  background-size: cover;
 }
 .theme-light .it-scroll-sticky {
   position: relative;
@@ -764,6 +767,9 @@ section { padding: 100px 0; }
   height: 100vh;
   overflow: hidden;
   background: #0D2440;
+  background-image: linear-gradient(180deg, rgba(13,36,64,0.18), rgba(13,36,64,0.18)), url("/soft developer/ezgif-frame-001.jpg");
+  background-position: center;
+  background-size: cover;
 }
 .theme-light .sd-scroll-sticky {
   position: relative;
@@ -884,6 +890,9 @@ section { padding: 100px 0; }
   height: 100vh;
   overflow: hidden;
   background: #0D2440;
+  background-image: linear-gradient(180deg, rgba(13,36,64,0.18), rgba(13,36,64,0.18)), url("/bus/ezgif-frame-001.jpg");
+  background-position: center;
+  background-size: cover;
 }
 .theme-light .ss-scroll-sticky {
   position: relative;
@@ -1888,10 +1897,44 @@ section { padding: 100px 0; }
   margin-bottom: 22px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-left.visible { opacity: 1; transform: translateX(0); }
+
+.fade-right {
+  opacity: 0;
+  transform: translateX(40px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-right.visible { opacity: 1; transform: translateX(0); }
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+@media (max-width: 1024px) {
+  .about-grid, .why-grid { grid-template-columns: 1fr; }
+  .services-grid { grid-template-columns: 1fr 1fr; }
+  .testimonials-grid { grid-template-columns: 1fr; }
+  .content-grid { grid-template-columns: 1fr; }
+  .contact-grid { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .orbit-container { width: 300px; height: 300px; }
 }
 
-.footer-brand .f-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.footer-brand p { font-size: 0.85rem; color: var(--text); line-height: 1.8; margin-bottom: 12px; }
+@media (max-width: 768px) {
+  .nav-menu { display: none; flex-direction: column; position: absolute; top: 72px; left: 0; right: 0; height: calc(100vh - 72px); background: rgba(3,7,18,0.98); padding: 30px 24px; gap: 0; overflow-y: auto; backdrop-filter: blur(20px); }
+  .nav-menu.open { display: flex; }
+  .nav-menu > li > a { padding: 14px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
+  .nav-cta a { margin-left: 0; margin-top: 12px; width: 100%; justify-content: center; }
+  .dropdown-menu { position: static; opacity: 1; pointer-events: all; transform: none; border: none; background: transparent; padding-left: 16px; display: none; }
+  .has-dropdown.open .dropdown-menu { display: block; }
+  .nav-toggle { display: flex; }
+
+  .hero-title { font-size: 2.2rem; }
+  .results-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .logo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .services-grid { grid-template-columns: 1fr; }
+  .flip-card { height: 300px; }
 
 .footer-contact-list li {
   display: flex; gap: 12px; align-items: flex-start;
@@ -1905,7 +1948,7 @@ section { padding: 100px 0; }
   font-size: 0.84rem; color: var(--text);
   transition: color 0.2s, padding-left 0.2s;
 }
-.footer-nav li a::before { content: 'â€º'; color: var(--blue); font-size: 1.1rem; }
+.footer-nav li a::before { content: '->'; color: var(--blue); font-size: 1rem; }
 .footer-nav li a:hover { color: var(--blue); padding-left: 5px; }
 
 .footer-bottom {
@@ -1933,43 +1976,6 @@ section { padding: 100px 0; }
   transition: opacity 0.7s ease, transform 0.7s ease;
 }
 .fade-left.visible { opacity: 1; transform: translateX(0); }
-
-.fade-right {
-  opacity: 0;
-  transform: translateX(40px);
-  transition: opacity 0.7s ease, transform 0.7s ease;
-}
-.fade-right.visible { opacity: 1; transform: translateX(0); }
-
-/* =========================================================
-   RESPONSIVE
-   ========================================================= */
-@media (max-width: 1024px) {
-  .about-grid, .why-grid { grid-template-columns: 1fr; }
-  .services-grid { grid-template-columns: 1fr 1fr; }
-  .testimonials-grid { grid-template-columns: 1fr; }
-  .content-grid { grid-template-columns: 1fr; }
-  .contact-grid { grid-template-columns: 1fr; }
-  .footer-grid { grid-template-columns: 1fr 1fr; }
-  .orbit-container { width: 300px; height: 300px; }
-}
-
-@media (max-width: 768px) {
-  .nav-menu { display: none; flex-direction: column; position: fixed; top: 72px; left: 0; right: 0; bottom: 0; background: rgba(3,7,18,0.98); padding: 30px 24px; gap: 0; overflow-y: auto; backdrop-filter: blur(20px); }
-  .nav-menu.open { display: flex; }
-  .nav-menu > li > a { padding: 14px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
-  .nav-cta a { margin-left: 0; margin-top: 12px; width: 100%; justify-content: center; }
-  .dropdown-menu { position: static; opacity: 1; pointer-events: all; transform: none; border: none; background: transparent; padding-left: 16px; display: none; }
-  .has-dropdown.open .dropdown-menu { display: block; }
-  .nav-toggle { display: flex; }
-
-  .hero-title { font-size: 2.2rem; }
-  .results-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .logo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .services-grid { grid-template-columns: 1fr; }
-  .flip-card { height: 300px; }
-  .footer-grid { grid-template-columns: 1fr; }
-
   section { padding: 70px 0; }
   .section-heading { font-size: 2rem; }
   .hero .container { padding-left: 24px; padding-right: 24px; }

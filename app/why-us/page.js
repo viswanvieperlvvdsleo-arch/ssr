@@ -52,7 +52,7 @@ export default function WhyUsPage() {
 
               <aside className="fade-right">
                 <div className="sidebar-card"><h3>Our Services</h3><ul className="sidebar-links"><li><a href="/training">Training</a></li><li><a href="/placements">Staffing &amp; Solutions</a></li><li><a href="/development">Development</a></li></ul></div>
-                <div className="sidebar-card"><h3>Contact Info</h3><div className="contact-info-card"><p><span className="icon">📍</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Visakhapatnam-530016</p><p><span className="icon">📞</span>+91 7013749901</p><p><span className="icon">📞</span>+91 9010062578</p></div></div>
+                <div className="sidebar-card"><h3>Contact Info</h3><div className="contact-info-card"><p><span className="icon">📍</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Visakhapatnam-530016</p><p><span className="icon">📞</span>+91 7013749901</p><p><span className="icon">📞</span>+91 90100 62578</p></div></div>
                 <div className="sidebar-cta"><h3>Join SSR</h3><p>Take the next step in your IT career today!</p><a href="/contact-us">Get In Touch</a></div>
               </aside>
             </div>

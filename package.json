@@ -9,12 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^5.10.2",
+    "dotenv": "^17.4.2",
     "next": "16.1.6",
+    "prisma": "^5.10.2",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "three": "0.162.0"
   },
   "devDependencies": {
+    "@types/node": "25.6.0",
+    "@types/react": "19.2.14",
     "autoprefixer": "10.4.16",
     "eslint": "9.39.4",
     "eslint-config-next": "16.1.6",

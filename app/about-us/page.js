@@ -66,8 +66,8 @@ export default function AboutPage() {
                   <div className="contact-info-card">
                     <p><span className="icon">📍</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Visakhapatnam-530016</p>
                     <p><span className="icon">📞</span>+91 7013749901</p>
-                    <p><span className="icon">📞</span>+91 9010062578</p>
-                    <p><span className="icon">✉️</span>info@ssrbusinesssolutions.com</p>
+                    <p><span className="icon">📞</span>+91 90100 62578</p>
+                    <p><span className="icon">✉️</span>sales@ssrbusinesssolutions.com</p>
                   </div>
                 </div>
                 <div className="sidebar-cta">

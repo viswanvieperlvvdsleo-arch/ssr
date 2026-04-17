@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  date      DateTime
+  startTime String   // e.g. "09:00"
+  endTime   String   // e.g. "10:00"
+  isBooked  Boolean  @default(false)
+  booking   Booking?
+}
+
+model Booking {
+  id             String       @id @default(cuid())
+  visitorName    String
+  visitorEmail   String?
+  visitorPhone   String?
+  purpose        String?
+  availabilityId String       @unique
+  availability   Availability @relation(fields: [availabilityId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model ContactMessage {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  phone       String?
+  subject     String
+  message     String
+  createdAt   DateTime @default(now())
+}

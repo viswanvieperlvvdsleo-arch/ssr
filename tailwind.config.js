@@ -5,7 +5,17 @@ module.exports = {
     "./components/**/*.{js,jsx,ts,tsx}"
   ],
   theme: {
-    extend: {}
+    extend: {
+      keyframes: {
+        scrollUp: {
+          '0%': { transform: 'translateY(0)' },
+          '100%': { transform: 'translateY(-50%)' },
+        },
+      },
+      animation: {
+        'scroll-up': 'scrollUp 20s linear infinite',
+      },
+    }
   },
   plugins: []
 };

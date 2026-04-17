@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import Footer from "../components/Footer";
@@ -23,14 +23,11 @@ export default function HomePage() {
   ];
 
   const clientLogos = [
-    { name: "SAP", short: "SAP" },
     { name: "AWS", short: "AWS" },
-    { name: "Microsoft", short: "MS" },
-    { name: "Oracle", short: "OR" },
-    { name: "Siemens", short: "SM" },
-    { name: "Deloitte", short: "DL" },
-    { name: "Infosys", short: "IF" },
-    { name: "Capgemini", short: "CG" }
+    { name: "Capgemini", short: "CG" },
+    { name: "Visakhapatnam Port Authority", short: "VPA" },
+    { name: "PWC", short: "PWC" },
+    { name: "3S Business Corporation", short: "3S" }
   ];
 
   return (
@@ -45,7 +42,7 @@ export default function HomePage() {
             <div className="hero-content">
               <div className="hero-eyebrow">
                 <div className="eyebrow-line"></div>
-                <span className="eyebrow-text">SAP Authorized Training Center</span>
+                <span className="eyebrow-text">SAP Authorized Training | Placements Center</span>
               </div>
               <h1 className="hero-title">
                 SSR Business Solutions
@@ -252,7 +249,7 @@ export default function HomePage() {
                 <h2>Why Choose SSR Business Solutions?</h2>
                 <p>Being Real Time Working Consultants, SSR Business Solutions knows the success formula. Having been in the IT industry for a long time and worked on different SAP modules, we've come up with strategies to take training to the next level.</p>
                 <ul className="why-list">
-                  <li className="why-list-item"><div className="why-check">✓</div>SAP Authorized Training Center</li>
+                  <li className="why-list-item"><div className="why-check">✓</div>SAP Authorized Training | Placements Center</li>
                   <li className="why-list-item"><div className="why-check">✓</div>Real-Time / Corporate Trainers</li>
                   <li className="why-list-item"><div className="why-check">✓</div>Online, Classroom &amp; Corporate Modes</li>
                   <li className="why-list-item"><div className="why-check">✓</div>24/7 Server Access for Students</li>

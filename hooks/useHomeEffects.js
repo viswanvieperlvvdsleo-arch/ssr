@@ -9,8 +9,14 @@ export function useHomeEffects() {
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false;
     const isMobile = typeof window !== "undefined" ? window.innerWidth <= 768 : false;
+    const connection = typeof navigator !== "undefined" ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
+    const saveData = Boolean(connection && connection.saveData);
+    const lowPowerDevice = typeof navigator !== "undefined"
+      ? (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4)
+      : false;
     const isLightTheme = typeof document !== "undefined" && document.documentElement.classList.contains("theme-light");
-    const allowHeavy = !prefersReduce && !isMobile && !isLightTheme;
+    const allowMotion = !prefersReduce && !saveData && !isLightTheme;
+    const mobileLiteMode = isMobile || lowPowerDevice;
 
     /* Typed headline words */
     const cycleEl = document.querySelector(".word-cycle");
@@ -43,7 +49,8 @@ export function useHomeEffects() {
       total,
       progressSelector,
       contentSelector,
-      navMode = "primary"
+      navMode = "primary",
+      step = 1
     }) => {
       const section = document.querySelector(sectionSelector);
       const canvas = document.getElementById(canvasId);
@@ -52,6 +59,8 @@ export function useHomeEffects() {
       const ctx = canvas.getContext("2d");
       const frames = [];
       let current = -1;
+      const frameStep = Math.max(1, step);
+      const sequenceLength = Math.ceil(total / frameStep);
 
       const resize = () => {
         canvas.width = window.innerWidth;
@@ -81,10 +90,11 @@ export function useHomeEffects() {
       };
 
       for (let i = 1; i <= total; i++) {
+        if ((i - 1) % frameStep !== 0) continue;
         const img = new Image();
         img.src = `${folder}ezgif-frame-${pad(i)}.jpg`;
         img.onload = () => {
-          if (i === 1) drawFrame(0);
+          if (current === -1) drawFrame(0);
         };
         frames.push(img);
       }
@@ -101,7 +111,7 @@ export function useHomeEffects() {
         const range = sectionH - viewH;
         const progress = Math.max(0, Math.min(1, range === 0 ? 0 : scrolled / range));
 
-        const idx = Math.min(Math.floor(progress * total), total - 1);
+        const idx = Math.min(Math.floor(progress * sequenceLength), sequenceLength - 1);
         if (idx !== current) drawFrame(idx);
 
         if (progressBar) progressBar.style.height = `${progress * 100}%`;
@@ -136,7 +146,7 @@ export function useHomeEffects() {
       };
     };
 
-    if (allowHeavy) {
+    if (allowMotion) {
       cleanups.push(
         initScrollSequence({
           sectionSelector: ".it-scroll-section",
@@ -145,7 +155,8 @@ export function useHomeEffects() {
           total: 241,
           progressSelector: ".it-progress-bar",
           contentSelector: ".it-content",
-          navMode: "primary"
+          navMode: "primary",
+          step: mobileLiteMode ? 3 : 1
         })
       );
 
@@ -157,7 +168,8 @@ export function useHomeEffects() {
           total: 240,
           progressSelector: ".sd-progress-bar",
           contentSelector: ".sd-content",
-          navMode: "secondary"
+          navMode: "secondary",
+          step: mobileLiteMode ? 3 : 1
         })
       );
 
@@ -169,14 +181,15 @@ export function useHomeEffects() {
           total: 241,
           progressSelector: ".ss-progress-bar",
           contentSelector: ".ss-content",
-          navMode: "secondary"
+          navMode: "secondary",
+          step: mobileLiteMode ? 3 : 1
         })
       );
     }
 
     /* Three.js particle background */
     let stopParticles = null;
-    if (allowHeavy) {
+    if (allowMotion) {
       import("three")
         .then((THREE) => {
           const canvas = document.getElementById("hero-canvas");
@@ -187,7 +200,7 @@ export function useHomeEffects() {
             antialias: true,
             alpha: true
           });
-          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio, mobileLiteMode ? 1.15 : 1.8));
           renderer.setSize(canvas.offsetWidth, canvas.offsetHeight);
           renderer.setClearColor(0x000000, 0);
 
@@ -200,7 +213,7 @@ export function useHomeEffects() {
           );
           camera.position.z = 5;
 
-          const COUNT = isMobile ? 1600 : 4000;
+          const COUNT = mobileLiteMode ? 700 : 4000;
           const positions = new Float32Array(COUNT * 3);
           const colors = new Float32Array(COUNT * 3);
 
@@ -248,7 +261,7 @@ export function useHomeEffects() {
             transparent: true,
             opacity: isLightTheme ? 0.08 : 0.07
           });
-          for (let i = 0; i < 60; i++) {
+          for (let i = 0; i < (mobileLiteMode ? 20 : 60); i++) {
             const a = Math.floor(Math.random() * COUNT) * 3;
             const b = Math.floor(Math.random() * COUNT) * 3;
             const lGeo = new THREE.BufferGeometry().setFromPoints([
@@ -305,4 +318,6 @@ export function useHomeEffects() {
     };
   }, []);
 }
+
+
 

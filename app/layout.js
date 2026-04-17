@@ -1,4 +1,5 @@
-﻿import "./globals.css";
+import "./globals.css";
+import AIAssistant from "../components/AIAssistant";
 
 export const metadata = {
   title: "SSR – Business Solutions",
@@ -9,7 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <AIAssistant />
+      </body>
     </html>
   );
 }
