@@ -1647,7 +1647,7 @@ section { padding: 100px 0; }
   border-bottom: 1px solid rgba(255,255,255,0.05);
   color: var(--text); font-size: 0.9rem;
 }
-.main-content ul li::before { content: 'â€º'; color: var(--blue); font-size: 1.2rem; flex-shrink: 0; }
+.main-content ul li::before { content: '->'; color: var(--blue); font-size: 1.2rem; flex-shrink: 0; }
 
 /* Sidebar */
 .sidebar-card {
@@ -1677,7 +1677,7 @@ section { padding: 100px 0; }
   color: var(--text);
   transition: color 0.2s, padding-left 0.2s;
 }
-.sidebar-links li a::before { content: 'â€º'; color: var(--blue); font-size: 1.1rem; }
+.sidebar-links li a::before { content: '->'; color: var(--blue); font-size: 1.1rem; }
 .sidebar-links li a:hover { color: var(--blue); padding-left: 6px; }
 
 .sidebar-cta {

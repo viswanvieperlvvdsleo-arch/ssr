@@ -42,7 +42,7 @@ export default function HomePage() {
             <div className="hero-content">
               <div className="hero-eyebrow">
                 <div className="eyebrow-line"></div>
-                <span className="eyebrow-text">SAP Authorized Training | Placements Center</span>
+                <span className="eyebrow-text">SAP Authorized Training Center | Placements</span>
               </div>
               <h1 className="hero-title">
                 SSR Business Solutions
@@ -249,7 +249,7 @@ export default function HomePage() {
                 <h2>Why Choose SSR Business Solutions?</h2>
                 <p>Being Real Time Working Consultants, SSR Business Solutions knows the success formula. Having been in the IT industry for a long time and worked on different SAP modules, we've come up with strategies to take training to the next level.</p>
                 <ul className="why-list">
-                  <li className="why-list-item"><div className="why-check">✓</div>SAP Authorized Training | Placements Center</li>
+                  <li className="why-list-item"><div className="why-check">✓</div>SAP Authorized Training Center | Placements</li>
                   <li className="why-list-item"><div className="why-check">✓</div>Real-Time / Corporate Trainers</li>
                   <li className="why-list-item"><div className="why-check">✓</div>Online, Classroom &amp; Corporate Modes</li>
                   <li className="why-list-item"><div className="why-check">✓</div>24/7 Server Access for Students</li>
@@ -262,58 +262,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CLIENTS */}
-        <section className="clients-section" id="clients">
-          <div className="container">
-            <div style={{ textAlign: "center" }} className="fade-up">
-              <span className="section-tag">Trusted By</span>
-              <h2 className="section-heading">Our Clients</h2>
-            </div>
-            <div className="logo-grid">
-              {clientLogos.map((logo) => (
-                <div className="logo-tile" key={logo.name} aria-label={logo.name}>
-                  <div className="logo-mark">{logo.short}</div>
-                  <div className="logo-name">{logo.name}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        {/* TESTIMONIALS */}
-        <section className="testimonials-section" id="testimonials">
-          <div className="container">
-            <div style={{ textAlign: "center" }} className="fade-up">
-              <span className="section-tag">What People Say</span>
-              <h2 className="section-heading">Testimonials</h2>
-            </div>
-            <div className="testimonials-grid">
-              <div className="glass-card fade-up" data-delay="0">
-                <span className="quote-mark">"</span>
-                <p>SSRBS is a place where you will find a platform to enhance your skills and an opportunity to showcase them.</p>
-                <div className="author-row"><div className="author-avatar">T</div><div className="author-info"><strong>Teja</strong><span>SSR Graduate</span></div></div>
-              </div>
-
-              <div className="glass-card fade-up" data-delay="130">
-                <span className="quote-mark">"</span>
-                <p>SAP training by Jagan sir is very informative and real time oriented. He has vast knowledge in SAP domain. I would suggest others to join here for the best SAP training in Vizag.</p>
-                <div className="author-row"><div className="author-avatar">S</div><div className="author-info"><strong>Sandeep</strong><span>SAP Training</span></div></div>
-              </div>
-
-              <div className="glass-card fade-up" data-delay="0">
-                <span className="quote-mark">"</span>
-                <p>I have taken a course on SAP BASIS/SECURITY in SSRBS and they trained us very well in ONLINE MODE. The trainer covered real time scenarios and his explanation is like a class room training only.</p>
-                <div className="author-row"><div className="author-avatar">P</div><div className="author-info"><strong>Pranay</strong><span>SAP BASIS/SECURITY</span></div></div>
-              </div>
-
-              <div className="glass-card fade-up" data-delay="130">
-                <span className="quote-mark">"</span>
-                <p>The online training provided by this institute are very informative and it includes in-depth discussions on the topic with real-time scenarios. I'm impressed with the training quality.</p>
-                <div className="author-row"><div className="author-avatar">A</div><div className="author-info"><strong>Avinash</strong><span>Online Training</span></div></div>
-              </div>
-            </div>
-          </div>
-        </section>
       </main>
       <Footer />
     </>

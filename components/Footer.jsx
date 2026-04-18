@@ -12,7 +12,7 @@ export default function Footer() {
               <img src="/ssrlogo.jpeg" alt="SSR Logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
               <div className="logo-text-block">
                 <span>SSR Business Solutions</span>
-                <span>SAP Authorized Training | Placements Center</span>
+                <span>SAP Authorized Training Center | Placements</span>
               </div>
             </div>
             <h4>Contact Address</h4>
