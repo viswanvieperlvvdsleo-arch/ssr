@@ -198,24 +198,47 @@ export default function ServiceAuthGate() {
           position: "fixed", inset: 0, zIndex: 99995,
           background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "20px",
+          padding: "16px",
         }}>
           <div style={{
+            position: "relative",
             background: "linear-gradient(145deg,#0b1628,#0d1e3a)",
             border: "1.5px solid rgba(0,153,255,0.3)",
-            borderRadius: "24px",
-            padding: "36px 32px",
+            borderRadius: "20px",
+            padding: "24px 20px",
             width: "100%", maxWidth: "440px",
+            maxHeight: "95vh",
+            overflowY: "auto",
             boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
             animation: "modalPop 0.4s cubic-bezier(0.34,1.4,0.64,1)",
           }}>
+            {/* Close Button */}
+            <button 
+              onClick={() => {
+                setShowModal(false);
+                router.push("/");
+              }}
+              style={{
+                position: "absolute", top: "16px", right: "16px",
+                background: "rgba(255,255,255,0.1)", border: "none",
+                borderRadius: "50%", width: "32px", height: "32px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "rgba(255,255,255,0.7)", fontSize: "1.2rem",
+                cursor: "pointer", transition: "all 0.2s"
+              }}
+              onMouseEnter={(e) => { e.target.style.background = "rgba(255,255,255,0.2)"; e.target.style.color = "#fff"; }}
+              onMouseLeave={(e) => { e.target.style.background = "rgba(255,255,255,0.1)"; e.target.style.color = "rgba(255,255,255,0.7)"; }}
+            >
+              ✕
+            </button>
+
             {/* Header */}
-            <div style={{ textAlign: "center", marginBottom: "28px" }}>
-              <img src="/ssrlogo.jpeg" alt="SSR" style={{ height: 48, borderRadius: 8, marginBottom: 12 }} />
-              <h2 style={{ color: "#fff", fontSize: "1.4rem", fontWeight: 800, margin: "0 0 6px" }}>
+            <div style={{ textAlign: "center", marginBottom: "20px" }}>
+              <img src="/ssrlogo.jpeg" alt="SSR" style={{ height: 40, borderRadius: 8, marginBottom: 8 }} />
+              <h2 style={{ color: "#fff", fontSize: "1.3rem", fontWeight: 800, margin: "0 0 4px" }}>
                 {modalMode === "register" ? "Create Your Account" : "Welcome Back"}
               </h2>
-              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.85rem", margin: 0 }}>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem", margin: 0 }}>
                 {modalMode === "register"
                   ? "Sign up to access SSR training modules"
                   : "Sign in to continue to SSR services"}
@@ -226,7 +249,7 @@ export default function ServiceAuthGate() {
             {formError && (
               <div style={{
                 background: "rgba(220,50,50,0.15)", border: "1px solid rgba(220,50,50,0.35)",
-                borderRadius: "10px", padding: "10px 14px", marginBottom: "16px",
+                borderRadius: "10px", padding: "8px 12px", marginBottom: "12px",
                 color: "#ff8080", fontSize: "0.85rem",
               }}>
                 {formError}
@@ -235,7 +258,7 @@ export default function ServiceAuthGate() {
 
             {/* REGISTER FORM */}
             {modalMode === "register" ? (
-              <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 <InputField label="Full Name *" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rahul Sharma" />
                 <InputField label="Phone Number *" value={phone} onChange={e => setPhone(e.target.value)} placeholder="10-digit number" type="tel" />
                 <InputField label="Email Address *" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" />
