@@ -11,10 +11,17 @@ export function useTheme() {
   const applyTheme = useCallback((mode) => {
     const next = mode === "light" ? "light" : "dark";
     setThemeState(next);
-    const root = document.documentElement;
-    root.classList.remove("theme-dark", "theme-light");
-    root.classList.add(`theme-${next}`);
     localStorage.setItem(THEME_KEY, next);
+    
+    const root = document.documentElement;
+    // Remove both by default
+    root.classList.remove("theme-dark", "theme-light");
+    
+    if (next === "light") {
+      root.classList.add("theme-light");
+    } else {
+      root.classList.add("theme-dark");
+    }
   }, []);
 
   useEffect(() => {

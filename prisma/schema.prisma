@@ -1,43 +1,56 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "mongodb"
+  url      = env("MONGODB_URI")
+}
+
+model CMSContent {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Enquiry {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  type      String   @default("general")
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  createdAt DateTime @default(now())
 }
 
 model Availability {
-  id        String   @id @default(cuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   date      DateTime
-  startTime String   // e.g. "09:00"
-  endTime   String   // e.g. "10:00"
+  startTime String
+  endTime   String
   isBooked  Boolean  @default(false)
   booking   Booking?
 }
 
 model Booking {
-  id             String       @id @default(cuid())
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
   visitorName    String
   visitorEmail   String?
   visitorPhone   String?
   purpose        String?
-  availabilityId String       @unique
+  availabilityId String       @unique @db.ObjectId
   availability   Availability @relation(fields: [availabilityId], references: [id])
   createdAt      DateTime     @default(now())
-}
-
-model ContactMessage {
-  id          String   @id @default(cuid())
-  name        String
-  email       String
-  phone       String?
-  subject     String
-  message     String
-  createdAt   DateTime @default(now())
 }

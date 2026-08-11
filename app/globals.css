@@ -456,11 +456,109 @@ section { padding: 100px 0; }
   flex-direction: column;
   gap: 5px;
   cursor: pointer;
-  padding: 6px;
+  padding: 8px;
   background: none;
   border: none;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
 }
-.nav-toggle span { width: 24px; height: 2px; background: var(--text); border-radius: 2px; transition: 0.3s; }
+
+.nav-toggle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 250%;
+  height: 250%;
+  background: conic-gradient(from 0deg, transparent 50%, rgba(0, 153, 255, 1) 100%);
+  transform: translate(-50%, -50%);
+  animation: borderRotate 2.5s linear infinite;
+  z-index: 0;
+}
+
+.nav-toggle::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: #030712;
+  border-radius: 6px;
+  z-index: 1;
+}
+
+@keyframes borderRotate {
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.services-nav-link {
+  position: relative;
+}
+
+/* Mobile specific styling */
+@media (max-width: 768px) {
+  .services-nav-link.animate-services {
+    overflow: hidden;
+    border-radius: 8px;
+    padding: 10px 24px !important;
+    margin: 4px auto;
+    z-index: 1;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    border-bottom: none !important;
+    text-align: center;
+  }
+  .services-nav-link.animate-services::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 250%;
+    height: 250%;
+    background: conic-gradient(from 0deg, transparent 50%, rgba(0, 153, 255, 1) 100%);
+    transform: translate(-50%, -50%);
+    animation: borderRotate 2.5s linear infinite;
+    z-index: 0;
+  }
+  .services-nav-link.animate-services::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background: #030712;
+    border-radius: 6px;
+    z-index: 1;
+  }
+  .services-text {
+    position: relative;
+    z-index: 2;
+  }
+}
+
+/* Desktop specific styling */
+@media (min-width: 769px) {
+  .services-nav-link.animate-services::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+    background-size: 200% 100%;
+    animation: lineSlide 2s linear infinite alternate;
+  }
+}
+
+@keyframes lineSlide {
+  0% { background-position: -100% 0; }
+  100% { background-position: 100% 0; }
+}
+
+.nav-toggle span { width: 24px; height: 2px; background: var(--text); border-radius: 2px; transition: 0.3s; position: relative; z-index: 2; }
 
 /* =========================================================
    HERO
@@ -493,17 +591,6 @@ section { padding: 100px 0; }
   );
   z-index: 1;
 }
-.theme-light .hero-overlay {
-  background: linear-gradient(
-    to right,
-    rgba(255,255,255,0.94) 0%,
-    rgba(244,244,244,0.85) 55%,
-    rgba(228,228,228,0.65) 100%
-  );
-}
-.theme-light .hero { background: var(--bg-deep); }
-.theme-light #hero-canvas { display: none; }
-
 .hero-content {
   position: relative;
   z-index: 2;
@@ -548,18 +635,6 @@ section { padding: 100px 0; }
   margin-bottom: 36px;
   max-width: 520px;
 }
-
-/* Light theme typography overrides */
-.theme-light .section-heading,
-.theme-light .hero-title,
-.theme-light h1,
-.theme-light h2,
-.theme-light h3,
-.theme-light h4 { color: #2B2B2B; text-shadow: none; }
-.theme-light .hero-desc,
-.theme-light .section-sub,
-.theme-light p { color: #4A4A4A; }
-.theme-light .hero-eyebrow .eyebrow-text { color: #4A4A4A; }
 
 .hero-btns { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 
@@ -631,7 +706,6 @@ section { padding: 100px 0; }
   height: 500vh;
   position: relative;
 }
-.theme-light .it-scroll-section { background: var(--bg-deep); }
 
 .it-scroll-sticky {
   position: sticky;
@@ -644,11 +718,6 @@ section { padding: 100px 0; }
   background-position: center;
   background-size: cover;
 }
-.theme-light .it-scroll-sticky {
-  position: relative;
-  height: auto;
-  background: var(--bg-deep);
-}
 
 /* Canvas fills the sticky container */
 #it-canvas {
@@ -658,7 +727,6 @@ section { padding: 100px 0; }
   height: 100%;
   object-fit: cover;
 }
-.theme-light #it-canvas { display: none; }
 
 /* Dark gradient overlay so text is always readable */
 .it-overlay {
@@ -673,14 +741,6 @@ section { padding: 100px 0; }
   display: flex;
   align-items: center;
   z-index: 2;
-}
-.theme-light .it-overlay {
-  background: linear-gradient(
-    to right,
-    rgba(255,255,255,0.96) 0%,
-    rgba(244,244,244,0.82) 50%,
-    rgba(228,228,228,0.65) 100%
-  );
 }
 
 .it-content {
@@ -746,10 +806,6 @@ section { padding: 100px 0; }
   transition: height 0.05s linear;
   box-shadow: 0 0 8px rgba(123,164,208,0.5);
 }
-.theme-light .it-progress-bar {
-  background: linear-gradient(180deg, #4A4A4A, #2B2B2B);
-  box-shadow: 0 0 8px rgba(0,0,0,0.12);
-}
 
 /* =========================================================
    SOFTWARE DEVELOPER â€“ Scroll-Scrubbed Frame Animation
@@ -758,7 +814,6 @@ section { padding: 100px 0; }
   height: 500vh;
   position: relative;
 }
-.theme-light .sd-scroll-section { background: var(--bg-deep); }
 
 .sd-scroll-sticky {
   position: sticky;
@@ -771,21 +826,16 @@ section { padding: 100px 0; }
   background-position: center;
   background-size: cover;
 }
-.theme-light .sd-scroll-sticky {
-  position: relative;
-  height: auto;
-  background: var(--bg-deep);
-}
 
 #sd-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
 }
-.theme-light #sd-canvas { display: none; }
 
-/* Overlay gradient â€” text aligned RIGHT for visual variety */
+/* Overlay gradient — text aligned RIGHT for visual variety */
 .sd-overlay {
   position: absolute;
   inset: 0;
@@ -799,14 +849,6 @@ section { padding: 100px 0; }
   align-items: center;
   justify-content: flex-end;
   z-index: 2;
-}
-.theme-light .sd-overlay {
-  background: linear-gradient(
-    to left,
-    rgba(255,255,255,0.96) 0%,
-    rgba(244,244,244,0.82) 50%,
-    rgba(228,228,228,0.65) 100%
-  );
 }
 
 .sd-content {
@@ -875,13 +917,12 @@ section { padding: 100px 0; }
 }
 
 /* =========================================================
-   STAFFING & SOLUTIONS â€“ Scroll-Scrubbed Frame Animation
+   STAFFING & SOLUTIONS – Scroll-Scrubbed Frame Animation
    ========================================================= */
 .ss-scroll-section {
   height: 500vh;
   position: relative;
 }
-.theme-light .ss-scroll-section { background: var(--bg-deep); }
 
 .ss-scroll-sticky {
   position: sticky;
@@ -894,21 +935,16 @@ section { padding: 100px 0; }
   background-position: center;
   background-size: cover;
 }
-.theme-light .ss-scroll-sticky {
-  position: relative;
-  height: auto;
-  background: var(--bg-deep);
-}
 
 #ss-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
 }
-.theme-light #ss-canvas { display: none; }
 
-/* Centered overlay â€” gradient from both sides */
+/* Centered overlay — gradient from both sides */
 .ss-overlay {
   position: absolute;
   inset: 0;
@@ -923,15 +959,6 @@ section { padding: 100px 0; }
   align-items: center;
   justify-content: center;
   z-index: 2;
-}
-.theme-light .ss-overlay {
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.9) 0%,
-    rgba(228,228,228,0.7) 40%,
-    rgba(228,228,228,0.7) 60%,
-    rgba(244,244,244,0.9) 100%
-  );
 }
 
 .ss-content {
@@ -1585,6 +1612,9 @@ section { padding: 100px 0; }
   overflow: hidden;
   background: linear-gradient(160deg, #0D2440 0%, #112847 100%);
 }
+.theme-light .page-banner {
+  background: linear-gradient(160deg, var(--bg-deep) 0%, var(--bg-mid) 100%);
+}
 .page-banner::before {
   content: '';
   position: absolute;
@@ -1606,6 +1636,9 @@ section { padding: 100px 0; }
   color: #E7F0FA;
   margin-bottom: 14px;
 }
+.theme-light .banner-content h1 {
+  color: var(--white);
+}
 .breadcrumb {
   display: flex; align-items: center; justify-content: center;
   gap: 10px;
@@ -1619,6 +1652,7 @@ section { padding: 100px 0; }
    INNER PAGE CONTENT
    ========================================================= */
 .inner-content { background: #112847; }
+.theme-light .inner-content { background: var(--bg-mid); }
 
 .content-grid {
   display: grid;
@@ -1979,4 +2013,35 @@ section { padding: 100px 0; }
   section { padding: 70px 0; }
   .section-heading { font-size: 2rem; }
   .hero .container { padding-left: 24px; padding-right: 24px; }
+
+  /* Mobile Overrides for Scroll Sections */
+  .it-scroll-section, .sd-scroll-section, .ss-scroll-section {
+    height: auto !important;
+  }
+  .it-scroll-sticky {
+    position: relative !important;
+    height: 100vh !important;
+    background-image: url("/homepage for mobile/IT Training.png") !important;
+    background-size: cover !important;
+    background-position: center !important;
+  }
+  .sd-scroll-sticky {
+    position: relative !important;
+    height: 100vh !important;
+    background-image: url("/homepage for mobile/software development.png") !important;
+    background-size: cover !important;
+    background-position: center !important;
+  }
+  .ss-scroll-sticky {
+    position: relative !important;
+    height: 100vh !important;
+    background-image: url("/homepage for mobile/Staffing & Solutions.png") !important;
+    background-size: cover !important;
+    background-position: center !important;
+  }
+  .it-scroll-sticky canvas,
+  .sd-scroll-sticky canvas,
+  .ss-scroll-sticky canvas {
+    display: none !important;
+  }
 }

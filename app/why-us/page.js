@@ -1,11 +1,57 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import Footer from "../../components/Footer";
 import Navbar from "../../components/Navbar";
+import Sidebar from "../../components/Sidebar";
 import { useSharedEffects } from "../../hooks/useSharedEffects";
+import { useCMS, DEFAULT_GLOBAL_CONTENT } from "../../components/CMSContext";
+import EditableText from "../../components/EditableText";
 
 export default function WhyUsPage() {
   useSharedEffects({ enableReveal: true, enableSmoothAnchors: true });
+  const { globalContent, updateContent, isEditMode } = useCMS() || {};
+  const content = globalContent?.whyUs || DEFAULT_GLOBAL_CONTENT.whyUs;
+
+  const setContent = (key, val) => updateContent?.("whyUs", key, val);
+
+  const handleUpdateProjectPoint = (idx, val) => {
+    const updated = [...(content.projectExpPoints || DEFAULT_GLOBAL_CONTENT.whyUs.projectExpPoints)];
+    updated[idx] = val;
+    setContent("projectExpPoints", updated);
+  };
+
+  const handleAddProjectPoint = () => {
+    const updated = [
+      ...(content.projectExpPoints || DEFAULT_GLOBAL_CONTENT.whyUs.projectExpPoints),
+      "New Project Experience / Scope Track"
+    ];
+    setContent("projectExpPoints", updated);
+  };
+
+  const handleDeleteProjectPoint = (idx) => {
+    const updated = (content.projectExpPoints || DEFAULT_GLOBAL_CONTENT.whyUs.projectExpPoints).filter((_, i) => i !== idx);
+    setContent("projectExpPoints", updated);
+  };
+
+  const handleUpdateAdvantage = (idx, field, val) => {
+    const updated = [...(content.advantages || DEFAULT_GLOBAL_CONTENT.whyUs.advantages)];
+    updated[idx] = { ...updated[idx], [field]: val };
+    setContent("advantages", updated);
+  };
+
+  const handleAddAdvantage = () => {
+    const updated = [
+      ...(content.advantages || DEFAULT_GLOBAL_CONTENT.whyUs.advantages),
+      { id: `adv_${Date.now()}`, title: "✓ New Advantage", desc: "Description of the new key advantage." }
+    ];
+    setContent("advantages", updated);
+  };
+
+  const handleDeleteAdvantage = (idx) => {
+    const updated = (content.advantages || DEFAULT_GLOBAL_CONTENT.whyUs.advantages).filter((_, i) => i !== idx);
+    setContent("advantages", updated);
+  };
 
   return (
     <>
@@ -14,9 +60,22 @@ export default function WhyUsPage() {
         <div className="page-banner">
           <div className="container">
             <div className="banner-content">
-              <span className="section-tag">Our Advantage</span>
-              <h1>Why Us?</h1>
-              <div className="breadcrumb"><a href="/">Home</a><span>›</span><span>Why Us?</span></div>
+              <EditableText
+                tagName="span"
+                className="section-tag"
+                value={content.bannerTag}
+                onChange={(v) => setContent("bannerTag", v)}
+              />
+              <EditableText
+                tagName="h1"
+                value={content.bannerTitle}
+                onChange={(v) => setContent("bannerTitle", v)}
+              />
+              <div className="breadcrumb">
+                <Link href="/">Home</Link>
+                <span>›</span>
+                <span>Why Us?</span>
+              </div>
             </div>
           </div>
         </div>
@@ -25,36 +84,151 @@ export default function WhyUsPage() {
           <div className="container">
             <div className="content-grid">
               <div className="main-content fade-left">
-                <h1>Why Choose SSR Business Solutions?</h1>
-                <p>Above all, we believe that real change is possible and that tomorrow doesn't have to be like today. Being Real Time Working Consultants, SSR Business Solutions knows the success formula that helps a normal person become a Software Professional.</p>
-                <p>Having been emerged in the IT industry for a long time, we've been associated with working on different modules on SAP. Hence, we came up with a principal to take this to the next level with a few strategies.</p>
-                <p>SSR Business Solutions provides Real Time Training and Certification Trainings with Online mode, Class Room Mode Trainings, Corporate Trainings for MNCs and Online Server Access 24/7. Empowering software careers with the "Skills of Success" by training on the industry's latest software technologies through our innovative programs.</p>
+                <EditableText
+                  tagName="h1"
+                  value={content.title}
+                  onChange={(v) => setContent("title", v)}
+                />
+                <EditableText
+                  tagName="p"
+                  value={content.p1}
+                  onChange={(v) => setContent("p1", v)}
+                />
+                <EditableText
+                  tagName="p"
+                  value={content.p2}
+                  onChange={(v) => setContent("p2", v)}
+                />
+                <EditableText
+                  tagName="p"
+                  value={content.p3}
+                  onChange={(v) => setContent("p3", v)}
+                />
 
-                <h2>Our Project Experience</h2>
-                <ul>
-                  <li>Development (EE4.7) (ECC6.0/Ehp 5/Ehp 6/Ehp 7/Ehp 7.5) (S4 HANA 1709/1809/1909)</li>
-                  <li>Support</li>
-                  <li>Migration (Oracle to HANA) (MYSQL to HANA) (SYBASE to HANA)</li>
-                  <li>Enhancement</li>
-                  <li>Roll Out or Upgradation</li>
-                </ul>
+                {/* Project Experience List */}
+                <div style={{ marginTop: "28px", marginBottom: "28px" }}>
+                  <EditableText
+                    tagName="h2"
+                    value={content.projectExpTitle}
+                    onChange={(v) => setContent("projectExpTitle", v)}
+                  />
+                  <ul style={{ listStyle: "disc", paddingLeft: "20px", marginTop: "12px" }}>
+                    {(content.projectExpPoints || DEFAULT_GLOBAL_CONTENT.whyUs.projectExpPoints).map((pt, idx) => (
+                      <li key={idx} style={{ marginBottom: "8px" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                          <EditableText
+                            tagName="span"
+                            value={pt}
+                            onChange={(val) => handleUpdateProjectPoint(idx, val)}
+                          />
+                          {isEditMode && (
+                            <button
+                              onClick={() => handleDeleteProjectPoint(idx)}
+                              style={{
+                                background: "rgba(239,68,68,0.2)",
+                                color: "#fca5a5",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "2px 6px",
+                                fontSize: "11px",
+                                cursor: "pointer"
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {isEditMode && (
+                    <button
+                      onClick={handleAddProjectPoint}
+                      style={{
+                        background: "#059669",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        marginTop: "8px"
+                      }}
+                    >
+                      ➕ Add Project Experience
+                    </button>
+                  )}
+                </div>
 
-                <h2>Key Advantages</h2>
-                <div className="feature-grid">
-                  <div className="feature-item"><strong>✓ SAP Authorized Center</strong><span>Officially authorized with certified trainers and curriculum.</span></div>
-                  <div className="feature-item"><strong>✓ Real-Time Trainers</strong><span>Active IT professionals with hands-on field experience.</span></div>
-                  <div className="feature-item"><strong>✓ 24/7 Server Access</strong><span>Practice round-the-clock with our always-on server infrastructure.</span></div>
-                  <div className="feature-item"><strong>✓ Placement Assistance</strong><span>Dedicated placement cell guiding every student to the right job.</span></div>
-                  <div className="feature-item"><strong>✓ Multiple Modes</strong><span>Online, Classroom, and Corporate training options available.</span></div>
-                  <div className="feature-item"><strong>✓ Soft Skills Sessions</strong><span>Personality development and communication skills included free.</span></div>
+                {/* Advantages Grid */}
+                <div style={{ marginTop: "28px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <EditableText
+                      tagName="h2"
+                      value={content.advantagesTitle}
+                      onChange={(v) => setContent("advantagesTitle", v)}
+                    />
+                    {isEditMode && (
+                      <button
+                        onClick={handleAddAdvantage}
+                        style={{
+                          background: "#059669",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ➕ Add Advantage Card
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="feature-grid" style={{ marginTop: "16px" }}>
+                    {(content.advantages || DEFAULT_GLOBAL_CONTENT.whyUs.advantages).map((item, idx) => (
+                      <div key={item.id || idx} className="feature-item" style={{ position: "relative" }}>
+                        {isEditMode && (
+                          <button
+                            onClick={() => handleDeleteAdvantage(idx)}
+                            style={{
+                              position: "absolute",
+                              top: "8px",
+                              right: "8px",
+                              background: "rgba(239,68,68,0.3)",
+                              color: "#fca5a5",
+                              border: "none",
+                              borderRadius: "4px",
+                              padding: "2px 6px",
+                              fontSize: "10px",
+                              cursor: "pointer"
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        )}
+                        <strong>
+                          <EditableText
+                            tagName="span"
+                            value={item.title}
+                            onChange={(val) => handleUpdateAdvantage(idx, "title", val)}
+                          />
+                        </strong>
+                        <EditableText
+                          tagName="span"
+                          value={item.desc}
+                          onChange={(val) => handleUpdateAdvantage(idx, "desc", val)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <aside className="fade-right">
-                <div className="sidebar-card"><h3>Our Services</h3><ul className="sidebar-links"><li><a href="/training">Training</a></li><li><a href="/placements">Staffing &amp; Solutions</a></li><li><a href="/development">Development</a></li></ul></div>
-                <div className="sidebar-card"><h3>Contact Info</h3><div className="contact-info-card"><p><span className="icon">📍</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Visakhapatnam-530016</p><p><span className="icon">📞</span>+91 7013749901</p><p><span className="icon">📞</span>+91 90100 62578</p></div></div>
-                <div className="sidebar-cta"><h3>Join SSR</h3><p>Take the next step in your IT career today!</p><a href="/contact-us">Get In Touch</a></div>
-              </aside>
+              <Sidebar />
             </div>
           </div>
         </section>

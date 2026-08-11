@@ -5,6 +5,10 @@ import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import { useHomeEffects } from "../hooks/useHomeEffects";
 import { useSharedEffects } from "../hooks/useSharedEffects";
+import { useEffect } from "react";
+import { useCMS, DEFAULT_GLOBAL_CONTENT } from "../components/CMSContext";
+import EditableText from "../components/EditableText";
+import ComboSticker from "../components/ComboSticker";
 
 export default function HomePage() {
   useSharedEffects({
@@ -15,24 +19,38 @@ export default function HomePage() {
   });
   useHomeEffects();
 
-  const resultsMetrics = [
-    { value: "96%", label: "Placement success", note: "job-ready graduates" },
-    { value: "500+", label: "Students trained", note: "SAP & IT tracks" },
-    { value: "120+", label: "Projects delivered", note: "enterprise-grade builds" },
-    { value: "4.8/5", label: "Avg client CSAT", note: "post‑delivery surveys" }
-  ];
+  const { globalContent, updateContent, isEditMode } = useCMS() || {};
+  // The home page relies on DEFAULT_GLOBAL_CONTENT to exist in CMSContext.js
+  const content = globalContent?.home || DEFAULT_GLOBAL_CONTENT.home; 
+  const setContent = (key, val) => updateContent?.('home', key, val);
 
-  const clientLogos = [
-    { name: "AWS", short: "AWS" },
-    { name: "Capgemini", short: "CG" },
-    { name: "Visakhapatnam Port Authority", short: "VPA" },
-    { name: "PWC", short: "PWC" },
-    { name: "3S Business Corporation", short: "3S" }
-  ];
+  // Mobile hardware back button logic: Refresh on first press, exit if pressed again within 4 seconds
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.history.pushState({ page: "home-dummy" }, "");
+
+      const handlePopState = () => {
+        const now = Date.now();
+        const lastPress = parseInt(sessionStorage.getItem('lastBackPress') || '0', 10);
+
+        if (now - lastPress <= 4000) {
+          sessionStorage.removeItem('lastBackPress');
+          window.history.back();
+        } else {
+          sessionStorage.setItem('lastBackPress', now.toString());
+          window.location.reload();
+        }
+      };
+
+      window.addEventListener("popstate", handlePopState);
+      return () => window.removeEventListener("popstate", handlePopState);
+    }
+  }, []);
 
   return (
     <>
       <Navbar />
+      <ComboSticker />
       <main>
         {/* HERO */}
         <section className="hero">
@@ -42,15 +60,11 @@ export default function HomePage() {
             <div className="hero-content">
               <div className="hero-eyebrow">
                 <div className="eyebrow-line"></div>
-                <span className="eyebrow-text">SAP Authorized Training Center | Placements</span>
+                <EditableText tagName="span" className="eyebrow-text" value={content.heroEyebrow} onChange={(v) => setContent('heroEyebrow', v)} />
               </div>
-              <h1 className="hero-title">
-                SSR Business Solutions
-              </h1>
-              <p className="hero-desc">
-                Training, staffing, and end-to-end development — all run by real consultants on live systems. We build
-                job-ready talent, place them with confidence, and ship production-grade software for enterprises.
-              </p>
+              <EditableText tagName="h1" className="hero-title" value={content.heroTitle} onChange={(v) => setContent('heroTitle', v)} />
+              <EditableText tagName="p" className="hero-desc" value={content.heroDesc} onChange={(v) => setContent('heroDesc', v)} />
+              
               <div className="hero-btns">
                 <Link href="/about-us" className="btn-primary">
                   Discover More →
@@ -71,11 +85,29 @@ export default function HomePage() {
         <section className="results-strip">
           <div className="container">
             <div className="results-grid">
-              {resultsMetrics.map((item) => (
-                <div className="metric-card" key={item.label}>
-                  <div className="metric-value">{item.value}</div>
-                  <div className="metric-label">{item.label}</div>
-                  <div className="metric-note">{item.note}</div>
+              {content.metrics.map((item, idx) => (
+                <div className="metric-card" key={idx}>
+                  <div className="metric-value">
+                    <EditableText tagName="span" value={item.value} onChange={(v) => {
+                      const newMetrics = [...content.metrics];
+                      newMetrics[idx].value = v;
+                      setContent('metrics', newMetrics);
+                    }} />
+                  </div>
+                  <div className="metric-label">
+                    <EditableText tagName="span" value={item.label} onChange={(v) => {
+                      const newMetrics = [...content.metrics];
+                      newMetrics[idx].label = v;
+                      setContent('metrics', newMetrics);
+                    }} />
+                  </div>
+                  <div className="metric-note">
+                    <EditableText tagName="span" value={item.note} onChange={(v) => {
+                      const newMetrics = [...content.metrics];
+                      newMetrics[idx].note = v;
+                      setContent('metrics', newMetrics);
+                    }} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -88,11 +120,11 @@ export default function HomePage() {
             <canvas id="it-canvas"></canvas>
             <div className="it-overlay">
               <div className="it-content">
-                <span className="section-tag it-tag">IT Training</span>
-                <h2 className="it-heading">Real-Time SAP Training<br />by Industry Experts</h2>
-                <p className="it-desc">Certified corporate trainers with live server access, placement assistance, and real-world project experience — everything you need to launch your IT career.</p>
+                <EditableText tagName="span" className="section-tag it-tag" value={content.itTag} onChange={(v) => setContent('itTag', v)} />
+                <EditableText tagName="h2" className="it-heading" value={content.itHeading} onChange={(v) => setContent('itHeading', v)} />
+                <EditableText tagName="p" className="it-desc" value={content.itDesc} onChange={(v) => setContent('itDesc', v)} />
                 <div className="it-btns">
-                  <Link href="/training" className="btn-primary">Discover More →</Link>
+                  <Link href="#services" className="btn-primary">Discover More →</Link>
                   <Link href="/contact-us" className="btn-outline">Contact Us</Link>
                 </div>
               </div>
@@ -109,11 +141,11 @@ export default function HomePage() {
             <canvas id="sd-canvas"></canvas>
             <div className="sd-overlay">
               <div className="sd-content">
-                <span className="section-tag sd-tag">Software Development</span>
-                <h2 className="sd-heading">End-to-End Software<br />Development Solutions</h2>
-                <p className="sd-desc">From concept to deployment — we manage scope, schedule, budget and quality with proven project methodology, building scalable solutions across all modern platforms.</p>
+                <EditableText tagName="span" className="section-tag sd-tag" value={content.sdTag} onChange={(v) => setContent('sdTag', v)} />
+                <EditableText tagName="h2" className="sd-heading" value={content.sdHeading} onChange={(v) => setContent('sdHeading', v)} />
+                <EditableText tagName="p" className="sd-desc" value={content.sdDesc} onChange={(v) => setContent('sdDesc', v)} />
                 <div className="sd-btns">
-                  <Link href="/development" className="btn-primary">Discover More →</Link>
+                  <Link href="#services" className="btn-primary">Discover More →</Link>
                   <Link href="/contact-us" className="btn-outline">Contact Us</Link>
                 </div>
               </div>
@@ -128,11 +160,11 @@ export default function HomePage() {
             <canvas id="ss-canvas"></canvas>
             <div className="ss-overlay">
               <div className="ss-content">
-                <span className="section-tag ss-tag">Staffing &amp; Solutions</span>
-                <h2 className="ss-heading">Strategic IT Staffing<br />Tailored to Your Needs</h2>
-                <p className="ss-desc">Permanent hire, contract-to-hire, and campus recruitment — we connect the right talent with the right opportunity, every time.</p>
+                <EditableText tagName="span" className="section-tag ss-tag" value={content.ssTag} onChange={(v) => setContent('ssTag', v)} />
+                <EditableText tagName="h2" className="ss-heading" value={content.ssHeading} onChange={(v) => setContent('ssHeading', v)} />
+                <EditableText tagName="p" className="ss-desc" value={content.ssDesc} onChange={(v) => setContent('ssDesc', v)} />
                 <div className="ss-btns">
-                  <Link href="/placements" className="btn-primary">Discover More →</Link>
+                  <Link href="#services" className="btn-primary">Discover More →</Link>
                   <Link href="/contact-us" className="btn-outline">Contact Us</Link>
                 </div>
               </div>
@@ -145,9 +177,9 @@ export default function HomePage() {
         <section className="services-section" id="services">
           <div className="container">
             <div style={{ textAlign: "center" }} className="fade-up">
-              <span className="section-tag">What We Do</span>
-              <h2 className="section-heading">Our Core Services</h2>
-              <p className="section-sub" style={{ margin: "0 auto" }}>Hover over a card to explore each service.</p>
+              <EditableText tagName="span" className="section-tag" value={content.servicesTag} onChange={(v) => setContent('servicesTag', v)} />
+              <EditableText tagName="h2" className="section-heading" value={content.servicesHeading} onChange={(v) => setContent('servicesHeading', v)} />
+              <EditableText tagName="p" className="section-sub" style={{ margin: "0 auto" }} value={content.servicesSub} onChange={(v) => setContent('servicesSub', v)} />
             </div>
             <div className="services-grid">
               <div className="service-card fade-up" data-delay="0">
@@ -155,7 +187,7 @@ export default function HomePage() {
                 <div className="card-icon">🎓</div>
                 <h3>Training</h3>
                 <p>Real-time SAP training with certified corporate trainers, placement assistance, and 24/7 server access for every enrolled student.</p>
-                <Link href="/training" className="card-link">Explore Training</Link>
+
               </div>
 
               <div className="service-card fade-up" data-delay="120">
@@ -163,7 +195,7 @@ export default function HomePage() {
                 <div className="card-icon">👥</div>
                 <h3>Staffing &amp; Solutions</h3>
                 <p>Strategic IT staffing services — permanent hire, contract to hire, and campus recruitment tailored to your organization's needs.</p>
-                <Link href="/placements" className="card-link">Explore Staffing</Link>
+
               </div>
 
               <div className="service-card fade-up" data-delay="240">
@@ -171,7 +203,7 @@ export default function HomePage() {
                 <div className="card-icon">💻</div>
                 <h3>Development</h3>
                 <p>End-to-end software development managing scope, schedule, budget and quality with proven project management methodology.</p>
-                <Link href="/development" className="card-link">Explore Development</Link>
+
               </div>
             </div>
           </div>
@@ -182,11 +214,11 @@ export default function HomePage() {
           <div className="container">
             <div className="about-grid">
               <div className="about-text fade-left">
-                <span className="section-tag">Who We Are</span>
-                <h2>About SSR Business Solutions</h2>
-                <p className="highlight-line">"Above all, we believe that real change is possible and that tomorrow doesn't have to be like today."</p>
-                <p>SSR BUSINESS SOLUTIONS is a premier organization, founded in 2020 by Consultants who have been working for long time in various IT sectors. Our services span Training, Staffing and Development — with each unit focused on delivering maximum value.</p>
-                <p>Our technological expertise, high-quality standards, creativity and efficiency are combined to deliver services that cover all available platforms and numerous cutting-edge technologies trending worldwide.</p>
+                <EditableText tagName="span" className="section-tag" value={content.aboutTag} onChange={(v) => setContent('aboutTag', v)} />
+                <EditableText tagName="h2" value={content.aboutHeading} onChange={(v) => setContent('aboutHeading', v)} />
+                <EditableText tagName="p" className="highlight-line" value={content.aboutHighlight} onChange={(v) => setContent('aboutHighlight', v)} />
+                <EditableText tagName="p" value={content.aboutP1} onChange={(v) => setContent('aboutP1', v)} />
+                <EditableText tagName="p" value={content.aboutP2} onChange={(v) => setContent('aboutP2', v)} />
                 <div className="about-stats">
                   <div className="stat-box">
                     <span className="num stat-count" data-target="500" data-suffix="+">0</span>
@@ -245,17 +277,68 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="why-text fade-right">
-                <span className="section-tag">Our Advantage</span>
-                <h2>Why Choose SSR Business Solutions?</h2>
-                <p>Being Real Time Working Consultants, SSR Business Solutions knows the success formula. Having been in the IT industry for a long time and worked on different SAP modules, we've come up with strategies to take training to the next level.</p>
-                <ul className="why-list">
-                  <li className="why-list-item"><div className="why-check">✓</div>SAP Authorized Training Center | Placements</li>
-                  <li className="why-list-item"><div className="why-check">✓</div>Real-Time / Corporate Trainers</li>
-                  <li className="why-list-item"><div className="why-check">✓</div>Online, Classroom &amp; Corporate Modes</li>
-                  <li className="why-list-item"><div className="why-check">✓</div>24/7 Server Access for Students</li>
-                  <li className="why-list-item"><div className="why-check">✓</div>Placement Assistance for Every Student</li>
-                  <li className="why-list-item"><div className="why-check">✓</div>Personality Development &amp; Soft Skills</li>
-                </ul>
+                <EditableText tagName="span" className="section-tag" value={content.whyTag} onChange={(v) => setContent('whyTag', v)} />
+                <EditableText tagName="h2" value={content.whyHeading} onChange={(v) => setContent('whyHeading', v)} />
+                <EditableText tagName="p" value={content.whyDesc} onChange={(v) => setContent('whyDesc', v)} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <ul className="why-list" style={{ flexGrow: 1 }}>
+                    {(content.whyPoints || DEFAULT_GLOBAL_CONTENT.home.whyPoints).map((pt, idx) => (
+                      <li key={idx} className="why-list-item" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div className="why-check">✓</div>
+                        <EditableText
+                          tagName="span"
+                          value={pt}
+                          onChange={(val) => {
+                            const updated = [...(content.whyPoints || DEFAULT_GLOBAL_CONTENT.home.whyPoints)];
+                            updated[idx] = val;
+                            setContent("whyPoints", updated);
+                          }}
+                        />
+                        {isEditMode && (
+                          <button
+                            onClick={() => {
+                              const updated = (content.whyPoints || DEFAULT_GLOBAL_CONTENT.home.whyPoints).filter((_, i) => i !== idx);
+                              setContent("whyPoints", updated);
+                            }}
+                            style={{
+                              background: "rgba(239,68,68,0.2)",
+                              color: "#fca5a5",
+                              border: "none",
+                              borderRadius: "4px",
+                              padding: "2px 6px",
+                              fontSize: "11px",
+                              cursor: "pointer",
+                              marginLeft: "auto"
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {isEditMode && (
+                  <button
+                    onClick={() => {
+                      const updated = [...(content.whyPoints || DEFAULT_GLOBAL_CONTENT.home.whyPoints), "New Advantage Point"];
+                      setContent("whyPoints", updated);
+                    }}
+                    style={{
+                      background: "#059669",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      marginTop: "10px"
+                    }}
+                  >
+                    ➕ Add Point
+                  </button>
+                )}
                 <Link href="/why-us" className="btn-outline" style={{ marginTop: 24 }}>Learn More</Link>
               </div>
             </div>

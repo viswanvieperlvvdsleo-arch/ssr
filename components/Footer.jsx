@@ -1,8 +1,14 @@
 'use client';
 
 import Link from "next/link";
+import { useCMS, DEFAULT_GLOBAL_CONTENT } from "./CMSContext";
+import EditableText from "./EditableText";
 
 export default function Footer() {
+  const { globalContent, updateContent, isEditMode } = useCMS() || {};
+  const content = globalContent?.footer || DEFAULT_GLOBAL_CONTENT.footer;
+  const setContent = (key, val) => updateContent?.('footer', key, val);
+
   return (
     <footer className="footer">
       <div className="container">
@@ -15,21 +21,24 @@ export default function Footer() {
                 <span>SAP Authorized Training Center | Placements</span>
               </div>
             </div>
-            <h4>Contact Address</h4>
+            <EditableText tagName="h4" value={content.addressTitle} onChange={(v) => setContent('addressTitle', v)} />
             <ul className="footer-contact-list">
               <li>
-                <span className="f-icon">-&gt;</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Opp Pizza Hut, Visakhapatnam-530016
+                <span className="f-icon">-&gt;</span>
+                <EditableText tagName="span" value={content.address} onChange={(v) => setContent('address', v)} />
               </li>
               <li>
-                <span className="f-icon">-&gt;</span>+91 7013749901 / +91 90100 62578
+                <span className="f-icon">-&gt;</span>
+                <EditableText tagName="span" value={content.phone} onChange={(v) => setContent('phone', v)} />
               </li>
               <li>
-                <span className="f-icon">-&gt;</span>sales@ssrbusinesssolutions.com
+                <span className="f-icon">-&gt;</span>
+                <EditableText tagName="span" value={content.email} onChange={(v) => setContent('email', v)} />
               </li>
             </ul>
           </div>
           <div>
-            <h4>The Company</h4>
+            <EditableText tagName="h4" value={content.col2Title} onChange={(v) => setContent('col2Title', v)} />
             <ul className="footer-nav">
               <li>
                 <Link href="/about-us">About Us</Link>
@@ -43,7 +52,7 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h4>Services</h4>
+            <EditableText tagName="h4" value={content.col3Title} onChange={(v) => setContent('col3Title', v)} />
             <ul className="footer-nav">
               <li>
                 <Link href="/training">Training</Link>
@@ -59,7 +68,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="footer-bottom">
-        <p>Copyright &copy; 2023 SSR BUSINESS SOLUTIONS. All rights reserved.</p>
+        <EditableText tagName="p" value={content.copyright} onChange={(v) => setContent('copyright', v)} />
       </div>
     </footer>
   );

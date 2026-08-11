@@ -1,11 +1,17 @@
-﻿"use client";
+"use client";
 
 import Footer from "../../components/Footer";
 import Navbar from "../../components/Navbar";
 import { useSharedEffects } from "../../hooks/useSharedEffects";
+import { useCMS, DEFAULT_GLOBAL_CONTENT } from "../../components/CMSContext";
+import EditableText from "../../components/EditableText";
+import Sidebar from "../../components/Sidebar";
 
 export default function AboutPage() {
   useSharedEffects({ enableReveal: true, enableSmoothAnchors: true });
+  const { globalContent, updateContent } = useCMS() || {};
+  const content = globalContent?.aboutUs || DEFAULT_GLOBAL_CONTENT.aboutUs;
+  const setContent = (key, val) => updateContent?.('aboutUs', key, val);
 
   return (
     <>
@@ -14,8 +20,8 @@ export default function AboutPage() {
         <div className="page-banner">
           <div className="container">
             <div className="banner-content">
-              <span className="section-tag">Company</span>
-              <h1>About Us</h1>
+              <EditableText tagName="span" className="section-tag" value={content.bannerTag} onChange={(v) => setContent('bannerTag', v)} />
+              <EditableText tagName="h1" value={content.bannerTitle} onChange={(v) => setContent('bannerTitle', v)} />
               <div className="breadcrumb">
                 <a href="/">Home</a>
                 <span>›</span>
@@ -29,53 +35,42 @@ export default function AboutPage() {
           <div className="container">
             <div className="content-grid">
               <div className="main-content fade-left">
-                <h1>About SSR Business Solutions</h1>
-                <p>SSR BUSINESS SOLUTIONS is a premier organization, founded in 2020 by Consultants who have been working for long time in various IT sectors. In order to Visualize their thoughts in providing different IT services in terms of Training, Staffing and Development they started SSR Business Solutions — a growing IT Training &amp; Service Provider.</p>
-                <p>Over the years our services have been expanded to include Software development and IT consultancy Services. Currently we operate as four strategic business units focusing on: IT Training &amp; Placements, IT Staffing, and IT Development.</p>
+                <EditableText tagName="h1" value={content.title} onChange={(v) => setContent('title', v)} />
+                <EditableText tagName="p" value={content.p1} onChange={(v) => setContent('p1', v)} />
+                <EditableText tagName="p" value={content.p2} onChange={(v) => setContent('p2', v)} />
 
                 <div className="highlight-block">
-                  <h2>Our Core Focus Areas</h2>
+                  <EditableText tagName="h2" value={content.coreFocusTitle} onChange={(v) => setContent('coreFocusTitle', v)} />
                   <ul>
-                    <li>IT Training &amp; Placements</li>
-                    <li>IT Staffing</li>
-                    <li>IT Development</li>
+                    <li><EditableText tagName="span" value={content.focus1} onChange={(v) => setContent('focus1', v)} /></li>
+                    <li><EditableText tagName="span" value={content.focus2} onChange={(v) => setContent('focus2', v)} /></li>
+                    <li><EditableText tagName="span" value={content.focus3} onChange={(v) => setContent('focus3', v)} /></li>
                   </ul>
                 </div>
 
-                <p>Our technological expertise, high quality standards, creativity and efficiency are combined in our services to deliver maximum value to our customers. Our software technology expertise covers all available platforms and numerous cutting-edge technologies which are trending worldwide.</p>
+                <EditableText tagName="p" value={content.p3} onChange={(v) => setContent('p3', v)} />
 
                 <div className="feature-grid" style={{ marginTop: 30 }}>
-                  <div className="feature-item"><strong>🏛 Founded 2020</strong><span>Built by experienced IT consultants with a vision to transform careers.</span></div>
-                  <div className="feature-item"><strong>✅ SAP Authorized</strong><span>Officially authorized SAP Training Center with certified curriculum.</span></div>
-                  <div className="feature-item"><strong>🌐 Multi-Mode</strong><span>Online, Classroom, and Corporate training options.</span></div>
-                  <div className="feature-item"><strong>📈 500+ Students</strong><span>Successfully trained and placed across the IT industry.</span></div>
+                  <div className="feature-item">
+                    <strong><EditableText tagName="span" value={content.f1Title} onChange={(v) => setContent('f1Title', v)} /></strong>
+                    <EditableText tagName="span" value={content.f1Desc} onChange={(v) => setContent('f1Desc', v)} />
+                  </div>
+                  <div className="feature-item">
+                    <strong><EditableText tagName="span" value={content.f2Title} onChange={(v) => setContent('f2Title', v)} /></strong>
+                    <EditableText tagName="span" value={content.f2Desc} onChange={(v) => setContent('f2Desc', v)} />
+                  </div>
+                  <div className="feature-item">
+                    <strong><EditableText tagName="span" value={content.f3Title} onChange={(v) => setContent('f3Title', v)} /></strong>
+                    <EditableText tagName="span" value={content.f3Desc} onChange={(v) => setContent('f3Desc', v)} />
+                  </div>
+                  <div className="feature-item">
+                    <strong><EditableText tagName="span" value={content.f4Title} onChange={(v) => setContent('f4Title', v)} /></strong>
+                    <EditableText tagName="span" value={content.f4Desc} onChange={(v) => setContent('f4Desc', v)} />
+                  </div>
                 </div>
               </div>
 
-              <aside className="fade-right">
-                <div className="sidebar-card">
-                  <h3>Our Services</h3>
-                  <ul className="sidebar-links">
-                    <li><a href="/training">Training</a></li>
-                    <li><a href="/placements">Staffing &amp; Solutions</a></li>
-                    <li><a href="/development">Development</a></li>
-                  </ul>
-                </div>
-                <div className="sidebar-card">
-                  <h3>Contact Info</h3>
-                  <div className="contact-info-card">
-                    <p><span className="icon">📍</span>Varanasi Majestic, Suit No.-B1, 4th Floor, Dwaraka Nagar 2nd Lane, Visakhapatnam-530016</p>
-                    <p><span className="icon">📞</span>+91 7013749901</p>
-                    <p><span className="icon">📞</span>+91 90100 62578</p>
-                    <p><span className="icon">✉️</span>sales@ssrbusinesssolutions.com</p>
-                  </div>
-                </div>
-                <div className="sidebar-cta">
-                  <h3>Get Started</h3>
-                  <p>Ready to transform your IT career with SSR?</p>
-                  <a href="/contact-us">Contact Us Today</a>
-                </div>
-              </aside>
+              <Sidebar />
             </div>
           </div>
         </section>

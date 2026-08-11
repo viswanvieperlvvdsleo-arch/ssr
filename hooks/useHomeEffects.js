@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect } from "react";
 
@@ -15,7 +15,8 @@ export function useHomeEffects() {
       ? (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4)
       : false;
     const isLightTheme = typeof document !== "undefined" && document.documentElement.classList.contains("theme-light");
-    const allowMotion = !prefersReduce && !saveData && !isLightTheme;
+    const allowParticles = !prefersReduce && !saveData; // Removed !isLightTheme so canvas shows on both themes
+    const allowScrollFrames = allowParticles && !isMobile;
     const mobileLiteMode = isMobile || lowPowerDevice;
 
     /* Typed headline words */
@@ -53,8 +54,34 @@ export function useHomeEffects() {
       step = 1
     }) => {
       const section = document.querySelector(sectionSelector);
+      const content = contentSelector ? document.querySelector(contentSelector) : null;
+      const progressBar = progressSelector ? document.querySelector(progressSelector) : null;
+      const navbar = document.querySelector(".navbar");
+      
+      if (!section) return () => {};
+
+      if (!allowScrollFrames) {
+        // Fallback for mobile: use IntersectionObserver to fade in text, no canvas frames
+        if (content) {
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                content.classList.add("visible");
+                if (navbar) navbar.classList.toggle("it-active", true);
+              } else {
+                content.classList.remove("visible");
+                if (navbar) navbar.classList.toggle("it-active", false);
+              }
+            });
+          }, { threshold: 0.2 });
+          observer.observe(section);
+          return () => observer.disconnect();
+        }
+        return () => {};
+      }
+
       const canvas = document.getElementById(canvasId);
-      if (!section || !canvas) return () => {};
+      if (!canvas) return () => {};
 
       const ctx = canvas.getContext("2d");
       const frames = [];
@@ -99,10 +126,6 @@ export function useHomeEffects() {
         frames.push(img);
       }
 
-      const content = contentSelector ? document.querySelector(contentSelector) : null;
-      const progressBar = progressSelector ? document.querySelector(progressSelector) : null;
-      const navbar = document.querySelector(".navbar");
-
       const onScroll = () => {
         const rect = section.getBoundingClientRect();
         const sectionH = section.offsetHeight;
@@ -146,50 +169,48 @@ export function useHomeEffects() {
       };
     };
 
-    if (allowMotion) {
-      cleanups.push(
-        initScrollSequence({
-          sectionSelector: ".it-scroll-section",
-          canvasId: "it-canvas",
-          folder: "/it/",
-          total: 241,
-          progressSelector: ".it-progress-bar",
-          contentSelector: ".it-content",
-          navMode: "primary",
-          step: mobileLiteMode ? 3 : 1
-        })
-      );
+    cleanups.push(
+      initScrollSequence({
+        sectionSelector: ".it-scroll-section",
+        canvasId: "it-canvas",
+        folder: "/it/",
+        total: 241,
+        progressSelector: ".it-progress-bar",
+        contentSelector: ".it-content",
+        navMode: "primary",
+        step: mobileLiteMode ? 3 : 1
+      })
+    );
 
-      cleanups.push(
-        initScrollSequence({
-          sectionSelector: ".sd-scroll-section",
-          canvasId: "sd-canvas",
-          folder: "/soft developer/",
-          total: 240,
-          progressSelector: ".sd-progress-bar",
-          contentSelector: ".sd-content",
-          navMode: "secondary",
-          step: mobileLiteMode ? 3 : 1
-        })
-      );
+    cleanups.push(
+      initScrollSequence({
+        sectionSelector: ".sd-scroll-section",
+        canvasId: "sd-canvas",
+        folder: "/soft developer/",
+        total: 240,
+        progressSelector: ".sd-progress-bar",
+        contentSelector: ".sd-content",
+        navMode: "secondary",
+        step: mobileLiteMode ? 3 : 1
+      })
+    );
 
-      cleanups.push(
-        initScrollSequence({
-          sectionSelector: ".ss-scroll-section",
-          canvasId: "ss-canvas",
-          folder: "/bus/",
-          total: 241,
-          progressSelector: ".ss-progress-bar",
-          contentSelector: ".ss-content",
-          navMode: "secondary",
-          step: mobileLiteMode ? 3 : 1
-        })
-      );
-    }
+    cleanups.push(
+      initScrollSequence({
+        sectionSelector: ".ss-scroll-section",
+        canvasId: "ss-canvas",
+        folder: "/bus/",
+        total: 241,
+        progressSelector: ".ss-progress-bar",
+        contentSelector: ".ss-content",
+        navMode: "secondary",
+        step: mobileLiteMode ? 3 : 1
+      })
+    );
 
     /* Three.js particle background */
     let stopParticles = null;
-    if (allowMotion) {
+    if (allowParticles) {
       import("three")
         .then((THREE) => {
           const canvas = document.getElementById("hero-canvas");
@@ -213,7 +234,7 @@ export function useHomeEffects() {
           );
           camera.position.z = 5;
 
-          const COUNT = mobileLiteMode ? 700 : 4000;
+          const COUNT = mobileLiteMode ? 1800 : 4000;
           const positions = new Float32Array(COUNT * 3);
           const colors = new Float32Array(COUNT * 3);
 
@@ -223,21 +244,14 @@ export function useHomeEffects() {
             positions[i + 2] = (Math.random() - 0.5) * 10;
 
             const t = Math.random();
-            if (isLightTheme) {
-              const shade = 0.55 + Math.random() * 0.35; // mid gray
-              colors[i] = shade;
-              colors[i + 1] = shade;
-              colors[i + 2] = shade;
+            if (t < 0.5) {
+              colors[i] = 0;
+              colors[i + 1] = 0.55 + Math.random() * 0.4;
+              colors[i + 2] = 1;
             } else {
-              if (t < 0.5) {
-                colors[i] = 0;
-                colors[i + 1] = 0.55 + Math.random() * 0.4;
-                colors[i + 2] = 1;
-              } else {
-                colors[i] = 0.05;
-                colors[i + 1] = 0.15;
-                colors[i + 2] = 0.3 + Math.random() * 0.2;
-              }
+              colors[i] = 0.05;
+              colors[i + 1] = 0.15;
+              colors[i + 2] = 0.3 + Math.random() * 0.2;
             }
           }
 
@@ -246,7 +260,7 @@ export function useHomeEffects() {
           geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
           const mat = new THREE.PointsMaterial({
-            size: 0.04,
+            size: mobileLiteMode ? 0.07 : 0.04,
             vertexColors: true,
             transparent: true,
             opacity: 0.8,
@@ -257,9 +271,9 @@ export function useHomeEffects() {
           scene.add(particles);
 
           const lineMat = new THREE.LineBasicMaterial({
-            color: isLightTheme ? 0x4a4a4a : 0x0066aa,
+            color: 0x0066aa,
             transparent: true,
-            opacity: isLightTheme ? 0.08 : 0.07
+            opacity: 0.07
           });
           for (let i = 0; i < (mobileLiteMode ? 20 : 60); i++) {
             const a = Math.floor(Math.random() * COUNT) * 3;

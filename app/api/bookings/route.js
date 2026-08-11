@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
-
-const prisma = new PrismaClient();
 
 // Get all open availability slots
 export async function GET() {
