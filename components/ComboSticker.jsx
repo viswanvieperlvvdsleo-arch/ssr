@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCMS } from './CMSContext';
 import { usePathname } from 'next/navigation';
 
-export default function ComboSticker() {
+export default function ComboSticker({ inline = false }) {
   const { globalContent, isEditMode, updateContent } = useCMS();
   const comboOffers = globalContent?.comboOffers || {};
   const sticker = comboOffers.sticker || { enabled: false };
@@ -21,6 +21,7 @@ export default function ComboSticker() {
   }, []);
 
   useEffect(() => {
+    if (inline) return;
     const handleScroll = () => {
       const scrollY = window.scrollY;
       const newOpacity = Math.max(0, 1 - scrollY / 400);
@@ -29,7 +30,9 @@ export default function ComboSticker() {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [inline]);
+
+  // ... (rest of the time calculation logic remains same)
 
   useEffect(() => {
     if (!sticker.expiryDate) {
@@ -73,7 +76,7 @@ export default function ComboSticker() {
     return null;
   }
 
-  if (opacity === 0 && !isEditMode) return null;
+  if (!inline && opacity === 0 && !isEditMode) return null;
 
   // Pull per-element style settings (with safe defaults)
   const ts = sticker.textStyle      || { top: 64, left: 50, fontSize: 18, rotate: 0 };
@@ -168,12 +171,16 @@ export default function ComboSticker() {
     );
   };
 
+  const inlineClass = inline 
+    ? 'relative flex-shrink-0 w-full max-w-[300px] flex items-center justify-center'
+    : 'fixed z-40 transition-all duration-300 ease-in-out origin-bottom-right md:origin-top-right top-auto bottom-[80px] right-[10px] md:top-[100px] md:bottom-auto md:right-[10px]';
+
   return (
     <>
       {renderEditorPanel()}
       <Wrapper {...wrapperProps} 
-        className={`fixed z-40 transition-all duration-300 ease-in-out origin-bottom-right md:origin-top-right top-auto bottom-[80px] right-[10px] md:top-[100px] md:bottom-auto md:right-[10px]`}
-        style={{
+        className={inlineClass}
+        style={inline ? {} : {
           opacity: isEditMode ? 1 : opacity,
           transform: `scale(${0.7 + ((isEditMode ? 1 : opacity) * 0.3)})`,
           pointerEvents: (opacity > 0.2 || isEditMode) ? 'auto' : 'none'

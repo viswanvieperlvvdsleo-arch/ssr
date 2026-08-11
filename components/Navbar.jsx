@@ -40,8 +40,10 @@ export default function Navbar() {
 
   const closeMenu = () => setMenuOpen(false);
 
+  const isModulePage = pathname.startsWith('/services/') && pathname !== '/services';
+
   return (
-    <nav className="navbar" ref={navRef}>
+    <nav className={`navbar ${isModulePage ? 'max-md:hidden' : ''}`} ref={navRef}>
       <div className="container">
         <div className="nav-inner">
           <Link href="/" className="nav-logo flex items-center gap-3" onClick={closeMenu}>
@@ -115,10 +117,10 @@ export default function Navbar() {
             <li>
               <Link
                 href="/services"
-                className={`services-nav-link ${!pathname.startsWith("/services") ? "animate-services" : ""} ${pathname.startsWith("/services") ? "active" : ""}`}
+                className={pathname.startsWith("/services") ? "active" : ""}
                 onClick={closeMenu}
               >
-                <span className="services-text">Services</span>
+                Services
               </Link>
             </li>
             {isEditMode && (

@@ -392,7 +392,7 @@ export default function CategoryModulesPage() {
           font-weight: 700;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          color: #4fc3f7;
+          color: #22d3ee;
           margin-bottom: 3px;
         }
         .fm-info-block p {

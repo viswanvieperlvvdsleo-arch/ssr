@@ -89,7 +89,21 @@ export default function FunctionalModulesPage() {
   const prev = () => setActiveIndex((i) => (i - 1 + modulesList.length) % modulesList.length);
   const next = () => setActiveIndex((i) => (i + 1) % modulesList.length);
 
-  const { isEditMode } = useCMS();
+  const { isEditMode, globalContent } = useCMS();
+  const comboOffers = globalContent?.comboOffers || {};
+  const globalDiscount = comboOffers.globalDiscount ?? 15;
+  const moduleDiscounts = comboOffers.moduleDiscounts || {};
+  const predefinedCombos = comboOffers.predefined || [];
+
+  const hasSpecialOffer = (modId) => {
+    if (!modId) return false;
+    const mId = modId.toLowerCase();
+    const disc = moduleDiscounts[mId] ?? globalDiscount;
+    if (disc > 15) return true;
+    const inCombo = predefinedCombos.some(c => c.modules?.includes(mId));
+    if (inCombo) return true;
+    return false;
+  };
 
   const fileInputRef = useRef(null);
   const [uploadIndex, setUploadIndex] = useState(null);
@@ -244,13 +258,6 @@ export default function FunctionalModulesPage() {
               <a href="/contact-us" className="btn-primary fm-enquire !mt-0">
                 Enquire Now →
               </a>
-              <Link 
-                href={`/combo-offers?module=${active?.id || ''}`}
-                className="btn-outline flex items-center justify-center gap-2 animate-pulse border-emerald-400 text-emerald-400 hover:bg-emerald-400/10 !mt-0 !px-4"
-                style={{ height: '48px' }}
-              >
-                <span className="font-bold tracking-wider uppercase text-sm">✨ Special Offer on this Module</span>
-              </Link>
             </div>
           </div>
 
@@ -298,6 +305,16 @@ export default function FunctionalModulesPage() {
                       className="fm-card-img"
                       onError={(e) => { e.target.style.background = '#1a2a3a'; e.target.style.display = 'block'; }}
                     />
+                    
+                    {hasSpecialOffer(mod.id) && (
+                      <Link
+                        href={`/combo-offers?module=${mod.id || ''}`}
+                        className="absolute top-2 right-2 bg-emerald-500/90 text-white text-[10px] md:text-xs font-bold px-2 py-1 rounded shadow-[0_0_10px_rgba(16,185,129,0.5)] border border-emerald-400 animate-pulse z-10 whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ✨ SPECIAL OFFER
+                      </Link>
+                    )}
                     <div className="fm-card-gradient" />
                     
                     {isEditMode ? (
@@ -456,7 +473,7 @@ export default function FunctionalModulesPage() {
           font-weight: 700;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          color: var(--blue);
+          color: #22d3ee; /* Bright cyan to clearly distinguish from body text */
           margin-bottom: 3px;
         }
         .fm-info-block p {
@@ -568,7 +585,7 @@ export default function FunctionalModulesPage() {
           .fm-layout {
             display: flex;
             flex-direction: column;
-            padding: 70px 16px 80px;
+            padding: 26px 16px 20px;
             min-height: 100dvh;
             height: auto;
             gap: 0;
@@ -578,14 +595,14 @@ export default function FunctionalModulesPage() {
           .fm-detail {
             display: contents; /* Unbox contents for flexible ordering */
           }
-          .fm-back-btn { top: 64px; left: 16px; font-size: 0.75rem; padding: 6px 12px; }
+          .fm-back-btn { top: 16px; left: 16px; font-size: 0.75rem; padding: 6px 12px; }
           
           /* Order elements as per reference image */
-          .fm-tag { order: 1; margin: 0 auto 8px; font-size: 0.65rem; padding: 4px 12px; }
-          .fm-title { order: 2; font-size: 2rem; margin: 0 auto 12px; text-align: center; }
+          .fm-tag { order: 1; margin: 0 auto 6px; font-size: 0.6rem; padding: 4px 10px; }
+          .fm-title { order: 2; font-size: 1.7rem; margin: 0 auto 8px; text-align: center; }
           .fm-info-list { 
             order: 3; 
-            margin: 10px 0; 
+            margin: 5px 0; 
             flex: none;
             padding-right: 0;
             display: flex;
@@ -593,34 +610,34 @@ export default function FunctionalModulesPage() {
           }
           
           .fm-info-block {
-            margin-bottom: 12px;
+            margin-bottom: 8px;
           }
           
-          .fm-info-label { font-size: 0.65rem; margin-bottom: 2px; }
-          .fm-info-block p { font-size: 0.78rem; line-height: 1.4; }
-          
-          .fm-cards-wrap { 
-            order: 5; 
-            height: 240px; 
-            width: 100%;
-            margin: 10px 0; 
-            transform: none; /* Remove desktop translateY */
-            flex-shrink: 0;
-          }
-          .fm-card { width: 130px; height: 210px; border-radius: 14px; }
-          .fm-card-name { font-size: 0.8rem; bottom: 10px; left: 10px; }
-          .fm-nav { width: 32px; height: 32px; font-size: 1.2rem; background: rgba(0,0,0,0.6); }
-          
-          .fm-meta-row { 
-            display: none !important;
-          }
+          .fm-info-label { font-size: 0.6rem; margin-bottom: 2px; }
+          .fm-info-block p { font-size: 0.72rem; line-height: 1.35; }
           
           .fm-action-buttons {
-            order: 3;
-            margin: 6px auto 14px;
+            order: 4;
+            margin: 6px auto 10px;
             width: 100%;
             justify-content: center;
             flex-shrink: 0;
+          }
+
+          .fm-cards-wrap { 
+            order: 5; 
+            height: 200px; 
+            width: 100%;
+            margin: 0; 
+            transform: none; /* Remove desktop translateY */
+            flex-shrink: 0;
+          }
+          .fm-card { width: 110px; height: 180px; border-radius: 12px; }
+          .fm-card-name { font-size: 0.75rem; bottom: 8px; left: 8px; }
+          .fm-nav { width: 30px; height: 30px; font-size: 1.1rem; background: rgba(0,0,0,0.6); }
+          
+          .fm-meta-row { 
+            display: none !important;
           }
           
           .fm-action-buttons .btn-outline {

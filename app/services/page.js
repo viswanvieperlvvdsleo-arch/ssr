@@ -44,17 +44,23 @@ export default function ServicesPage() {
   return (
     <>
       <Navbar />
-      <ComboSticker />
       <main className="svc-main">
         {/* Full background */}
         <div className="svc-bg" />
 
         <div className="svc-content container">
-          {/* Header */}
-          <div className="svc-header svc-fade-in">
-            <EditableText tagName="span" className="section-tag" value={content.tag} onChange={(v) => setContent('tag', v)} />
-            <EditableText tagName="h1" className="svc-title" value={content.title} onChange={(v) => setContent('title', v)} />
-            <EditableText tagName="p" className="svc-sub" value={content.sub} onChange={(v) => setContent('sub', v)} />
+          {/* Header Section (Text + Combo Sticker) */}
+          <div className="svc-header-wrapper">
+            <div className="svc-header svc-fade-in">
+              <EditableText tagName="span" className="section-tag" value={content.tag} onChange={(v) => setContent('tag', v)} />
+              <EditableText tagName="h1" className="svc-title" value={content.title} onChange={(v) => setContent('title', v)} />
+              <EditableText tagName="p" className="svc-sub" value={content.sub} onChange={(v) => setContent('sub', v)} />
+            </div>
+            
+            {/* Inline Combo Sticker (only visible on this page) */}
+            <div className="svc-combo-inline">
+              <ComboSticker inline={true} />
+            </div>
           </div>
 
           {/* Category Cards */}
@@ -148,9 +154,21 @@ export default function ServicesPage() {
           padding-top: 140px;
           padding-bottom: 80px;
         }
-        .svc-header {
-          text-align: center;
+        .svc-header-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 40px;
           margin-bottom: 64px;
+        }
+        .svc-header {
+          flex: 1;
+          text-align: left;
+        }
+        .svc-combo-inline {
+          flex: 0.8;
+          display: flex;
+          justify-content: flex-end;
         }
         .svc-title {
           font-size: clamp(2.4rem, 5vw, 4rem);
@@ -165,8 +183,8 @@ export default function ServicesPage() {
           font-size: 1.1rem;
           color: var(--text-dim);
           max-width: 600px;
-          margin: 0 auto;
           line-height: 1.7;
+          text-align: left;
         }
 
         /* 4 CARDS GRID */
@@ -177,14 +195,70 @@ export default function ServicesPage() {
           max-width: 900px;
           margin: 0 auto 60px;
         }
-        @media (max-width: 640px) {
-          .svc-grid { grid-template-columns: 1fr; }
+        @media (max-width: 768px) {
+          .svc-content {
+            padding-top: 100px; /* Increased to prevent overlap with navbar */
+            padding-bottom: 40px;
+          }
+          .svc-header-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 32px;
+          }
+          .svc-header {
+            text-align: left;
+            width: 100%;
+          }
+          .section-tag {
+            display: none !important;
+          }
+          .svc-title {
+            font-size: 2.8rem;
+            margin: 0 0 20px;
+            line-height: 1.1;
+          }
+          .svc-sub {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            max-width: 100%;
+          }
+          .svc-combo-inline {
+            display: none;
+          }
+          .svc-grid { 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 16px;
+          }
+          .svc-cat-card {
+            padding: 20px 16px;
+            border-radius: 16px;
+            gap: 12px;
+            min-height: auto;
+            justify-content: center; /* Center the icon and title vertically now that desc is gone */
+          }
+          .svc-cat-icon {
+            font-size: 2.5rem;
+            margin-bottom: 4px;
+            text-align: center; /* Center icon since text is gone */
+          }
+          .svc-cat-label {
+            font-size: 1.15rem;
+            font-weight: 800;
+            text-align: center; /* Center title since text is gone */
+          }
+          .svc-cat-desc {
+            display: none !important; /* User requested: dont need to show any matter in mobile view */
+          }
+          .svc-cat-arrow {
+            display: none !important;
+          }
         }
 
         .svc-cat-card {
           position: relative;
-          background: var(--bg-card);
-          border: 1px solid var(--border);
+          background: rgba(16, 25, 45, 0.7); /* Deep dark blue to match reference */
+          border: 1px solid rgba(255, 255, 255, 0.08); /* Faint border */
           border-radius: 20px;
           padding: 36px 32px;
           text-decoration: none;
