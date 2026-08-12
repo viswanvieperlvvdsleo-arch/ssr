@@ -129,10 +129,10 @@ export default function AdminDashboard() {
     try {
       const headers = { 'x-admin-password': code };
       const [slotsRes, bookingsRes, messagesRes, usersRes] = await Promise.all([
-        fetch('/api/admin/slots', { headers }),
-        fetch('/api/admin/bookings', { headers }),
-        fetch('/api/admin/messages', { headers }),
-        fetch('/api/users/register', { headers })
+        fetch('/api/admin/slots', { headers, cache: 'no-store' }),
+        fetch('/api/admin/bookings', { headers, cache: 'no-store' }),
+        fetch('/api/admin/messages', { headers, cache: 'no-store' }),
+        fetch('/api/users/register', { headers, cache: 'no-store' })
       ]);
 
       if (!slotsRes.ok || !bookingsRes.ok || !messagesRes.ok) {
@@ -164,13 +164,12 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!slotDate || !slotStart || !slotEnd) return;
     setActionLoading(true);
+    const headers = { 'x-admin-password': passcode, 'Content-Type': 'application/json' };
     try {
       const res = await fetch('/api/admin/slots', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-password': passcode
-        },
+        headers,
+        cache: 'no-store',
         body: JSON.stringify({
           date: slotDate,
           startTime: slotStart,
@@ -193,10 +192,12 @@ export default function AdminDashboard() {
 
   const handleDeleteSlot = async (id) => {
     if (!confirm('Are you sure you want to delete this availability slot?')) return;
+    const headers = { 'x-admin-password': passcode };
     try {
       const res = await fetch(`/api/admin/slots?id=${id}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': passcode }
+        headers,
+        cache: 'no-store'
       });
 
       if (!res.ok) {
@@ -211,10 +212,12 @@ export default function AdminDashboard() {
 
   const handleDeleteMessage = async (id) => {
     if (!confirm('Are you sure you want to delete this contact lead message?')) return;
+    const headers = { 'x-admin-password': passcode };
     try {
       const res = await fetch(`/api/admin/messages?id=${id}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': passcode }
+        headers,
+        cache: 'no-store'
       });
 
       if (!res.ok) {

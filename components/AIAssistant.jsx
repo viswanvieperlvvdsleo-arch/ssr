@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '../hooks/useTheme';
+import { useCMS } from './CMSContext';
 
 function triggerConfetti() {
   if (typeof window === 'undefined') return;
@@ -522,6 +523,10 @@ export default function AIAssistant() {
   const router = useRouter();
   const pathname = usePathname();
   const { setTheme } = useTheme();
+  const { globalContent, isEditMode, updateContent } = useCMS();
+  
+  const enableAIAssistant = globalContent?.home?.enableAIAssistant ?? true;
+
   const transcriptRef = useRef(null);
   const inputRef = useRef(null);
   const historyRef = useRef([]);
@@ -1621,6 +1626,8 @@ export default function AIAssistant() {
     bgGradient = 'from-cyan-500 to-[#1B4F7A]';
   }
 
+  if (!enableAIAssistant && !isEditMode) return null;
+
   return (
     <div className="fixed bottom-6 right-4 z-[9999] flex flex-col items-end gap-3 sm:bottom-8 sm:right-8">
       <style dangerouslySetInnerHTML={{ __html: `
@@ -1790,6 +1797,19 @@ export default function AIAssistant() {
         </button>
       </div>
 
+      {isEditMode && (
+        <div className="mt-2 flex items-center justify-end bg-black/80 rounded px-2 py-1 shadow-lg border border-white/20">
+          <label className="flex items-center space-x-2 text-[10px] text-white cursor-pointer">
+            <span>Show AI Mic:</span>
+            <input 
+              type="checkbox" 
+              checked={enableAIAssistant} 
+              onChange={(e) => updateContent('home', 'enableAIAssistant', e.target.checked)} 
+              className="form-checkbox h-3 w-3 text-emerald-500 rounded bg-white/10"
+            />
+          </label>
+        </div>
+      )}
 
     </div>
   );

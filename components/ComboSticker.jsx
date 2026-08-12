@@ -204,7 +204,7 @@ export default function ComboSticker({ inline = false }) {
           pointerEvents: (opacity > 0.2 || isEditMode) ? 'auto' : 'none'
         }}
       >
-        <div className={`relative transition-transform duration-300 w-[180px] sm:w-[220px] md:w-[280px] scale-[0.65] sm:scale-100 origin-bottom-right md:origin-top-right ${!isEditMode ? 'hover:scale-105 cursor-pointer' : ''}`}
+        <div className={`@container relative transition-transform duration-300 w-[180px] sm:w-[220px] md:w-[280px] origin-bottom-right md:origin-top-right ${!isEditMode ? 'hover:scale-105 cursor-pointer' : ''}`}
              style={isEditMode ? { outline: '2px dashed rgba(16, 185, 129, 0.5)', outlineOffset: '8px', borderRadius: '16px' } : {}}
         >
           
@@ -224,13 +224,13 @@ export default function ComboSticker({ inline = false }) {
               top: `${ts.top}%`,
               left: `${ts.left}%`,
               transform: `translate(-50%, -50%) rotate(${ts.rotate}deg)`,
-              fontSize: `${ts.fontSize}px`,
+              fontSize: `calc(${ts.fontSize}cqi / 2.8)`,
             }}
           >
             {(sticker.text !== undefined ? sticker.text : 'TALLY + FICO + MS OFFICE').split('+').map((item, idx, arr) => (
               <span key={idx} className="flex flex-col items-center min-w-[50px] min-h-[20px]">
                 <span>{item.trim()}</span>
-                {idx < arr.length - 1 && <span className="text-[#E62828]" style={{ fontSize: `${ts.fontSize * 0.75}px`, margin: '1px 0' }}>+</span>}
+                {idx < arr.length - 1 && <span className="text-[#E62828]" style={{ fontSize: `calc(${ts.fontSize * 0.75}cqi / 2.8)`, margin: '1px 0' }}>+</span>}
               </span>
             ))}
           </div>
@@ -243,7 +243,7 @@ export default function ComboSticker({ inline = false }) {
               bottom: `${os.bottom}%`,
               left: `${os.left}%`,
               transform: `translateX(-50%) rotate(${os.rotate}deg)`,
-              fontSize: `${os.fontSize}px`,
+              fontSize: `calc(${os.fontSize}cqi / 2.8)`,
             }}
           >
             <span className="relative z-10 tracking-wider min-w-[50px] min-h-[20px] inline-block">
@@ -260,7 +260,7 @@ export default function ComboSticker({ inline = false }) {
               bottom: `${ds.bottom}%`,
               left: `${ds.left}%`,
               transform: `translateX(-50%) rotate(${ds.rotate}deg)`,
-              fontSize: `${ds.fontSize}px`,
+              fontSize: `calc(${ds.fontSize}cqi / 2.8)`,
               textShadow: '1px 1px 3px rgba(0,0,0,0.4)'
             }}
           >
@@ -278,7 +278,7 @@ export default function ComboSticker({ inline = false }) {
                 bottom: `${tms.bottom}%`,
                 left: `${tms.left}%`,
                 transform: `translateX(-50%) rotate(${tms.rotate}deg)`,
-                fontSize: `${tms.fontSize}px`,
+                fontSize: `calc(${tms.fontSize}cqi / 2.8)`,
                 boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
               }}
             >
