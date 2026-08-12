@@ -106,12 +106,30 @@ export default function ComboSticker({ inline = false }) {
     let currentStyle = {};
     let textKey = '';
 
+    if (activeZone === 'base') {
+      return (
+        <div className="fixed top-24 right-4 md:right-[320px] bg-[#111827] border border-white/20 p-5 rounded-xl shadow-2xl z-[999] w-72 text-white font-sans text-sm backdrop-blur-md">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/10">
+            <h4 className="font-bold text-emerald-400">Sticker Settings</h4>
+            <button onClick={(e) => { e.stopPropagation(); setActiveZone(null); }} className="text-white/50 hover:text-white bg-white/5 hover:bg-white/10 rounded-full w-6 h-6 flex items-center justify-center transition">✕</button>
+          </div>
+          <div className="space-y-4">
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <input type="checkbox" checked={sticker.enabled || false} onChange={e => updateSticker('enabled', e.target.checked)} className="form-checkbox h-5 w-5 text-emerald-500 rounded border-white/20 bg-white/10" />
+              <span>Enable Sticker for Users</span>
+            </label>
+            <p className="text-xs text-white/50">Note: To remove text or prices, just click them and leave their text box completely empty.</p>
+          </div>
+        </div>
+      );
+    }
+
     if (activeZone === 'text') {
-      textKey = 'text'; currentText = sticker.text || 'TALLY + MS OFFICE + FICO'; styleKey = 'textStyle'; currentStyle = ts;
+      textKey = 'text'; currentText = sticker.text !== undefined ? sticker.text : 'TALLY + FICO + MS OFFICE'; styleKey = 'textStyle'; currentStyle = ts;
     } else if (activeZone === 'orig') {
-      textKey = 'originalPrice'; currentText = sticker.originalPrice || '₹45,000'; styleKey = 'origPriceStyle'; currentStyle = os;
+      textKey = 'originalPrice'; currentText = sticker.originalPrice !== undefined ? sticker.originalPrice : '₹45,000'; styleKey = 'origPriceStyle'; currentStyle = os;
     } else if (activeZone === 'disc') {
-      textKey = 'discountPrice'; currentText = sticker.discountPrice || '₹38,250'; styleKey = 'discPriceStyle'; currentStyle = ds;
+      textKey = 'discountPrice'; currentText = sticker.discountPrice !== undefined ? sticker.discountPrice : '₹38,250'; styleKey = 'discPriceStyle'; currentStyle = ds;
     } else if (activeZone === 'timer') {
       styleKey = 'timerStyle'; currentStyle = tms;
     }
@@ -194,8 +212,8 @@ export default function ComboSticker({ inline = false }) {
           <img 
             src="/homepage for mobile/offere sticker.png" 
             alt="Special Offer" 
-            className="w-full h-auto drop-shadow-2xl"
-            onClick={() => isEditMode && setActiveZone(null)}
+            className={`w-full h-auto drop-shadow-2xl ${isEditMode && activeZone === 'base' ? 'ring-4 ring-emerald-500 rounded-xl' : ''}`}
+            onClick={() => isEditMode && setActiveZone(activeZone === 'base' ? null : 'base')}
           />
 
           {/* --- Module Text Overlay --- */}
@@ -209,8 +227,8 @@ export default function ComboSticker({ inline = false }) {
               fontSize: `${ts.fontSize}px`,
             }}
           >
-            {(sticker.text || 'TALLY + MS OFFICE + FICO').split('+').map((item, idx, arr) => (
-              <span key={idx} className="flex flex-col items-center">
+            {(sticker.text !== undefined ? sticker.text : 'TALLY + FICO + MS OFFICE').split('+').map((item, idx, arr) => (
+              <span key={idx} className="flex flex-col items-center min-w-[50px] min-h-[20px]">
                 <span>{item.trim()}</span>
                 {idx < arr.length - 1 && <span className="text-[#E62828]" style={{ fontSize: `${ts.fontSize * 0.75}px`, margin: '1px 0' }}>+</span>}
               </span>
@@ -228,8 +246,8 @@ export default function ComboSticker({ inline = false }) {
               fontSize: `${os.fontSize}px`,
             }}
           >
-            <span className="relative z-10 tracking-wider">
-              {sticker.originalPrice || '₹45,000'}
+            <span className="relative z-10 tracking-wider min-w-[50px] min-h-[20px] inline-block">
+              {sticker.originalPrice !== undefined ? sticker.originalPrice : '₹45,000'}
             </span>
             <span className="absolute w-[110%] h-[2px] bg-[#E62828] z-20" style={{ transform: 'rotate(-3deg)' }}></span>
           </div>
@@ -246,7 +264,9 @@ export default function ComboSticker({ inline = false }) {
               textShadow: '1px 1px 3px rgba(0,0,0,0.4)'
             }}
           >
-            {sticker.discountPrice || '₹38,250'}
+            <span className="min-w-[50px] min-h-[20px] inline-block">
+              {sticker.discountPrice !== undefined ? sticker.discountPrice : '₹38,250'}
+            </span>
           </div>
 
           {/* --- Countdown Timer Overlay --- */}

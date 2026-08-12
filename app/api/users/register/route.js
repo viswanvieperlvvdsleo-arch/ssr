@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
+import prisma from '../../../../lib/db';
 
 export const dynamic = 'force-dynamic';
-
-// In-memory store (resets on server restart — will add DB later)
-let registeredUsers = [];
 
 export async function POST(request) {
   try {
@@ -15,24 +13,27 @@ export async function POST(request) {
     }
 
     // Check duplicate email
-    const exists = registeredUsers.find(u => u.email === email);
+    const exists = await prisma.registeredUser.findUnique({
+      where: { email }
+    });
+    
     if (exists) {
       return NextResponse.json({ ok: true, message: 'User already registered' });
     }
 
-    const newUser = {
-      id: Date.now(),
-      sno: registeredUsers.length + 1,
-      name,
-      phone,
-      email,
-      module: module || 'Not selected',
-      createdAt: createdAt || new Date().toISOString(),
-    };
+    const newUser = await prisma.registeredUser.create({
+      data: {
+        name,
+        phone,
+        email,
+        module: module || 'Not selected',
+        createdAt: createdAt ? new Date(createdAt) : new Date(),
+      }
+    });
 
-    registeredUsers.push(newUser);
     return NextResponse.json({ ok: true, user: newUser });
   } catch (error) {
+    console.error('Registration error:', error);
     return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
   }
 }
@@ -48,5 +49,13 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  return NextResponse.json({ users: registeredUsers });
+  try {
+    const users = await prisma.registeredUser.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    return NextResponse.json({ users });
+  } catch (error) {
+    console.error('Error fetching registered users:', error);
+    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
+  }
 }

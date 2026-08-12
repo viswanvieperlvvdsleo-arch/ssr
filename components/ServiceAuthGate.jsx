@@ -48,6 +48,11 @@ export default function ServiceAuthGate() {
   // 10-second popup on any non-admin, non-services page
   useEffect(() => {
     if (isAdmin || isServices) return;
+    
+    // Bypass if admin is in edit mode
+    const isEditMode = sessionStorage.getItem("ssr_is_edit_mode") === "true";
+    if (isEditMode) return;
+
     const user = getUser();
     if (user) return; // already logged in, no popup
     const dismissed = sessionStorage.getItem("banner_dismissed");
@@ -59,6 +64,11 @@ export default function ServiceAuthGate() {
   // Gate services page — if not logged in, show modal immediately
   useEffect(() => {
     if (!isServices) return;
+    
+    // Bypass auth gate if admin is in edit mode
+    const isEditMode = sessionStorage.getItem("ssr_is_edit_mode") === "true";
+    if (isEditMode) return;
+
     const user = getUser();
     if (!user) {
       setShowModal(true);

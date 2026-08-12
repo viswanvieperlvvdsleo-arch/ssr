@@ -54,3 +54,12 @@ model Booking {
   availability   Availability @relation(fields: [availabilityId], references: [id])
   createdAt      DateTime     @default(now())
 }
+
+model RegisteredUser {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String   @unique
+  phone     String
+  module    String   @default("Not selected")
+  createdAt DateTime @default(now())
+}
