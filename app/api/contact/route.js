@@ -10,14 +10,13 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Name, email, and message are required.' }, { status: 400 });
     }
 
-    const contactMessage = await prisma.enquiry.create({
+    const contactMessage = await prisma.contactMessage.create({
       data: {
         name,
         email,
         phone: phone || null,
         subject: subject || 'Contact Form Submission',
-        message,
-        type: 'contact_form'
+        message
       }
     });
 
