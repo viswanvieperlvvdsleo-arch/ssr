@@ -230,6 +230,66 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteUser = async (id) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    const headers = { 'x-admin-password': passcode };
+    try {
+      const res = await fetch(`/api/users/register?id=${id}`, {
+        method: 'DELETE',
+        headers,
+        cache: 'no-store'
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete user.');
+      }
+
+      void loadDashboardData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteBooking = async (id) => {
+    if (!confirm('Are you sure you want to delete this booking? (The slot will become available again)')) return;
+    const headers = { 'x-admin-password': passcode };
+    try {
+      const res = await fetch(`/api/admin/bookings?id=${id}`, {
+        method: 'DELETE',
+        headers,
+        cache: 'no-store'
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete booking.');
+      }
+
+      void loadDashboardData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleToggleFollowUp = async (endpoint, id, currentStatus) => {
+    const headers = { 'x-admin-password': passcode, 'Content-Type': 'application/json' };
+    try {
+      const res = await fetch(`/api/${endpoint}?id=${id}`, {
+        method: 'PATCH',
+        headers,
+        cache: 'no-store',
+        body: JSON.stringify({ isFollowedUp: !currentStatus })
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to update follow-up status.');
+      }
+
+      void loadDashboardData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Login View
   if (!isAuthenticated) {
     return (
@@ -480,25 +540,50 @@ export default function AdminDashboard() {
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-white/10 text-white/50 uppercase tracking-wider">
+                        <th className="pb-3 font-semibold">Follow Up</th>
                         <th className="pb-3 font-semibold">Scheduled Date</th>
                         <th className="pb-3 font-semibold">Time</th>
                         <th className="pb-3 font-semibold">Visitor Name</th>
                         <th className="pb-3 font-semibold">Contact Email</th>
                         <th className="pb-3 font-semibold">Phone</th>
                         <th className="pb-3 font-semibold">Purpose</th>
-                        <th className="pb-3 font-semibold text-right">Created</th>
+                        <th className="pb-3 font-semibold text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {bookings.map((booking) => (
                         <tr key={booking.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-4">
+                            <input 
+                              type="checkbox" 
+                              checked={booking.isFollowedUp || false}
+                              onChange={() => handleToggleFollowUp('admin/bookings', booking.id, booking.isFollowedUp)}
+                              className="form-checkbox h-4 w-4 text-blue-500 rounded bg-white/10 border-white/20 cursor-pointer"
+                            />
+                          </td>
                           <td className="py-4 font-medium">{booking.availability ? new Date(booking.availability.date).toLocaleDateString() : 'N/A'}</td>
                           <td className="py-4 font-mono">{booking.availability ? `${booking.availability.startTime} - ${booking.availability.endTime}` : 'N/A'}</td>
                           <td className="py-4 font-bold">{booking.visitorName}</td>
                           <td className="py-4 text-white/70">{booking.visitorEmail || 'Not provided'}</td>
-                          <td className="py-4 font-mono text-white/70">{booking.visitorPhone || 'Not provided'}</td>
+                          <td className="py-4 font-mono text-white/70">
+                            {booking.visitorPhone ? (
+                              <a href={`tel:${booking.visitorPhone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 rounded-lg text-[11px] font-bold uppercase tracking-wider transition">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                </svg>
+                                {booking.visitorPhone}
+                              </a>
+                            ) : 'Not provided'}
+                          </td>
                           <td className="py-4 text-white/70">{booking.purpose || 'Not provided'}</td>
-                          <td className="py-4 text-white/50 text-right">{new Date(booking.createdAt).toLocaleDateString()}</td>
+                          <td className="py-4 text-right">
+                            <button
+                              onClick={() => handleDeleteBooking(booking.id)}
+                              className="px-2.5 py-1 text-[10px] rounded-lg bg-red-500/20 border border-red-500/35 hover:bg-red-500/35 text-red-200 transition uppercase tracking-wider font-bold"
+                            >
+                              Delete
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -518,14 +603,28 @@ export default function AdminDashboard() {
                   {messages.map((msg) => (
                     <div key={msg.id} className="bg-white/5 border border-white/10 p-5 rounded-2xl transition hover:border-white/20">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-3">
-                        <div>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 mr-2 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={msg.isFollowedUp || false}
+                              onChange={() => handleToggleFollowUp('admin/messages', msg.id, msg.isFollowedUp)}
+                              className="form-checkbox h-4 w-4 text-blue-500 rounded bg-white/10 border-white/20"
+                            />
+                            <span className="text-[10px] uppercase font-bold text-white/50 tracking-wider">Followed Up</span>
+                          </label>
                           <span className="text-xs font-bold text-white/90">{msg.name}</span>
                           <span className="mx-2 text-white/30">|</span>
                           <span className="text-xs text-blue-400 font-mono">{msg.email}</span>
                           {msg.phone && (
                             <>
                               <span className="mx-2 text-white/30">|</span>
-                              <span className="text-xs text-white/50 font-mono">{msg.phone}</span>
+                              <a href={`tel:${msg.phone}`} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 rounded-lg text-[11px] font-bold uppercase tracking-wider transition">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                </svg>
+                                {msg.phone}
+                              </a>
                             </>
                           )}
                         </div>
@@ -567,9 +666,9 @@ export default function AdminDashboard() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                        {['S.No.', 'Name', 'Phone', 'Email', 'Module Interested', 'Registered On'].map(h => (
+                        {['S.No.', 'Follow Up', 'Name', 'Phone', 'Email', 'Module', 'Registered', 'Action'].map(h => (
                           <th key={h} style={{
-                            padding: '10px 14px', textAlign: 'left',
+                            padding: '10px 14px', textAlign: h === 'Action' ? 'right' : 'left',
                             fontSize: '0.68rem', fontWeight: 700,
                             letterSpacing: '0.1em', textTransform: 'uppercase',
                             color: 'rgba(100,180,255,0.8)'
@@ -587,16 +686,37 @@ export default function AdminDashboard() {
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem' }}>{i + 1}</td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={user.isFollowedUp || false}
+                              onChange={() => handleToggleFollowUp('users/register', user.id, user.isFollowedUp)}
+                              className="form-checkbox h-4 w-4 text-blue-500 rounded bg-white/10 border-white/20 cursor-pointer"
+                            />
+                          </td>
                           <td style={{ padding: '12px 14px', color: '#fff', fontWeight: 600, fontSize: '0.88rem' }}>{user.name}</td>
                           <td style={{ padding: '12px 14px' }}>
-                            <a href={`tel:${user.phone}`} style={{ color: '#4fc3f7', fontSize: '0.85rem', textDecoration: 'none', fontFamily: 'monospace' }}>{user.phone}</a>
+                            <a href={`tel:${user.phone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 rounded-lg text-[11px] font-bold uppercase tracking-wider transition">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                              </svg>
+                              {user.phone}
+                            </a>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <a href={`mailto:${user.email}`} style={{ color: '#4fc3f7', fontSize: '0.82rem', textDecoration: 'none', fontFamily: 'monospace' }}>{user.email}</a>
                           </td>
                           <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem' }}>{user.module}</td>
                           <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                            {new Date(user.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                            {new Date(user.createdAt).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="px-2.5 py-1 text-[10px] rounded-lg bg-red-500/20 border border-red-500/35 hover:bg-red-500/35 text-red-200 transition uppercase tracking-wider font-bold"
+                            >
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))}

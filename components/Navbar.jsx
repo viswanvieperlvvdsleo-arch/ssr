@@ -126,11 +126,11 @@ export default function Navbar() {
             {isEditMode && (
               <li>
                 <Link
-                  href="/admin/enquiries"
-                  className={`text-emerald-400 font-bold ${pathname === "/admin/enquiries" ? "active" : ""}`}
+                  href="/admin"
+                  className={`text-emerald-400 font-bold ${pathname === "/admin" ? "active" : ""}`}
                   onClick={closeMenu}
                 >
-                  📬 Inbox / Leads
+                  ⚙️ Admin Dashboard
                 </Link>
               </li>
             )}

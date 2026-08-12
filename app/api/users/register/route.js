@@ -59,3 +59,58 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
   }
 }
+
+export async function DELETE(request) {
+  const cookie = request.headers.get('cookie') || '';
+  const hasSession = cookie.includes('admin_session=authenticated');
+  const headerPass = request.headers.get('x-admin-password');
+  const adminPasscode = process.env.ADMIN_PASSWORD || 'Ssrbs';
+
+  if (!hasSession && headerPass !== adminPasscode) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+    await prisma.registeredUser.delete({
+      where: { id }
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request) {
+  const cookie = request.headers.get('cookie') || '';
+  const hasSession = cookie.includes('admin_session=authenticated');
+  const headerPass = request.headers.get('x-admin-password');
+  const adminPasscode = process.env.ADMIN_PASSWORD || 'Ssrbs';
+
+  if (!hasSession && headerPass !== adminPasscode) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    const { isFollowedUp } = await request.json();
+
+    if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+    const updatedUser = await prisma.registeredUser.update({
+      where: { id },
+      data: { isFollowedUp }
+    });
+
+    return NextResponse.json({ success: true, data: updatedUser });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
+  }
+}

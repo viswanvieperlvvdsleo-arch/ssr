@@ -52,3 +52,29 @@ export async function DELETE(request) {
     return NextResponse.json({ error: 'Failed to delete message' }, { status: 500 });
   }
 }
+
+export async function PATCH(request) {
+  if (!checkAuth(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    const { isFollowedUp } = await request.json();
+
+    if (!id) {
+      return NextResponse.json({ error: 'Message ID is required' }, { status: 400 });
+    }
+
+    const updatedMessage = await prisma.contactMessage.update({
+      where: { id },
+      data: { isFollowedUp }
+    });
+
+    return NextResponse.json({ ok: true, data: updatedMessage });
+  } catch (error) {
+    console.error('Error updating admin message:', error);
+    return NextResponse.json({ error: 'Failed to update message' }, { status: 500 });
+  }
+}
