@@ -4,29 +4,29 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export default function ScrollContactBar() {
+  const [isMounted, setIsMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [phone, setPhone] = useState("+91 9010062578");
   const [email, setEmail] = useState("sales@ssrbusinesssolutions.com");
   const pathname = usePathname();
 
-  // Hide on admin page
   const isAdmin = pathname?.startsWith("/admin");
+  const isApp = pathname?.startsWith("/ssr-app");
 
   useEffect(() => {
-    if (isAdmin) return;
-    if (typeof window !== "undefined") {
-      const p = localStorage.getItem("ssr_cms_phone");
-      const e = localStorage.getItem("ssr_cms_email");
-      if (p) setPhone(p);
-      if (e) setEmail(e);
-    }
+    setIsMounted(true);
+    if (isAdmin || isApp) return;
+    const p = localStorage.getItem("ssr_cms_phone");
+    const e = localStorage.getItem("ssr_cms_email");
+    if (p) setPhone(p);
+    if (e) setEmail(e);
     const onScroll = () => setVisible(window.scrollY > 300);
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
-  }, [isAdmin]);
+  }, [isAdmin, isApp]);
 
-  if (isAdmin) return null;
+  if (!isMounted || isAdmin || isApp) return null;
 
   return (
     <div

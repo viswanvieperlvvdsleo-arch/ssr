@@ -136,6 +136,15 @@ export default function Navbar() {
             )}
             <li>
               <Link
+                href="/app-download"
+                className={pathname === "/app-download" ? "active" : ""}
+                onClick={closeMenu}
+              >
+                App Download
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/contact-us"
                 className={pathname === "/contact-us" ? "active" : ""}
                 onClick={closeMenu}
