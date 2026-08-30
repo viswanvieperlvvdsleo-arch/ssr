@@ -1626,6 +1626,9 @@ export default function AIAssistant() {
     bgGradient = 'from-cyan-500 to-[#1B4F7A]';
   }
 
+  // Never show the AI mic inside the SSR internal app
+  if (pathname?.startsWith('/ssr-app')) return null;
+
   if (!enableAIAssistant && !isEditMode) return null;
 
   return (

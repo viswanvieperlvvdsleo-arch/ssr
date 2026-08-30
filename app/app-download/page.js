@@ -2,8 +2,54 @@
 
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
+import { useEffect, useState } from 'react';
 
 export default function AppDownloadPage() {
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [installMessage, setInstallMessage] = useState('');
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    setIsInstalled(mediaQuery.matches || window.navigator.standalone === true);
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setInstallPrompt(null);
+      setInstallMessage('App installed successfully.');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const openWebsite = () => {
+    window.open('/ssr-app', '_blank', 'noopener,noreferrer');
+  };
+
+  const installApp = async () => {
+    setInstallMessage('');
+    if (isInstalled) return;
+    if (!installPrompt) {
+      setInstallMessage('Open the website first, then use your browser menu and choose Install App.');
+      openWebsite();
+      return;
+    }
+
+    installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    if (choice.outcome === 'dismissed') setInstallMessage('Installation was cancelled.');
+  };
+
   const roles = [
     { role: 'Super Admin', function: 'Full system control & global oversight', chat: 'Anyone', group: 'Full Group / Channel Creation', post: 'Edit/delete Any post/comment' },
     { role: 'Admin', function: 'Managing platform, users, batches & content', chat: 'Anyone', group: 'Create Groups, Announcements', post: 'Delete Any post/comment' },
@@ -52,13 +98,17 @@ export default function AppDownloadPage() {
             <p className="text-lg text-slate-600 leading-relaxed mb-10">
               An enterprise-grade, Admin-Controlled educational and social platform designed specifically for SAP training institutes, corporate learners, consultants, and administrators.
             </p>
-            <button
-              className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 mx-auto"
-              onClick={() => window.open('/ssr-app', '_blank')}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Download App
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openWebsite}>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                Use Website
+              </button>
+              <button className="bg-[#F0AB00] hover:bg-[#D99500] text-slate-950 font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={installApp} disabled={isInstalled}>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" /></svg>
+                {isInstalled ? 'App Installed' : 'Download App'}
+              </button>
+            </div>
+            {installMessage && <p className="mt-4 text-sm text-slate-500" role="status">{installMessage}</p>}
           </div>
         </section>
 
@@ -133,13 +183,16 @@ export default function AppDownloadPage() {
 
         <section className="container mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Ready to experience the platform?</h2>
-          <button
-            className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 mx-auto"
-            onClick={() => window.open('/ssr-app', '_blank')}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            Download Now
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-3 px-8 rounded-full text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openWebsite}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              Use Website
+            </button>
+            <button className="bg-[#F0AB00] hover:bg-[#D99500] text-slate-950 font-bold py-3 px-8 rounded-full text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={installApp} disabled={isInstalled}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" /></svg>
+              {isInstalled ? 'App Installed' : 'Download App'}
+            </button>
+          </div>
         </section>
 
       </main>

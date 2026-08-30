@@ -15,26 +15,26 @@ model CMSContent {
 }
 
 model Enquiry {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  email     String
-  phone     String?
-  subject   String?
-  message   String
-  type      String   @default("general")
-  isFollowedUp Boolean @default(false)
-  createdAt DateTime @default(now())
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String
+  phone        String?
+  subject      String?
+  message      String
+  type         String   @default("general")
+  isFollowedUp Boolean  @default(false)
+  createdAt    DateTime @default(now())
 }
 
 model ContactMessage {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  email     String
-  phone     String?
-  subject   String
-  message   String
-  isFollowedUp Boolean @default(false)
-  createdAt DateTime @default(now())
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String
+  phone        String?
+  subject      String
+  message      String
+  isFollowedUp Boolean  @default(false)
+  createdAt    DateTime @default(now())
 }
 
 model Availability {
@@ -59,11 +59,231 @@ model Booking {
 }
 
 model RegisteredUser {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String   @unique
+  phone        String
+  module       String   @default("Not selected")
+  isFollowedUp Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// ==========================================
+// SSR App Models
+// ==========================================
+
+model AppUser {
+  id       String    @id @default(auto()) @map("_id") @db.ObjectId
+  email    String    @unique
+  name     String
+  phone    String?
+  password String
+  role     String // 'Admin', 'Super Admin', 'Trainer', 'Participant', 'Employee'
+  initials String?
+  color    String?
+  avatar   String?
+  online   Boolean   @default(false)
+  lastSeen DateTime?
+
+  // Trainer Specific
+  title      String?
+  experience String?
+  profession String[] @default([])
+  mode       String?
+  location   String?
+  shortDesc  String?
+  bio        String?
+  resume     String?
+  rating     Float?
+  reviews    Int?
+
+  // Employee Specific
+  permissions String[] @default([])
+  restricted  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AppPushToken {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  email     String   @unique
-  phone     String
-  module    String   @default("Not selected")
-  isFollowedUp Boolean @default(false)
+  userId    String
+  token     String   @unique
+  platform  String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AppCourse {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  title            String
+  module           String
+  icon             String?
+  image            String?
+  shortDesc        String
+  fullDesc         String
+  duration         String
+  level            String
+  languages        String[] @default([])
+  prerequisites    String[] @default([])
+  whatYouWillLearn String[] @default([])
+  benefits         String[] @default([])
+  syllabus         Json
+  jobs             String[] @default([])
+  servers          String[] @default([])
+  trainers         String[] @default([])
+  attachedSkills   String[] @default([])
+  savedBy          String[] @default([])
+  moduleType       String   @default("Functional")
+  publishToWebsite Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AppTrainerRating {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  trainerId String
+  raterId   String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([trainerId, raterId])
+}
+
+model AppPost {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  authorId       String
+  authorName     String
+  authorTitle    String
+  authorInitials String
+  authorColor    String
+  category       String
+  title          String?
+  tag            String?
+  time           String
+  content        String
+  image          String?
+  mediaType      String?
+  banner         Json?
+  likes          Int      @default(0)
+  comments       Int      @default(0) // legacy
+  commentsList   Json[]   @default([])
+  likedBy        String[] @default([])
+  savedBy        String[] @default([])
+
+  createdAt DateTime @default(now())
+}
+
+model AppChat {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  type               String // 'direct' or 'group' or 'support'
+  name               String?
+  groupImage         String?
+  description        String?
+  createdBy          String?
+  admins             String[] @default([])
+  participants       String[] @default([])
+  mutedBy            String[] @default([])
+  pinnedBy           String[] @default([])
+  deletedFor         String[] @default([])
+  unreadBy           Json?
+  privateChatEnabled Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AppChatRequest {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  requesterId String  @db.ObjectId
+  targetId    String  @db.ObjectId
+  status      String  @default("pending")
+  decidedById String? @db.ObjectId
+  chatId      String? @db.ObjectId
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AppMessage {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  chatId               String
+  senderId             String
+  senderName           String
+  senderInitials       String
+  senderColor          String
+  senderAvatar         String?
+  content              String
+  timestamp            String
+  isSystem             Boolean  @default(false)
+  edited               Boolean  @default(false)
+  isDeletedForEveryone Boolean  @default(false)
+  deletedFor           String[] @default([])
+  attachment           Json?
+
+  createdAt DateTime @default(now())
+}
+
+model AppMedia {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  mimeType   String
+  size       Int
+  chunkCount Int      @default(0)
+  complete   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model AppMediaChunk {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  mediaId    String   @db.ObjectId
+  chunkIndex Int
+  data       String
+  createdAt  DateTime @default(now())
+
+  @@unique([mediaId, chunkIndex])
+}
+
+model AppMeeting {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  module       String
+  hostId       String
+  date         String
+  endDate      String?
+  time         String
+  duration     String
+  link         String
+  status       String
+  recurrence   String
+  weekdays     String[] @default([])
+  monthlyDates String?
+  chatId       String?
+  participants String[] @default([])
+
+  createdAt DateTime @default(now())
+}
+
+model AppScheduledMessage {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  chatId     String
+  senderId   String
+  content    String
+  attachment Json?
+
+  recurrence   String // 'daily', 'weekly', 'monthly'
+  startDate    String
+  endDate      String?
+  time         String
+  weekdays     String[] @default([])
+  monthlyDates String?
+
   createdAt DateTime @default(now())
 }

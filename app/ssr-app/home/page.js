@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp, MOCK_CHATS } from '../AppContext';
+import { useBackHandler } from '../useBackHandler';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -17,6 +18,12 @@ function useWindowWidth() {
 }
 
 const isAdmin = (u) => u && (u.role === 'Admin' || u.role === 'Super Admin');
+const hasEmployeePermission = (u, permission) => {
+  if (isAdmin(u)) return true;
+  if (u?.role !== 'Employee') return false;
+  const permissions = Array.isArray(u.permissions) ? u.permissions : [];
+  return permissions.includes('all_access') || permissions.includes(permission);
+};
 
 /* ─── constants ───────────────────────────────────── */
 const FEED_TABS = ['All', 'Announcements', 'Training Updates', 'Discussions', 'Videos'];
@@ -32,20 +39,24 @@ const NavIcons = {
   accounts:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
   help:      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   trainers:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+  requests:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>,
 };
 
 const getLeftNav = (user) => {
   const nav = [
     { id: 'feed',      label: 'Feed' },
     { id: 'courses',   label: 'Services' },
-    { id: 'meetings',  label: 'Live Meetings' },
-    { id: 'trainers',  label: 'Trainers' },
+    { id: 'meetings',  label: 'Meetings' },
+    { id: 'trainers',  label: 'Trainers / Users' },
     { id: 'bookmarks', label: 'Bookmarks' },
     { id: 'settings',  label: 'Settings' },
   ];
 
   if (user && (user.role === 'Admin' || user.role === 'Super Admin') && !user.isImpersonating) {
     nav.push({ id: 'accounts', label: 'Account Management' });
+  }
+  if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
+    nav.push({ id: 'requests', label: 'Requests' });
   }
   return nav;
 };
@@ -65,18 +76,29 @@ const MenuIcons = {
 
 
 /* ─── sub-components ──────────────────────────────── */
-function Avatar({ initials, color, size = 38, src }) {
-  if (src) return <img src={src} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
+function Avatar({ initials, color, size = 38, src, online = false, shape = 'circle' }) {
+  const radius = shape === 'rounded' ? Math.max(8, size * 0.24) : '50%';
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: size * 0.32, flexShrink: 0 }}>
-      {initials}
+    <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+      {src ? (
+        <img src={src} alt="" style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', display: 'block' }} />
+      ) : (
+        <div style={{ width: size, height: size, borderRadius: radius, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: size * 0.32 }}>
+          {initials}
+        </div>
+      )}
+      {online && (
+        <span style={{ position: 'absolute', top: -2, right: -2, width: Math.max(8, size * 0.24), height: Math.max(8, size * 0.24), background: '#10B981', borderRadius: '50%', border: '2px solid #fff', boxSizing: 'border-box' }} />
+      )}
     </div>
   );
 }
 
 /* ─── Media Preview Modal ──────────────────────────── */
-function MediaPreviewModal({ file, attachment, onClose, onSend }) {
+export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
   const [caption, setCaption] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [mode, setMode] = useState('preview'); // 'preview' | 'crop' | 'draw' | 'text' | 'emoji'
   const [cropBox, setCropBox] = useState({ x: 10, y: 10, w: 80, h: 80 });
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, initialBox: null, handle: null });
@@ -95,6 +117,9 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [currentFile, setCurrentFile] = useState(file);
   const imageRef = useRef(null);
+  const mediaFrameStyle = { width: 'min(92vw, 1100px)', height: 'min(72vh, 700px)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', minWidth: 0, minHeight: 0 };
+
+  useBackHandler(Boolean(file || attachment), onClose);
 
   const startDraw = (e) => {
     drawing.current = true;
@@ -133,12 +158,12 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
       setCropBox({ x, y, w, h });
     };
     const handleUp = () => { if (dragRef.current) dragRef.current.isDragging = false; };
-    
+
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     window.addEventListener('touchmove', handleMove, { passive: false });
     window.addEventListener('touchend', handleUp);
-    
+
     return () => {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
@@ -161,22 +186,22 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
     if (!imageRef.current) return;
     const canvas = document.createElement('canvas');
     const img = imageRef.current;
-    
+
     // The image displayed is rendered via objectFit: contain.
     // However, if we know the natural size, we can crop exactly.
     const nw = img.naturalWidth;
     const nh = img.naturalHeight;
-    
+
     const sx = (cropBox.x / 100) * nw;
     const sy = (cropBox.y / 100) * nh;
     const sw = (cropBox.w / 100) * nw;
     const sh = (cropBox.h / 100) * nh;
-    
+
     canvas.width = sw;
     canvas.height = sh;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    
+
     canvas.toBlob(blob => {
       if (blob) {
         const croppedFile = new File([blob], target.name, { type: target.type || 'image/jpeg' });
@@ -196,7 +221,7 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
-    
+
     // Draw original image
     ctx.drawImage(img, 0, 0);
 
@@ -247,8 +272,9 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
           } else {
             onClose();
           }
-        }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
+        }} style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 20, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: '7px 12px 7px 8px', fontSize: 14, fontWeight: 700 }}>
           <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {!isViewOnly && 'Cancel'}
         </button>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           {isViewOnly ? (
@@ -293,20 +319,25 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
       </div>
 
       {/* Preview Area */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', width: '100%', height: '100%', padding: '80px 20px 100px', minHeight: 0, minWidth: 0 }}>
-        {isImage && mode === 'preview' && <img src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', width: '100%', height: '100%', padding: '80px 20px 100px', minHeight: 0, minWidth: 0, boxSizing: 'border-box' }}>
+        {isImage && mode === 'preview' && (
+          <div style={mediaFrameStyle}>
+            <img src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 8, display: 'block' }} />
+          </div>
+        )}
         {isImage && (mode === 'draw' || mode === 'text') && (
-          <div style={{ position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' }}>
-            <img src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
+          <div style={mediaFrameStyle}>
+            <div style={{ position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' }}>
+            <img ref={imageRef} src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block' }} />
             <canvas ref={canvasRef} width={600} height={400} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: mode === 'draw' ? 'crosshair' : 'default', pointerEvents: mode === 'draw' ? 'auto' : 'none' }} />
-            
+
             {/* Render added texts */}
             {texts.map((t, i) => (
               <div key={i} style={{ position: 'absolute', left: t.x + '%', top: t.y + '%', transform: 'translate(-50%, -50%)', color: t.color, fontSize: 32, fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>
                 {t.text}
               </div>
             ))}
-            
+
             {/* Text Input */}
             {mode === 'text' && textInput.visible && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -315,12 +346,14 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
               </div>
             )}
           </div>
+          </div>
         )}
         {isImage && mode === 'crop' && (
+          <div style={mediaFrameStyle}>
           <div style={{ position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' }}>
-            <img ref={imageRef} src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', opacity: 0.5, userSelect: 'none' }} draggable={false} />
+            <img ref={imageRef} src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block', opacity: 0.5, userSelect: 'none' }} draggable={false} />
             {/* Interactive Crop Box */}
-            <div 
+            <div
               style={{ position: 'absolute', border: '2px solid #0A6ED1', background: 'rgba(255,255,255,0.1)', left: cropBox.x + '%', top: cropBox.y + '%', width: cropBox.w + '%', height: cropBox.h + '%', cursor: 'move', boxShadow: '0 0 0 9999px rgba(0,0,0,0.7)' }}
               onMouseDown={e => onCropDown(e, 'center')}
               onTouchStart={e => onCropDown(e, 'center')}
@@ -331,8 +364,9 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
               ))}
             </div>
           </div>
+          </div>
         )}
-        {isVideo && <video src={currentUrl} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8 }} />}
+        {isVideo && <video src={currentUrl} controls style={{ maxWidth: 'min(92vw, 1100px)', maxHeight: 'min(72vh, 700px)', width: 'auto', height: 'auto', borderRadius: 8 }} />}
         {isAudio && <div style={{ background: '#1e293b', borderRadius: 16, padding: 32, textAlign: 'center' }}><p style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>{target?.name}</p><audio src={currentUrl} controls /></div>}
         {!isImage && !isVideo && !isAudio && (
           <div style={{ background: '#1e293b', borderRadius: 16, padding: 48, textAlign: 'center', color: '#fff' }}>
@@ -347,7 +381,9 @@ function MediaPreviewModal({ file, attachment, onClose, onSend }) {
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 24px', background: 'linear-gradient(transparent, rgba(0,0,0,0.6))', display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '100%', maxWidth: 700, display: 'flex', gap: 12, alignItems: 'center' }}>
             <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Add a caption..." style={{ flex: 1, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 24, padding: '14px 20px', color: '#fff', fontSize: 15, outline: 'none' }} />
-            <button onClick={() => onSend({ file: currentFile, caption })} style={{ background: '#0A6ED1', border: 'none', borderRadius: '50%', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            {isSending && <span style={{ position: 'absolute', bottom: 72, color: '#fff', fontSize: 12, fontWeight: 700 }}>{uploadProgress}% uploaded</span>}
+            {isSending && <div style={{ position: 'absolute', left: '50%', bottom: 62, transform: 'translateX(-50%)', width: 'min(700px, calc(100% - 48px))', height: 3, background: 'rgba(255,255,255,0.25)', borderRadius: 3, overflow: 'hidden' }}><div style={{ width: `${uploadProgress}%`, height: '100%', background: '#10B981', transition: 'width 0.2s' }} /></div>}
+            <button disabled={isSending} onClick={async () => { setIsSending(true); setUploadProgress(0); try { await onSend({ file: currentFile, caption, onProgress: setUploadProgress }); } finally { setIsSending(false); } }} style={{ background: isSending ? '#64748B' : '#0A6ED1', border: 'none', borderRadius: '50%', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isSending ? 'wait' : 'pointer', flexShrink: 0 }}>
               <svg width="20" height="20" fill="none" stroke="#fff" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M22 2L11 13M22 2L15 22l-4-9-9-4 19-7z" /></svg>
             </button>
           </div>
@@ -421,25 +457,25 @@ function NotificationsPanel() {
   );
 }
 
-function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, onToggleSelect, isHighlighted, onReplyClick }) {
+function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
   const { autoDownloadMedia } = useApp();
   const [isDownloaded, setIsDownloaded] = useState(() => {
     if (msg.isMe) return true;
     if (msg.attachment?.isDownloaded) return true;
     return autoDownloadMedia;
   });
-  
+
   const [isHovered, setIsHovered] = useState(false);
-  
+
   const [showReactions, setShowReactions] = useState(false);
   const [showAllEmojis, setShowAllEmojis] = useState(false);
   const [myReaction, setMyReaction] = useState(null);
-  
+
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
-  
+
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   const startX = useRef(0);
   const currentX = useRef(0);
   const pressTimer = useRef(null);
@@ -451,6 +487,8 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
     setIsSwiping(true);
     pressTimer.current = setTimeout(() => {
       setShowReactions(true);
+      setShowAllEmojis(false);
+      onToggleSelect && onToggleSelect(msg.id, true);
       setIsSwiping(false);
     }, 500);
   };
@@ -470,25 +508,25 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
   };
 
   const handleTouchEnd = () => {
-    if (pressTimer.current) { 
-      clearTimeout(pressTimer.current); 
-      pressTimer.current = null; 
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
     }
     setIsSwiping(false);
-    
+
     if (!selectionMode && swipeOffsetRef.current < -40) { onReply && onReply(msg); }
-    
+
     swipeOffsetRef.current = 0;
     setSwipeOffset(0);
   };
 
   const handleMouseDown = (e) => {
-    startX.current = e.clientX; 
-    currentX.current = e.clientX; 
+    startX.current = e.clientX;
+    currentX.current = e.clientX;
     setIsSwiping(true);
-    pressTimer.current = setTimeout(() => { 
-      onToggleSelect && onToggleSelect(msg.id, true); 
-      setIsSwiping(false); 
+    pressTimer.current = setTimeout(() => {
+      onToggleSelect && onToggleSelect(msg.id, true);
+      setIsSwiping(false);
     }, 500);
   };
 
@@ -496,9 +534,9 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
     if (!isSwiping) return;
     currentX.current = e.clientX;
     const diff = currentX.current - startX.current;
-    if (Math.abs(diff) > 10 && pressTimer.current) { 
-      clearTimeout(pressTimer.current); 
-      pressTimer.current = null; 
+    if (Math.abs(diff) > 10 && pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
     }
     if (!selectionMode) {
       const bounded = Math.max(Math.min(diff, 60), -60);
@@ -533,10 +571,11 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
         style={{ display: 'flex', flexDirection: 'column', alignItems: msg.isMe ? 'flex-end' : 'flex-start', transform: `translateX(${swipeOffset}px)`, transition: isSwiping ? 'none' : 'transform 0.2s ease-out' }}
       >
         {!msg.isMe && <span style={{ fontSize: 10, color: msg.senderColor, fontWeight: 600, marginLeft: 34, marginBottom: 2 }}>{msg.senderName}</span>}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexDirection: msg.isMe ? 'row-reverse' : 'row', maxWidth: '85%', position: 'relative' }}>
-          {!msg.isMe && <Avatar initials={msg.senderInitials} color={msg.senderColor} size={24} />}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexDirection: msg.isMe ? 'row-reverse' : 'row', maxWidth: 'min(620px, 82%)', position: 'relative' }}>
+          {!msg.isMe && <Avatar initials={msg.senderInitials} color={msg.senderColor} src={senderAvatar || msg.senderAvatar} size={24} />}
           <div style={{
             maxWidth: '100%',
+            width: 'fit-content',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             whiteSpace: 'pre-wrap',
@@ -607,7 +646,7 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
                       {msg.text}
                     </div>
                     {(!isExpanded && msg.text.split('\n').length > 10 || (!isExpanded && msg.text.length > 400)) && (
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }}
                         style={{ background: 'none', border: 'none', color: msg.isMe ? 'rgba(255,255,255,0.9)' : '#0A6ED1', fontWeight: 600, padding: '4px 0 0', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' }}
                       >
@@ -615,7 +654,7 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
                       </button>
                     )}
                     {(isExpanded && (msg.text.split('\n').length > 10 || msg.text.length > 400)) && (
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
                         style={{ background: 'none', border: 'none', color: msg.isMe ? 'rgba(255,255,255,0.9)' : '#0A6ED1', fontWeight: 600, padding: '4px 0 0', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' }}
                       >
@@ -626,19 +665,20 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
                 )}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 4 }}>
-              <span style={{ fontSize: 10, color: msg.isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8' }}>{msg.time}</span>
-              {msg.isMe && (
-                <span style={{ fontSize: 11, color: msg.status === 'seen' ? '#38BDF8' : 'rgba(255,255,255,0.7)' }}>
-                  {msg.status === 'sent' ? '.' : msg.status === 'delivered' ? '..' : '...'}
-                </span>
-              )}
-            </div>
           </div>
-          
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 3, paddingRight: 3 }}>
+            <span style={{ fontSize: 10, color: msg.isMe ? '#64748B' : '#94A3B8' }}>{msg.time}</span>
+            {msg.isMe && (
+              <span title={deliveryStatus === 'seen' ? 'Seen' : deliveryStatus === 'delivered' ? 'Delivered to an online recipient' : deliveryStatus === 'sending' ? 'Sending' : 'Recipient is offline'} style={{ fontSize: 11, letterSpacing: 1, color: deliveryStatus === 'seen' ? '#0A6ED1' : '#94A3B8', lineHeight: 1 }}>
+                {deliveryStatus === 'sending' ? '…' : deliveryStatus === 'seen' ? '...' : deliveryStatus === 'delivered' ? '..' : '.'}
+              </span>
+            )}
+          </div>
+
           {/* Sibling emoji button on hover */}
           {isHovered && (
-            <div 
+            <div
               onClick={(e) => { e.stopPropagation(); setShowReactions(true); }}
               style={{ cursor: 'pointer', color: '#94A3B8', padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', opacity: 0.7 }}
             >
@@ -650,12 +690,12 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
 
           {/* Reaction Overlay */}
           {(showReactions || showAllEmojis) && (
-            <div 
-              onClick={(e) => { e.stopPropagation(); setShowReactions(false); setShowAllEmojis(false); }} 
+            <div
+              onClick={(e) => { e.stopPropagation(); setShowReactions(false); setShowAllEmojis(false); }}
               style={{ position: 'fixed', inset: 0, zIndex: 9 }}
             />
           )}
-          
+
           {/* Reaction Popup */}
           {showReactions && !showAllEmojis && (
             <div style={{ position: 'absolute', top: -45, [msg.isMe ? 'right' : 'left']: 0, background: '#111', borderRadius: 30, padding: '6px 12px', display: 'flex', gap: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 10 }}>
@@ -663,6 +703,11 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
                 <span key={emoji} onClick={(e) => { e.stopPropagation(); setMyReaction(emoji); setShowReactions(false); }} style={{ cursor: 'pointer', fontSize: 20, transition: 'transform 0.1s' }} onMouseEnter={e => e.target.style.transform = 'scale(1.2)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>{emoji}</span>
               ))}
               <span onClick={(e) => { e.stopPropagation(); setShowAllEmojis(true); }} style={{ cursor: 'pointer', fontSize: 18, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>+</span>
+              {msg.isMe && onEdit && !msg.isDeletedForEveryone && (
+                <button onClick={(e) => { e.stopPropagation(); setShowReactions(false); onEdit(msg); }} title="Edit message" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1-1 4 4-1L19.5 6.5"/></svg>
+                </button>
+              )}
             </div>
           )}
 
@@ -674,7 +719,7 @@ function MessageBubble({ msg, onReply, onViewMedia, selectionMode, isSelected, o
               ))}
             </div>
           )}
-          
+
           {/* Display Reactions */}
           {myReaction && (
             <div style={{ position: 'absolute', bottom: -12, [msg.isMe ? 'right' : 'left']: 20, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: '2px 6px', fontSize: 12, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
@@ -729,12 +774,14 @@ function PostBanner({ banner, category }) {
 }
 
 function PostCard({ post, currentUser, isDesktop }) {
-  const { toggleLike, toggleSave, deletePost, addComment, deleteComment, viewUserProfile, viewProfilePic } = useApp();
+  const { toggleLike, toggleSave, deletePost, addComment, deleteComment, viewUserProfile, viewProfilePic, users } = useApp();
   const [showComments, setShowComments] = useState(false);
+  useBackHandler(showComments, () => setShowComments(false));
   const [isExpanded, setIsExpanded] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const canDelete = isAdmin(currentUser) && !currentUser?.isImpersonating;
+  const canModerateComments = !currentUser?.isImpersonating && (isAdmin(currentUser) || hasEmployeePermission(currentUser, 'post_feeds'));
   const tagBg = '#0A6ED1';
 
   const handleComment = (e) => {
@@ -752,8 +799,8 @@ function PostCard({ post, currentUser, isDesktop }) {
           {/* Header */}
           <div style={{ padding: '16px 18px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div onClick={() => viewProfilePic({ id: post.authorId, name: post.authorName, initials: post.authorInitials, color: post.authorColor })} style={{ cursor: 'pointer' }}>
-                <Avatar initials={post.authorInitials} color={post.authorColor} size={40} />
+              <div onClick={() => viewProfilePic({ ...(users?.[post.authorId] || {}), id: post.authorId, name: post.authorName, initials: post.authorInitials, color: post.authorColor })} style={{ cursor: 'pointer' }}>
+                <Avatar initials={post.authorInitials} color={post.authorColor} src={users?.[post.authorId]?.avatar} size={40} />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -784,7 +831,7 @@ function PostCard({ post, currentUser, isDesktop }) {
           {/* Content */}
           <div style={{ padding: '10px 18px' }}>
             <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#0F172A', lineHeight: 1.4 }}>{post.title}</h3>
-            <p style={{ 
+            <p style={{
               margin: 0, fontSize: 13, color: '#475569', lineHeight: 1.65, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap',
               display: isExpanded ? 'block' : '-webkit-box',
               WebkitLineClamp: isExpanded ? 'unset' : 3,
@@ -793,22 +840,22 @@ function PostCard({ post, currentUser, isDesktop }) {
             }}>
               {post.content}
             </p>
-            {(!isExpanded && (post.content.length > 200 || (post.content.match(/\n/g) || []).length >= 3)) && (
-              <button 
-                onClick={() => setIsExpanded(true)} 
+            {((post.content?.length > 200) || (post.content?.match(/\n/g) || []).length >= 3) && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
                 style={{ background: 'none', border: 'none', color: '#0A6ED1', fontWeight: 600, padding: '4px 0', cursor: 'pointer', fontSize: 13 }}
               >
-                Read more
+                {isExpanded ? 'Read less' : 'Read more'}
               </button>
             )}
-            {post.mediaUrl && post.mediaType === 'image' && (
+            {(post.image || post.mediaUrl) && (post.mediaType === 'image' || !post.mediaType) && (
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-                <img src={post.mediaUrl} alt="Post media" style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', display: 'block' }} />
+                <img onClick={() => window.open(post.image || post.mediaUrl, '_blank')} src={post.image || post.mediaUrl} alt="Post media" style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', display: 'block', cursor: 'pointer' }} />
               </div>
             )}
-            {post.mediaUrl && post.mediaType === 'video' && (
+            {(post.image || post.mediaUrl) && post.mediaType === 'video' && (
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-                <video src={post.mediaUrl} controls style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', background: '#000', display: 'block' }} />
+                <video src={post.image || post.mediaUrl} controls style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', background: '#000', display: 'block' }} />
               </div>
             )}
             <PostBanner banner={post.banner} category={post.category} />
@@ -816,11 +863,11 @@ function PostCard({ post, currentUser, isDesktop }) {
 
           {/* Action bar */}
           <div style={{ padding: '10px 18px', borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 2 }}>
-            <ActionBtn iconEl={ActionIcons.like(post.liked)} label={`${post.likes}`} active={post.liked} activeColor="#E11D48" onClick={() => !currentUser?.isImpersonating && toggleLike(post.id)} />
-            <ActionBtn iconEl={ActionIcons.comment()} label={`${post.comments.length}`} active={showComments} activeColor="#0A6ED1" onClick={() => setShowComments(true)} />
+            <ActionBtn iconEl={ActionIcons.like(post.likedBy?.includes(currentUser?.id))} label={`${post.likes || 0}`} active={post.likedBy?.includes(currentUser?.id)} activeColor="#E11D48" onClick={() => !currentUser?.isImpersonating && toggleLike(post.id)} />
+            <ActionBtn iconEl={ActionIcons.comment()} label={`${(post.commentsList || []).length}`} active={showComments} activeColor="#0A6ED1" onClick={() => setShowComments(true)} />
             <ActionBtn iconEl={ActionIcons.share()} label="Share" onClick={() => alert('Link copied!')} />
             <div style={{ marginLeft: 'auto' }}>
-              <ActionBtn iconEl={ActionIcons.save(post.saved)} active={post.saved} activeColor="#0A6ED1" onClick={() => !currentUser?.isImpersonating && toggleSave(post.id)} />
+              <ActionBtn iconEl={ActionIcons.save(post.savedBy?.includes(currentUser?.id))} active={post.savedBy?.includes(currentUser?.id)} activeColor="#0A6ED1" onClick={() => !currentUser?.isImpersonating && toggleSave(post.id)} />
             </div>
           </div>
         </>
@@ -831,16 +878,16 @@ function PostCard({ post, currentUser, isDesktop }) {
             <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', padding: 4 }}>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
             </button>
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>Comments ({post.comments.length})</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>Comments ({(post.commentsList || []).length})</span>
           </div>
 
           {/* Comments List */}
           <div style={{ padding: '16px 18px', flex: 1, overflowY: 'auto', background: '#FAFBFC' }}>
-            {post.comments.length === 0 && <p style={{ color: '#94A3B8', fontSize: 13, margin: '0 0 10px', textAlign: 'center', padding: '20px 0' }}>No comments yet. Be the first!</p>}
-            {post.comments.map(c => (
+            {(!post.commentsList || post.commentsList.length === 0) && <p style={{ color: '#94A3B8', fontSize: 13, margin: '0 0 10px', textAlign: 'center', padding: '20px 0' }}>No comments yet. Be the first!</p>}
+            {(post.commentsList || []).map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-start' }}>
-                <div onClick={() => viewProfilePic({ id: c.authorId, name: c.authorName, initials: c.authorInitials, color: c.authorColor })} style={{ cursor: 'pointer' }}>
-                  <Avatar initials={c.authorInitials} color={c.authorColor} size={28} />
+                <div onClick={() => viewProfilePic({ ...(users?.[c.authorId] || {}), id: c.authorId, name: c.authorName, initials: c.authorInitials, color: c.authorColor })} style={{ cursor: 'pointer' }}>
+                  <Avatar initials={c.authorInitials} color={c.authorColor} src={users?.[c.authorId]?.avatar} size={28} />
                 </div>
                 <div style={{ flex: 1, background: '#fff', border: '1px solid #E8ECF0', borderRadius: 10, padding: '9px 12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -849,7 +896,7 @@ function PostCard({ post, currentUser, isDesktop }) {
                   </div>
                   <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{c.text}</p>
                 </div>
-                {currentUser?.id === c.authorId && !currentUser?.isImpersonating && (
+                {(currentUser?.id === c.authorId || canModerateComments) && (
                   <button onClick={() => deleteComment(post.id, c.id)} style={{ background: 'none', border: 'none', color: '#CBD5E1', cursor: 'pointer', fontSize: 14, paddingTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F1F5F9'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
@@ -867,7 +914,7 @@ function PostCard({ post, currentUser, isDesktop }) {
               </div>
             ) : (
               <form onSubmit={handleComment} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <Avatar initials={currentUser?.initials || '?'} color={currentUser?.color || '#94A3B8'} size={30} />
+                <Avatar initials={currentUser?.initials || '?'} color={currentUser?.color || '#94A3B8'} src={currentUser?.avatar} size={30} />
                 <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Write a comment..." style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #E2E8F0', borderRadius: 20, fontSize: 13, outline: 'none', background: '#F8FAFC' }} />
                 <button type="submit" disabled={!commentText.trim()} style={{ background: commentText.trim() ? '#0A6ED1' : '#E2E8F0', color: commentText.trim() ? '#fff' : '#94A3B8', border: 'none', borderRadius: 20, padding: '9px 16px', cursor: commentText.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, transition: 'background 0.2s' }}>Post</button>
               </form>
@@ -911,26 +958,26 @@ function CreatePostModal({ onClose, onSubmit }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
-    onSubmit({ 
-      id: `p${Date.now()}`, 
-      authorId: currentUser.id, 
-      authorName: currentUser.name, 
-      authorRole: currentUser.role, 
-      authorInitials: currentUser.initials, 
-      authorColor: currentUser.color, 
-      tag: category.slice(0, -1), 
-      tagColor: '#0A6ED1', 
-      category, 
-      title, 
-      content, 
+    onSubmit({
+      id: `p${Date.now()}`,
+      authorId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      authorInitials: currentUser.initials,
+      authorColor: currentUser.color,
+      tag: category.slice(0, -1),
+      tagColor: '#0A6ED1',
+      category,
+      title,
+      content,
       mediaUrl,
       mediaType,
-      banner: null, 
-      likes: 0, 
-      saved: false, 
-      liked: false, 
-      createdAt: 'Just now', 
-      comments: [] 
+      banner: null,
+      likes: 0,
+      saved: false,
+      liked: false,
+      createdAt: 'Just now',
+      comments: []
     });
     onClose();
   };
@@ -944,7 +991,7 @@ function CreatePostModal({ onClose, onSubmit }) {
         </div>
         <form onSubmit={handleSubmit} style={{ padding: '20px 22px' }}>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-            <Avatar initials={currentUser?.initials} color={currentUser?.color} size={38} />
+            <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={38} />
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{currentUser?.name}</p>
               <select value={category} onChange={e => setCategory(e.target.value)} style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: '#0A6ED1', fontWeight: 600, background: '#EFF6FF', cursor: 'pointer', marginTop: 2 }}>
@@ -952,33 +999,33 @@ function CreatePostModal({ onClose, onSubmit }) {
               </select>
             </div>
           </div>
-          <input 
-            value={title} 
+          <input
+            value={title}
             onChange={e => {
               const val = e.target.value;
               if (val.length <= 100) setTitle(val);
-            }} 
-            placeholder="Post title (max 100 chars)..." 
-            style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, fontWeight: 600, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }} 
+            }}
+            placeholder="Post title (max 100 chars)..."
+            style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, fontWeight: 600, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }}
           />
           <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'right', marginTop: -8, marginBottom: 8 }}>{title.length}/100</div>
 
-          <textarea 
-            value={content} 
+          <textarea
+            value={content}
             onChange={e => {
               const val = e.target.value;
               if (val.length <= 1000) setContent(val);
-            }} 
-            placeholder="What do you want to share with the batch? (max 1000 chars)" 
-            rows={4} 
-            style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.6 }} 
+            }}
+            placeholder="What do you want to share with the batch? (max 1000 chars)"
+            rows={4}
+            style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.6 }}
           />
           <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'right', marginTop: 4, marginBottom: 12 }}>{content.length}/1000</div>
-          
+
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Attach Media (Image max 30MB, Video max 80MB)</label>
-            <input 
-              type="file" 
+            <input
+              type="file"
               accept="image/*,video/*"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -989,17 +1036,22 @@ function CreatePostModal({ onClose, onSubmit }) {
                 }
                 const isImage = file.type.startsWith('image/');
                 const isVideo = file.type.startsWith('video/');
-                if (isImage && file.size > 30 * 1024 * 1024) {
-                  alert('Image file size exceeds 30MB limit.');
+                if (isImage && file.size > 5 * 1024 * 1024) { // Reduced to 5MB for base64 storage limits
+                  alert('Image file size exceeds 5MB limit.');
                   e.target.value = '';
                   return;
-                } else if (isVideo && file.size > 80 * 1024 * 1024) {
-                  alert('Video file size exceeds 80MB limit.');
+                } else if (isVideo && file.size > 10 * 1024 * 1024) { // Reduced to 10MB
+                  alert('Video file size exceeds 10MB limit.');
                   e.target.value = '';
                   return;
                 }
-                setMediaUrl(URL.createObjectURL(file));
-                setMediaType(isImage ? 'image' : 'video');
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  setMediaUrl(reader.result);
+                  setMediaType(isImage ? 'image' : 'video');
+                };
+                reader.readAsDataURL(file);
               }}
               style={{ fontSize: 12 }}
             />
@@ -1053,15 +1105,15 @@ function AutoSendModal({ onClose, onSave }) {
   };
 
   return (
-    <div 
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} 
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}
     >
       <div style={{ background: '#fff', width: '100%', maxWidth: 400, borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9' }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0F172A', textAlign: 'center' }}>Schedule Auto Send</h3>
         </div>
-        
+
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Repeat Interval</label>
@@ -1083,7 +1135,7 @@ function AutoSendModal({ onClose, onSave }) {
               <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', fontSize: 14 }} />
             </div>
           </div>
-          
+
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Send Time</label>
             <input type="time" value={sendTime} onChange={e => setSendTime(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', fontSize: 14 }} />
@@ -1094,8 +1146,8 @@ function AutoSendModal({ onClose, onSave }) {
               <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Select Days of the Week</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                  <button 
-                    key={day} 
+                  <button
+                    key={day}
                     type="button"
                     onClick={() => toggleDayOfWeek(day)}
                     style={{ flex: 1, padding: '8px 0', border: '1px solid', borderColor: selectedDaysOfWeek.has(day) ? '#0A6ED1' : '#E2E8F0', background: selectedDaysOfWeek.has(day) ? '#EFF6FF' : '#fff', color: selectedDaysOfWeek.has(day) ? '#0A6ED1' : '#64748B', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
@@ -1113,7 +1165,7 @@ function AutoSendModal({ onClose, onSave }) {
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Select Months</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
                   {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
-                    <button 
+                    <button
                       key={month}
                       type="button"
                       onClick={() => toggleMonth(month)}
@@ -1124,12 +1176,12 @@ function AutoSendModal({ onClose, onSave }) {
                   ))}
                 </div>
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Select Days of the Month</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
                   {Array.from({length: 31}, (_, i) => i + 1).map(day => (
-                    <button 
+                    <button
                       key={day}
                       type="button"
                       onClick={() => toggleDayOfMonth(day)}
@@ -1145,19 +1197,26 @@ function AutoSendModal({ onClose, onSave }) {
         </div>
 
         <div style={{ display: 'flex', borderTop: '1px solid #F1F5F9' }}>
-          <button 
+          <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onClose(); }} 
-            onTouchEnd={(e) => { e.stopPropagation(); onClose(); }} 
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            onTouchEnd={(e) => { e.stopPropagation(); onClose(); }}
             style={{ flex: 1, padding: '16px', border: 'none', background: '#F8FAFC', cursor: 'pointer', color: '#64748B', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
           >
             Cancel
           </button>
-          <button 
+          <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onSave(); }} 
-            onTouchEnd={(e) => { e.stopPropagation(); onSave(); }} 
-            style={{ flex: 1, padding: '16px', border: 'none', background: '#0A6ED1', cursor: 'pointer', color: '#fff', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSave({ recurrence: interval, startDate, endDate, time: sendTime, weekdays: Array.from(selectedDaysOfWeek), monthlyDates: Array.from(selectedDaysOfMonth).join(',') });
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              onSave({ recurrence: interval, startDate, endDate, time: sendTime, weekdays: Array.from(selectedDaysOfWeek), monthlyDates: Array.from(selectedDaysOfMonth).join(',') });
+            }}
+            style={{ flex: 1, padding: '16px', border: 'none', background: startDate && sendTime ? '#0A6ED1' : '#CBD5E1', cursor: startDate && sendTime ? 'pointer' : 'default', color: '#fff', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
+            disabled={!startDate || !sendTime}
           >
             Save
           </button>
@@ -1167,15 +1226,106 @@ function AutoSendModal({ onClose, onSave }) {
   );
 }
 
-function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
-  const { chats, chatMessages, sendChatMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, setChats, viewUserProfile, viewProfilePic } = useApp();
+export function ChatActionMenu({ chat, onClose, onAction, busy = false }) {
+  if (!chat) return null;
+  const isGroup = chat.type === 'group';
+  const actions = [
+    { id: 'view', label: isGroup ? 'View group info' : 'View contact', color: '#0A6ED1' },
+    { id: 'togglePin', label: chat.pinned ? 'Unpin from top' : 'Pin on top', color: '#0A6ED1' },
+    { id: 'deleteChat', label: 'Delete chat', color: '#DC2626' },
+    { id: 'leave', label: isGroup ? 'Exit group' : 'Exit chat', color: '#475569' },
+    { id: 'exitAndDelete', label: isGroup ? 'Exit and delete group chat' : 'Exit and delete chat', color: '#DC2626' },
+  ];
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.45)' }}>
+      <div style={{ width: '100%', maxWidth: 330, background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid #F1F5F9' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>{chat.name || 'Chat'}</div>
+          <div style={{ marginTop: 3, fontSize: 12, color: '#64748B' }}>Chat options</div>
+        </div>
+        <div style={{ padding: 8 }}>
+          {actions.map(action => (
+            <button key={action.id} type="button" disabled={busy} onClick={() => onAction(action.id)} style={{ width: '100%', padding: '12px 10px', textAlign: 'left', border: 'none', borderRadius: 8, background: '#fff', color: action.color, fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+              {action.label}
+            </button>
+          ))}
+          <button type="button" disabled={busy} onClick={onClose} style={{ width: '100%', marginTop: 4, padding: '12px 10px', textAlign: 'left', border: 'none', borderTop: '1px solid #F1F5F9', background: '#fff', color: '#64748B', fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddMembersModal({ users, currentUser, participants, onClose, onSave, busy = false }) {
+  const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const existingIds = new Set(participants || []);
+  const availableUsers = Object.values(users).filter(user => {
+    if (!user || !['Participant', 'Trainer', 'Employee'].includes(user.role) || user.id === currentUser?.id || existingIds.has(user.id)) return false;
+    if (!search.trim()) return true;
+    const query = search.toLowerCase();
+    return user.name.toLowerCase().includes(query) || (user.role || '').toLowerCase().includes(query);
+  });
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 230, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.45)' }}>
+      <div style={{ width: '100%', maxWidth: 420, maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Add members</h3><p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B' }}>Choose participants, trainers, or employees.</p></div>
+          <button type="button" onClick={onClose} style={{ border: 'none', background: 'none', color: '#64748B', fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '12px 18px' }}>
+          <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts" style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, outline: 'none', fontSize: 13 }} />
+        </div>
+        <div style={{ overflowY: 'auto', minHeight: 150, flex: 1, borderTop: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9' }}>
+          {availableUsers.map(user => {
+            const selected = selectedIds.includes(user.id);
+            return (
+              <label key={user.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', cursor: 'pointer', background: selected ? '#EFF6FF' : '#fff' }}>
+                <input type="checkbox" checked={selected} onChange={() => setSelectedIds(ids => selected ? ids.filter(id => id !== user.id) : [...ids, user.id])} style={{ width: 16, height: 16, accentColor: '#0A6ED1' }} />
+                <Avatar initials={user.initials} color={user.color} src={user.avatar} size={34} online={user.online} />
+                <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{user.name}</div><div style={{ fontSize: 11, color: '#64748B' }}>{user.role}</div></div>
+              </label>
+            );
+          })}
+          {availableUsers.length === 0 && <p style={{ margin: 0, padding: 28, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>No accounts available.</p>}
+        </div>
+        <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} style={{ padding: '9px 14px', border: '1px solid #E2E8F0', background: '#fff', color: '#475569', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+          <button type="button" disabled={busy || selectedIds.length === 0} onClick={() => onSave(selectedIds)} style={{ padding: '9px 16px', border: 'none', background: busy || selectedIds.length === 0 ? '#CBD5E1' : '#0A6ED1', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Adding...' : 'Add members'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatListRow({ children, onOpen, onLongPress, active, isMobile }) {
+  const handlers = useLongPress(onLongPress, onOpen, { delay: 550, shouldPreventDefault: false });
+  return (
+    <div {...handlers} onContextMenu={e => { e.preventDefault(); onLongPress(e); }} style={{ padding: '10px 12px', cursor: 'pointer', background: active && !isMobile ? '#EFF6FF' : '#fff', borderBottom: '1px solid #F8FAFC', borderLeft: active && !isMobile ? '3px solid #0A6ED1' : '3px solid transparent', transition: 'all 0.15s' }}>
+      {children}
+    </div>
+  );
+}
+
+export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, conversationOnly = false }) {
+  const router = useRouter();
+  const { chats, chatMessages, sendChatMessage, markChatRead, scheduleMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
   const [chatTab, setChatTab] = useState('Chats');
+
   const [search, setSearch] = useState('');
   const [activeChat, setActiveChat] = useState(MOCK_CHATS[1]);
   const [msgText, setMsgText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
+  const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [groupMemberSearch, setGroupMemberSearch] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAutoSendModal, setShowAutoSendModal] = useState(false);
@@ -1186,14 +1336,18 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
   const textareaRef = useRef(null);
 
   // Mobile navigation state
-  const [mobileView, setMobileView] = useState('list'); // 'list' | 'convo'
-  
+  const [mobileView, setMobileView] = useState(conversationOnly ? 'convo' : 'list'); // 'list' | 'convo'
+
   // Details pane state
   const [showDetails, setShowDetails] = useState(false);
   const [showAllMedia, setShowAllMedia] = useState(false);
   const [mediaTab, setMediaTab] = useState('Media');
   const [mediaFile, setMediaFile] = useState(null);
   const [viewMedia, setViewMedia] = useState(null);
+  const [chatActionTarget, setChatActionTarget] = useState(null);
+  const [chatActionBusy, setChatActionBusy] = useState(false);
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [addingMembers, setAddingMembers] = useState(false);
   const fileInputRefs = { cam: useRef(null), photos: useRef(null), audio: useRef(null), videos: useRef(null), docs: useRef(null) };
 
   const [showChatEmojis, setShowChatEmojis] = useState(false);
@@ -1201,6 +1355,74 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
   const [recordingPreview, setRecordingPreview] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState(null);
   const lastChatId = useRef(activeChat?.id);
+  const canCreateGroup = canUseStaffChatAccess(currentUser);
+
+  useBackHandler(isMobile && !conversationOnly && mobileView === 'convo', () => setMobileView('list'));
+  useBackHandler(showDetails, () => setShowDetails(false));
+  useBackHandler(showAllMedia, () => setShowAllMedia(false));
+  useBackHandler(Boolean(chatActionTarget), () => setChatActionTarget(null));
+  useBackHandler(Boolean(viewMedia), () => setViewMedia(null));
+  useBackHandler(showAddMembers, () => setShowAddMembers(false));
+
+  const handleChatAction = async (action) => {
+    if (!chatActionTarget) return;
+    if (action === 'view') {
+      setActiveChat(chatActionTarget);
+      setChatActionTarget(null);
+      setMobileView('convo');
+      setShowDetails(true);
+      return;
+    }
+    setChatActionBusy(true);
+    const result = await performChatAction(chatActionTarget.id, action);
+    setChatActionBusy(false);
+    if (!result.success) {
+      alert(result.error || 'Could not update chat');
+      return;
+    }
+    setChatActionTarget(null);
+    if (action === 'leave' || action === 'exitAndDelete') {
+      setShowDetails(false);
+      if (isMobile) setMobileView('list');
+    }
+  };
+
+  const handleAddMembers = async (memberIds) => {
+    if (!activeChat?.id || memberIds.length === 0) return;
+    setAddingMembers(true);
+    const result = await performChatAction(activeChat.id, 'addParticipants', memberIds);
+    setAddingMembers(false);
+    if (!result.success) {
+      alert(result.error || 'Could not add members');
+      return;
+    }
+    setActiveChat(result.chat);
+    setShowAddMembers(false);
+  };
+
+  const closeCreateGroup = () => {
+    setShowCreateGroup(false);
+    setGroupName('');
+    setGroupDescription('');
+    setGroupMemberIds([]);
+    setGroupMemberSearch('');
+  };
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    if (!groupName.trim() || groupMemberIds.length === 0) return;
+    setCreatingGroup(true);
+    const result = await createGroup({ name: groupName, description: groupDescription, participantIds: groupMemberIds });
+    setCreatingGroup(false);
+    if (!result.success) {
+      alert(result.error || 'Could not create group');
+      return;
+    }
+    setActiveChat(result.chat);
+    setChatTab('Groups');
+    closeCreateGroup();
+    if (isMobile) setMobileView('convo');
+  };
 
   useEffect(() => {
     if (textareaRef.current && msgText === '') {
@@ -1229,7 +1451,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
       setMobileView('convo');
       setShowDetails(false);
       setShowAllMedia(false);
-      
+
       // Give it a tiny delay to allow React to render the chat messages before scrolling
       setTimeout(() => {
         const el = document.getElementById(`msg-${targetChat.msgId}`);
@@ -1241,88 +1463,131 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
     }
   }, [targetChat, chats, activeChat?.id, setTargetChat]);
 
-  // Automatically seed direct chats for allowed contacts so the list is fully populated natively
-  useEffect(() => {
-    if (!users || !currentUser || !chats) return;
-
-    const isAdminOrEmp = currentUser.role === 'Admin' || currentUser.role === 'Employee' || currentUser.role === 'Super Admin';
-    const allowed = new Set();
-    
-    Object.values(users).forEach(u => {
-      if (isAdminOrEmp) allowed.add(u.id);
-      else if (u.role === 'Admin' || u.role === 'Employee' || u.role === 'Super Admin') allowed.add(u.id);
-    });
-
-    if (!isAdminOrEmp) {
-      chats.filter(c => c.type === 'group' && !c.disabled && (c.participants?.includes(currentUser.id) || currentUser.id.startsWith('new_'))).forEach(g => {
-        g.participants?.forEach(pid => allowed.add(pid));
-      });
-    }
-
-    const contactList = Object.values(users).filter(u => allowed.has(u.id) && u.id !== currentUser.id);
-    let newChats = [];
-    
-    contactList.forEach(u => {
-      const existing = chats.find(c => c.type === 'direct' && c.participants?.includes(currentUser.id) && c.participants?.includes(u.id));
-      // For the hardcoded 'd1' fallback, prevent duplicating Neha Patel if the user is dynamically created
-      const isDemoD1 = currentUser.id.startsWith('new_') && u.id === 'u4';
-      if (!existing && !isDemoD1) {
-        newChats.push({
-          id: `d_auto_${u.id}_${currentUser.id}`,
-          type: 'direct',
-          name: u.name,
-          initials: u.initials,
-          color: u.color,
-          participants: [currentUser.id, u.id],
-          time: '',
-          unread: 0,
-          sub: 'Tap to start a chat'
-        });
+  const mappedChats = chats.filter(c => !c.deletedFor?.includes(currentUser.id)).map(c => {
+    if (c.type === 'direct') {
+      const otherUserId = c.participants?.find(id => id !== currentUser.id);
+      const otherUser = users[otherUserId];
+      if (otherUser) {
+        return {
+          ...c,
+          name: otherUser.name,
+          initials: otherUser.initials,
+          color: otherUser.color,
+          avatar: otherUser.avatar,
+          online: Boolean(otherUser.online),
+          muted: c.mutedBy?.includes(currentUser.id),
+          unread: Number(c.unreadBy?.[currentUser.id] || c.unread || 0)
+        };
       }
-    });
-
-    if (newChats.length > 0) {
-      setChats(prev => {
-        const trulyNew = newChats.filter(nc => !prev.some(p => p.type === 'direct' && p.participants?.includes(nc.participants[0]) && p.participants?.includes(nc.participants[1])));
-        return trulyNew.length > 0 ? [...prev, ...trulyNew] : prev;
-      });
+    } else if (c.type === 'support') {
+      // Staff see each support thread by sender; regular users see one Admin Service contact.
+      const hasStaffAccess = canUseStaffChatAccess(currentUser);
+      if (hasStaffAccess) {
+        const supportUserId = c.participants && c.participants[0];
+        const supportUser = users[supportUserId];
+        return {
+          ...c,
+          name: `Admin Service: ${supportUser ? supportUser.name : 'Unknown User'}`,
+          initials: supportUser?.initials || 'AS',
+          color: '#F59E0B', // Orange color for support tickets
+          avatar: supportUser?.avatar,
+          online: Boolean(supportUser?.online),
+          muted: c.mutedBy?.includes(currentUser.id),
+          unread: Number(c.unreadBy?.[currentUser.id] || c.unread || 0)
+        };
+      } else {
+        return {
+          ...c,
+          name: 'Admin Service Contact',
+          initials: 'SA',
+          color: '#0A6ED1', // Blue color for admin
+          muted: c.mutedBy?.includes(currentUser.id),
+          unread: Number(c.unreadBy?.[currentUser.id] || c.unread || 0)
+        };
+      }
     }
-  }, [currentUser, users]); // omitted 'chats' intentionally to run only on mount/user change
+    return {
+      ...c,
+      muted: c.mutedBy?.includes(currentUser.id),
+      unread: Number(c.unreadBy?.[currentUser.id] || c.unread || 0)
+    };
+  }).map(c => ({ ...c, pinned: Boolean(c.pinned || c.pinnedBy?.includes(currentUser.id)) }));
 
-  const filteredChats = chats.filter(c => {
+  const filteredChats = mappedChats.filter(c => {
     if (chatTab === 'Groups' && c.type !== 'group') return false;
     if (chatTab === 'Chats' && c.type === 'group') return false;
-    if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
-    
-    // For the demo, automatically show default chats to dynamically created users
-    const isNewUser = currentUser.id.startsWith('new_');
-    if (isNewUser && (c.id === 'g1' || c.id === 'g2' || c.id === 'd1')) {
-      return true;
+    const chatName = c.name || '';
+    if (search && !chatName.toLowerCase().includes(search.toLowerCase())) return false;
+
+    const hasStaffAccess = canUseStaffChatAccess(currentUser);
+
+    // If it's a support chat, admins/employees can see ALL of them. Users can only see their own.
+    if (c.type === 'support') {
+      if (hasStaffAccess) return true;
+      if (c.participants && c.participants.includes(currentUser.id)) return true;
+      return false;
     }
-    
+
     // Only show chats where the user is a participant
     if (c.participants && !c.participants.includes(currentUser.id)) {
-      // Admins/Employees can see all groups, but only their own direct chats
-      const isAdminOrEmp = currentUser.role === 'Admin' || currentUser.role === 'Employee' || currentUser.role === 'Super Admin';
-      if (!(isAdminOrEmp && c.type === 'group')) {
+      // Admins and chat-access employees can see all groups, but direct chats stay participant-only.
+      if (!(hasStaffAccess && c.type === 'group')) {
         return false;
       }
     }
-    
+
     return true;
   }).sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    // Pin support chat to top for normal users
+    const hasStaffAccess = canUseStaffChatAccess(currentUser);
+    if (!hasStaffAccess) {
+      if (a.type === 'support' && b.type !== 'support') return -1;
+      if (b.type === 'support' && a.type !== 'support') return 1;
+    }
+
     // Sort by latest message timestamp
     const msgsA = chatMessages[a.id] || [];
     const msgsB = chatMessages[b.id] || [];
-    
-    // Fallback to 0 if no messages exist
-    const timeA = msgsA.length > 0 && msgsA[msgsA.length - 1].timestamp ? msgsA[msgsA.length - 1].timestamp : 0;
-    const timeB = msgsB.length > 0 && msgsB[msgsB.length - 1].timestamp ? msgsB[msgsB.length - 1].timestamp : 0;
-    
+
+    // Fallback to createdAt if no messages exist
+    const timeA = msgsA.length > 0 && msgsA[msgsA.length - 1].timestamp ? Number(msgsA[msgsA.length - 1].timestamp) : new Date(a.createdAt || 0).getTime();
+    const timeB = msgsB.length > 0 && msgsB[msgsB.length - 1].timestamp ? Number(msgsB[msgsB.length - 1].timestamp) : new Date(b.createdAt || 0).getTime();
+
     return timeB - timeA;
   });
 
+  useEffect(() => {
+    if (!currentUser || filteredChats.length === 0) return;
+    const freshActiveChat = filteredChats.find(c => c.id === activeChat?.id);
+    if (!freshActiveChat) {
+      setActiveChat(filteredChats[0]);
+    } else if (
+      freshActiveChat.name !== activeChat.name ||
+      freshActiveChat.initials !== activeChat.initials ||
+      freshActiveChat.color !== activeChat.color ||
+      freshActiveChat.avatar !== activeChat.avatar
+    ) {
+      setActiveChat(freshActiveChat);
+    }
+  }, [chats, currentUser?.id, users]);
+
   const msgs = chatMessages[activeChat?.id] || [];
+  const activeChatSnapshot = chats.find(chat => chat.id === activeChat?.id) || activeChat;
+
+  const getDeliveryStatus = (message) => {
+    if (!message.isMe) return null;
+    if (message.status === 'sending') return 'sending';
+    const recipientIds = (activeChatSnapshot?.participants || []).filter(id => id !== currentUser?.id);
+    if (recipientIds.length === 0) return 'sent';
+    const allSeen = recipientIds.every(id => Number(activeChatSnapshot?.unreadBy?.[id] || 0) === 0);
+    if (allSeen) return 'seen';
+    return recipientIds.some(id => users[id]?.online) ? 'delivered' : 'sent';
+  };
+
+  useEffect(() => {
+    if (activeChat?.id && mobileView === 'convo') markChatRead(activeChat.id);
+  }, [activeChat?.id, mobileView, msgs.length]);
 
   const [showScrollDown, setShowScrollDown] = useState(false);
   const chatScrollRef = useRef(null);
@@ -1355,21 +1620,21 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
     e.preventDefault();
     const finalMsg = msgText.trim();
     if (!finalMsg) return;
-    
+
     if (editingMsgId) {
       editMessage(activeChat.id, editingMsgId, finalMsg);
       setEditingMsgId(null);
     } else {
       sendChatMessage(activeChat.id, finalMsg, replyingTo);
     }
-    
+
     setMsgText('');
     setReplyingTo(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const renderList = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', width: isMobile ? '100%' : (isExpanded ? 300 : 200), borderRight: isMobile ? 'none' : '1px solid #F1F5F9', flexShrink: 0, height: '100%', transition: 'width 0.2s' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: isMobile ? '100%' : (isExpanded ? 300 : 200), borderRight: isMobile ? 'none' : '1px solid #F1F5F9', flexShrink: 0, height: '100%', minHeight: 0, transition: 'width 0.2s' }}>
       {/* Chat Header */}
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -1384,8 +1649,9 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 )}
               </button>
             )}
-            <button onClick={() => setShowNewChat(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0A6ED1', display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => canCreateGroup ? setShowCreateGroup(true) : setShowNewChat(true)} style={{ background: canCreateGroup ? '#EFF6FF' : 'none', border: canCreateGroup ? '1px solid #BFDBFE' : 'none', borderRadius: 7, cursor: 'pointer', color: '#0A6ED1', display: 'flex', alignItems: 'center', gap: 5, padding: canCreateGroup ? '5px 8px' : 0, fontSize: 11, fontWeight: 700 }} title={canCreateGroup ? 'Create group' : 'New chat'}>
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              {canCreateGroup && <span>Group</span>}
             </button>
           </div>
         </div>
@@ -1402,23 +1668,24 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         </div>
       </div>
       {/* List */}
-      <div style={{ overflowY: 'auto', flex: 1 }}>
+      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {filteredChats.map(c => (
-          <div key={c.id} onClick={() => { setActiveChat(c); setMobileView('convo'); setShowDetails(false); }} style={{ padding: '10px 12px', cursor: 'pointer', background: activeChat?.id === c.id && !isMobile ? '#EFF6FF' : '#fff', borderBottom: '1px solid #F8FAFC', borderLeft: activeChat?.id === c.id && !isMobile ? '3px solid #0A6ED1' : '3px solid transparent', transition: 'all 0.15s' }}>
+          <ChatListRow key={c.id} onOpen={() => { setActiveChat(c); setMobileView('convo'); setShowDetails(false); }} onLongPress={() => setChatActionTarget(c)} active={activeChat?.id === c.id} isMobile={isMobile}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {(() => {
                 const otherUserId = c.type === 'direct' ? c.participants?.find(id => id !== currentUser.id) : null;
-                const isOnline = otherUserId && users[otherUserId]?.online;
+                const supportUserId = c.type === 'support' && canUseStaffChatAccess(currentUser) ? c.participants?.[0] : null;
+                const onlineUserId = otherUserId || supportUserId;
+                const isOnline = Boolean(onlineUserId && users[onlineUserId]?.online);
                 return (
-                  <div 
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      viewProfilePic(c); 
-                    }} 
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      viewProfilePic(c);
+                    }}
                     style={{ position: 'relative', cursor: 'pointer' }}
                   >
-                    <div style={{ width: 34, height: 34, background: c.color, borderRadius: c.type === 'group' ? 10 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{c.initials}</div>
-                    {isOnline && <div style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, background: '#10B981', borderRadius: '50%', border: '2px solid #fff' }} />}
+                    <Avatar initials={c.initials} color={c.color} src={c.avatar} size={34} online={isOnline} shape={c.type === 'group' ? 'rounded' : 'circle'} />
                   </div>
                 );
               })()}
@@ -1450,7 +1717,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 </p>
               </div>
             </div>
-          </div>
+          </ChatListRow>
         ))}
       </div>
     </div>
@@ -1461,23 +1728,23 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
       {/* Convo header */}
       {activeChat && (
         selectedMsgIds.size > 0 ? (
-          <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ padding: '8px 12px', background: '#EFF6FF', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <button onClick={() => setSelectedMsgIds(new Set())} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', padding: 4 }}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <span style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>{selectedMsgIds.size}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }}>
               {(() => {
                 const isSingle = selectedMsgIds.size === 1;
                 const selMsg = isSingle ? msgs.find(m => m.id === Array.from(selectedMsgIds)[0]) : null;
-                const canEdit = isSingle && selMsg?.isMe && selMsg.timestamp && (Date.now() - selMsg.timestamp < 15 * 60 * 1000);
+                const canEdit = isSingle && selMsg?.isMe && !selMsg.isDeletedForEveryone;
 
                 return (
                   <>
-                    {isSingle && (
-                      <div style={{ display: 'flex', gap: 2, marginRight: 4 }}>
+                    {isSingle && !isMobile && (
+                      <div style={{ display: 'flex', gap: 2, marginRight: 4, flexShrink: 0 }}>
                         {['👍', '❤️', '😂', '😮'].map(emoji => (
                           <button key={emoji} onClick={() => setSelectedMsgIds(new Set())} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', padding: 2 }}>{emoji}</button>
                         ))}
@@ -1525,18 +1792,19 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         ) : (
           <div style={{ padding: '10px 12px', background: '#fff', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {isMobile && (
-              <button onClick={() => setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => conversationOnly ? router.push('/ssr-app/chat') : setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
               </button>
             )}
             <div onClick={() => setShowDetails(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}>
               {(() => {
                 const otherUserId = activeChat.type === 'direct' ? activeChat.participants?.find(id => id !== currentUser.id) : null;
-                const isOnline = otherUserId && users[otherUserId]?.online;
+                const supportUserId = activeChat.type === 'support' && canUseStaffChatAccess(currentUser) ? activeChat.participants?.[0] : null;
+                const onlineUserId = otherUserId || supportUserId;
+                const isOnline = Boolean(onlineUserId && users[onlineUserId]?.online);
                 return (
                   <div style={{ position: 'relative' }}>
-                    <div style={{ width: 32, height: 32, background: activeChat.color, borderRadius: activeChat.type === 'group' ? 8 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 800 }}>{activeChat.initials}</div>
-                    {isOnline && <div style={{ position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, background: '#10B981', borderRadius: '50%', border: '2px solid #fff' }} />}
+                    <Avatar initials={activeChat.initials} color={activeChat.color} src={activeChat.avatar} size={32} online={isOnline} shape={activeChat.type === 'group' ? 'rounded' : 'circle'} />
                   </div>
                 );
               })()}
@@ -1545,13 +1813,20 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 <p style={{ margin: 0, fontSize: 10, color: '#94A3B8' }}>{activeChat.type === 'group' ? 'Group' : 'Direct'} · tap for details</p>
               </div>
             </div>
+
+            {activeChat.type === 'group' && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin' || (currentUser.role === 'Employee' && (currentUser.permissions?.includes('arrange_meetings') || currentUser.permissions?.includes('all_access')))) && (
+              <button onClick={() => openScheduleMeeting(activeChat)} style={{ background: '#10B981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
+                Meeting
+              </button>
+            )}
           </div>
         )
       )}
 
       {/* Messages */}
       <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div 
+        <div
           ref={chatScrollRef}
           onScroll={handleChatScroll}
           onClick={(e) => {
@@ -1567,9 +1842,9 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           const isSelected = selectedMsgIds.has(msg.id);
           const selectionMode = selectedMsgIds.size > 0;
           return (
-            <div 
-              key={msg.id} 
-              id={`msg-${msg.id}`} 
+            <div
+              key={msg.id}
+              id={`msg-${msg.id}`}
               onClick={(e) => {
                 if (selectionMode) {
                   e.stopPropagation();
@@ -1586,8 +1861,8 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                   });
                 }
               }}
-              style={{ 
-                background: isSelected ? 'rgba(10, 110, 209, 0.15)' : (isTarget ? '#FEF3C7' : 'transparent'), 
+              style={{
+                background: isSelected ? 'rgba(10, 110, 209, 0.15)' : (isTarget ? '#FEF3C7' : 'transparent'),
                 transition: 'background 0.2s',
                 borderRadius: 8,
                 padding: isTarget || isSelected ? '4px 0' : 0,
@@ -1596,12 +1871,20 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 animation: highlightMsgId === msg.id ? 'highlight-blink 1s ease-in-out 3' : 'none'
               }}
             >
-              <MessageBubble 
-                msg={msg} 
-                onReply={(m) => { setReplyingTo(m); textareaRef.current?.focus(); }} 
-                onViewMedia={(attachment) => setViewMedia(attachment)} 
+              <MessageBubble
+                msg={msg}
+                senderAvatar={users[msg.senderId]?.avatar}
+                onReply={(m) => { setReplyingTo(m); textareaRef.current?.focus(); }}
+                onViewMedia={(attachment) => setViewMedia(attachment)}
+                onEdit={(message) => {
+                  setEditingMsgId(message.id);
+                  setMsgText(message.text || '');
+                  textareaRef.current?.focus();
+                }}
+                deliveryStatus={getDeliveryStatus(msg)}
                 selectionMode={selectionMode}
                 isSelected={isSelected}
+                isMobile={isMobile}
                 isHighlighted={highlightMsgId === msg.id}
                 onReplyClick={handleReplyClick}
                 onToggleSelect={(id, isLongPress) => {
@@ -1624,7 +1907,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         <div ref={bottomRef} />
         </div>
         {showScrollDown && (
-          <button 
+          <button
             onClick={scrollToBottom}
             style={{
               position: 'absolute',
@@ -1661,8 +1944,9 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 e.target.value = '';
                 return;
               }
-              setMediaFile(file);
+              openMediaComposer({ file, chatId: activeChat?.id, replyTo: replyingTo });
               setShowAttachMenu(false);
+              if (activeChat?.id) router.push('/ssr-app/chat/compose');
             }
           };
           return (
@@ -1681,28 +1965,6 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           <MediaPreviewModal
             attachment={viewMedia}
             onClose={() => setViewMedia(null)}
-          />
-        )}
-
-        {/* Upload media preview modal */}
-        {mediaFile && (
-          <MediaPreviewModal
-            file={mediaFile}
-            onClose={() => setMediaFile(null)}
-            onSend={({ file, caption }) => {
-              const attachObj = { 
-                url: URL.createObjectURL(file), 
-                name: file.name,
-                size: file.size,
-                isImage: file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name),
-                isVideo: file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov)$/i.test(file.name),
-                isAudio: file.type.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(file.name),
-                isDownloaded: true
-              };
-              sendChatMessage(activeChat.id, caption || '', replyingTo, attachObj);
-              setMediaFile(null);
-              setReplyingTo(null);
-            }}
           />
         )}
 
@@ -1769,7 +2031,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           </div>
         ) : (
           <form onSubmit={handleSend} style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fff', borderTop: '1px solid #F1F5F9', alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
-            
+
             {showChatEmojis && (
               <div style={{ position: 'absolute', bottom: '100%', left: 16, background: '#fff', borderRadius: 12, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 6, width: 260, maxHeight: 160, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 100, border: '1px solid #E2E8F0', marginBottom: 8 }}>
                 {['😀','😃','😄','😁','😆','😅','😂','🤣','🥲','☺️','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'].map(emoji => (
@@ -1784,7 +2046,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 <path d="M12 4v16m8-8H4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
               </svg>
             </button>
-            
+
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRadius: 20, padding: '0 14px' }}>
               {/* Emoji Button */}
               <button type="button" onClick={() => setShowChatEmojis(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', padding: '0 8px 0 0' }}>
@@ -1792,7 +2054,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                   <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 100-16 8 8 0 000 16zm-3.5-9a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm7 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm-3.5 5.5c-2.03 0-3.8-1.11-4.75-2.75a.5.5 0 11.86-.5c.76 1.3 2.14 2.25 3.89 2.25s3.13-.95 3.89-2.25a.5.5 0 11.86.5c-.95 1.64-2.72 2.75-4.75 2.75z"/>
                 </svg>
               </button>
-              
+
               <textarea
                 ref={textareaRef}
                 value={msgText}
@@ -1817,7 +2079,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 style={{ flex: 1, padding: '12px 0', border: 'none', background: 'transparent', color: '#0F172A', fontSize: 14, outline: 'none', resize: 'none', minHeight: 20, maxHeight: 120, overflowY: 'auto', fontFamily: 'inherit', lineHeight: 1.4 }}
               />
             </div>
-            
+
             {msgText.trim() ? (
               <button type="submit" style={{ background: '#0A6ED1', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', padding: 0, marginBottom: 2 }}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -1825,8 +2087,8 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 </svg>
               </button>
             ) : (
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   if (isRecording) {
                     setIsRecording(false);
@@ -1834,7 +2096,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                   } else {
                     setIsRecording(true);
                   }
-                }} 
+                }}
                 style={{ background: isRecording ? '#DC2626' : 'none', border: 'none', cursor: 'pointer', color: isRecording ? '#fff' : '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', padding: 0, marginBottom: 2, transition: 'background 0.2s' }}
               >
                 {isRecording ? (
@@ -1859,7 +2121,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
     const isGroupAdmin = isGroup && activeChat.admins?.includes(currentUser.id);
     const isGroupCreator = isGroup && activeChat.createdBy === currentUser.id;
     const canEditGroup = (isGroupAdmin || isGroupCreator) && !currentUser?.isImpersonating;
-    
+
     // Group Participants
     const participants = isGroup && activeChat.participants ? activeChat.participants.map(pid => users[pid]).filter(Boolean) : [];
 
@@ -1876,9 +2138,9 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         </button>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{isGroup ? 'Group Info' : 'Contact Info'}</h3>
       </div>
-      
+
       <div style={{ padding: '24px 16px', textAlign: 'center', borderBottom: '10px solid #F1F5F9' }}>
-        <div 
+        <div
           onClick={() => {
             if (!isGroup && targetUser) viewProfilePic(targetUser);
             if (isGroup) viewProfilePic(activeChat);
@@ -1886,7 +2148,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 12px', cursor: 'pointer' }}
         >
           <div style={{ width: '100%', height: '100%', background: activeChat.color, borderRadius: isGroup ? 20 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24, fontWeight: 800, overflow: 'hidden' }}>
-            {activeChat.groupImage ? <img src={activeChat.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.initials}
+            {activeChat.groupImage ? <img src={activeChat.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.avatar ? <img src={activeChat.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.initials}
           </div>
           {canEditGroup && (
             <button onClick={() => {
@@ -1897,7 +2159,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
             </button>
           )}
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{activeChat.name}</h2>
           {canEditGroup && (
@@ -1909,9 +2171,9 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
             </button>
           )}
         </div>
-        
+
         <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>{isGroup ? `Group · ${participants.length} Members` : 'Direct Message'}</p>
-        
+
         {/* Quick Actions */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 24 }}>
           <div onClick={() => setShowDetails(false)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
@@ -1920,6 +2182,14 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
             </div>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>Chat</span>
           </div>
+          {isGroup && canEditGroup && (
+            <div onClick={() => setShowAddMembers(true)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#EFF6FF', color: '#0A6ED1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>Add members</span>
+            </div>
+          )}
           {!isGroup && (
             <div onClick={handleCall} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#F1F5F9', color: '#0A6ED1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1942,7 +2212,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         {/* Profile Details for Direct Chats */}
         {!isGroup && targetUser && (() => {
           const isAdminOrEmp = currentUser.role === 'Admin' || currentUser.role === 'Employee' || currentUser.role === 'Super Admin';
-          
+
           return (
             <div style={{ marginTop: 24, textAlign: 'left', background: '#F8FAFC', borderRadius: 12, padding: '16px' }}>
               <div style={{ marginBottom: 12 }}>
@@ -1953,7 +2223,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>Experience & Rating</span>
                 <p style={{ margin: '2px 0 0', fontSize: 14, color: '#0F172A', fontWeight: 600 }}>{targetUser.experience || 'Not specified'} · ⭐ 4.8/5</p>
               </div>
-              
+
               {/* Only admins and employees see full details */}
               {isAdminOrEmp && (
                 <>
@@ -2010,7 +2280,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
               const isCreator = activeChat.createdBy === p.id;
               return (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div onClick={() => viewProfilePic(p)} style={{ width: 40, height: 40, background: p.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>{p.initials}</div>
+                  <div onClick={() => viewProfilePic(p)} style={{ cursor: 'pointer' }}><Avatar initials={p.initials} color={p.color} src={p.avatar} size={40} online={p.online} /></div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span onClick={() => viewUserProfile(p.id)} style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', cursor: 'pointer' }}>{p.id === currentUser.id ? 'You' : p.name}</span>
@@ -2020,16 +2290,53 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                     <span style={{ fontSize: 12, color: '#64748B' }}>{p.role}</span>
                   </div>
                   {p.id !== currentUser.id && (
-                    <button 
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={async () => {
+                        const direct = await startDirectChat(p.id);
+                        if (!direct) return alert('Private chat is disabled for this group.');
+                        setActiveChat(direct);
+                        setShowDetails(false);
+                        if (isMobile) setMobileView('convo');
+                      }} title="Private chat" style={{ background: '#EFF6FF', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0A6ED1' }}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" /></svg>
+                      </button>
+                      <button
                       onClick={() => { window.location.href = `tel:+919876543210`; }}
                       style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0A6ED1' }}
                     >
                       <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                     </button>
+                      {canEditGroup && (
+                        <button type="button" onClick={async () => {
+                          if (!window.confirm(`Remove ${p.name} from this group?`)) return;
+                          const result = await performChatAction(activeChat.id, 'removeParticipant', p.id);
+                          if (!result.success) return alert(result.error || 'Could not remove member');
+                          setActiveChat(result.chat);
+                        }} title="Remove from group" style={{ border: 'none', borderRadius: 7, background: '#FEF2F2', color: '#DC2626', padding: '0 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>Remove</button>
+                      )}
+                    </div>
                   )}
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {isGroup && (
+        <div style={{ padding: '16px', borderBottom: '10px solid #F1F5F9' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0F172A' }}>Private chats between members</h4>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748B', lineHeight: 1.4 }}>Members can start one-to-one chats from this group.</p>
+            </div>
+            {(isGroupAdmin || isGroupCreator) ? (
+              <button onClick={() => { const enabled = activeChat.privateChatEnabled !== false; updateChat(activeChat.id, { privateChatEnabled: !enabled }); setActiveChat(prev => ({ ...prev, privateChatEnabled: !enabled })); }} style={{ width: 44, height: 24, borderRadius: 12, background: activeChat.privateChatEnabled !== false ? '#10B981' : '#CBD5E1', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }} title="Only group admins can change this">
+                <span style={{ position: 'absolute', top: 2, left: activeChat.privateChatEnabled !== false ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', transition: 'left 0.2s' }} />
+              </button>
+            ) : (
+              <span style={{ fontSize: 12, fontWeight: 700, color: activeChat.privateChatEnabled !== false ? '#059669' : '#94A3B8' }}>{activeChat.privateChatEnabled !== false ? 'On' : 'Off'}</span>
+            )}
           </div>
         </div>
       )}
@@ -2071,7 +2378,7 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
 
         <div style={{ padding: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: 12, fontWeight: 700, color: '#F1F5F9' }}>THIS MONTH</h4>
-          
+
           {mediaTab === 'Media' && (
             mediaFiles.length === 0 ? <p style={{ fontSize: 13, color: '#94A3B8' }}>No media found.</p> :
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))', gap: 8 }}>
@@ -2143,6 +2450,50 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           {showAllMedia ? renderAllMedia() : (showDetails ? renderDetails() : renderConvo())}
         </>
       )}
+      {showCreateGroup && canCreateGroup && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) closeCreateGroup(); }} style={{ position: 'fixed', inset: 0, zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.6)' }}>
+          <form onSubmit={handleCreateGroup} style={{ width: '100%', maxWidth: 420, maxHeight: '88vh', background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 50px rgba(15,23,42,0.24)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0F172A' }}>Create group</h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B' }}>Choose who can communicate in this group.</p>
+              </div>
+              <button type="button" onClick={closeCreateGroup} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: '16px 20px 8px' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>Group name</label>
+              <input autoFocus value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="e.g. SAP Finance Team" maxLength={80} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 14, outline: 'none', color: '#0F172A' }} />
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', margin: '12px 0 6px' }}>Description <span style={{ color: '#94A3B8', fontWeight: 500 }}>(optional)</span></label>
+              <textarea value={groupDescription} onChange={e => setGroupDescription(e.target.value)} placeholder="What is this group for?" maxLength={180} rows={2} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 13, resize: 'vertical', outline: 'none', color: '#0F172A', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ padding: '8px 20px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Members <span style={{ color: '#94A3B8', fontWeight: 500 }}>({groupMemberIds.length + 1} selected)</span></label>
+              <input value={groupMemberSearch} onChange={e => setGroupMemberSearch(e.target.value)} placeholder="Search members" style={{ width: 150, padding: '7px 9px', border: '1px solid #E2E8F0', borderRadius: 7, fontSize: 12, outline: 'none', color: '#0F172A' }} />
+            </div>
+
+            <div style={{ overflowY: 'auto', minHeight: 120, maxHeight: 260, borderTop: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9' }}>
+                {Object.values(users).filter(u => u.id !== currentUser.id && (!groupMemberSearch || u.name.toLowerCase().includes(groupMemberSearch.toLowerCase()) || (u.role || '').toLowerCase().includes(groupMemberSearch.toLowerCase()))).map(u => {
+                const selected = groupMemberIds.includes(u.id);
+                return (
+                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', cursor: 'pointer', background: selected ? '#EFF6FF' : '#fff' }}>
+                    <input type="checkbox" checked={selected} onChange={() => setGroupMemberIds(prev => selected ? prev.filter(id => id !== u.id) : [...prev, u.id])} style={{ width: 16, height: 16, accentColor: '#0A6ED1' }} />
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: u.color || '#0A6ED1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{u.initials}</div>
+                    <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div><div style={{ fontSize: 11, color: '#64748B' }}>{u.role}</div></div>
+                  </label>
+                );
+              })}
+              {Object.values(users).filter(u => u.id !== currentUser.id).length === 0 && <p style={{ padding: '20px', margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>No members available.</p>}
+            </div>
+
+            <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" onClick={closeCreateGroup} style={{ padding: '9px 14px', border: '1px solid #E2E8F0', background: '#fff', color: '#475569', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+              <button type="submit" disabled={creatingGroup || !groupName.trim() || groupMemberIds.length === 0} style={{ padding: '9px 16px', border: 'none', background: creatingGroup || !groupName.trim() || groupMemberIds.length === 0 ? '#CBD5E1' : '#0A6ED1', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: creatingGroup ? 'wait' : 'pointer' }}>{creatingGroup ? 'Creating...' : 'Create group'}</button>
+            </div>
+          </form>
+        </div>
+      )}
       {showNewChat && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div onClick={() => setShowNewChat(false)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(2px)' }} />
@@ -2151,54 +2502,32 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>New Chat</h3>
               <button onClick={() => setShowNewChat(false)} style={{ background: 'none', border: 'none', fontSize: 20, color: '#94A3B8', cursor: 'pointer' }}>✕</button>
             </div>
-            
+
             {(() => {
-                const isAdminOrEmp = currentUser.role === 'Admin' || currentUser.role === 'Employee' || currentUser.role === 'Super Admin';
+                const hasStaffAccess = canUseStaffChatAccess(currentUser);
                 return (
                   <div style={{ padding: '10px 20px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE', fontSize: 12, color: '#0A6ED1' }}>
-                    {isAdminOrEmp ? 
-                      "As an Admin/Employee, you can start a chat with anyone in the system." : 
-                      "You can only start private chats with Admins or members of groups you belong to."}
+                    {hasStaffAccess ?
+                      "You can start a direct chat with anyone in the system." :
+                      "You can message Admin directly. Other private chats need approval from Admin Service."}
                   </div>
                 );
             })()}
 
             <div style={{ overflowY: 'auto', flex: 1, padding: '10px 0' }}>
               {(() => {
-                const isAdminOrEmp = currentUser.role === 'Admin' || currentUser.role === 'Employee' || currentUser.role === 'Super Admin';
-                const allowed = new Set();
-                
-                Object.values(users).forEach(u => {
-                  if (isAdminOrEmp) allowed.add(u.id);
-                  else if (u.role === 'Admin' || u.role === 'Employee' || u.role === 'Super Admin') allowed.add(u.id);
+                const hasStaffAccess = canUseStaffChatAccess(currentUser);
+                const contactList = Object.values(users).filter(u => {
+                  if (u.id === currentUser.id || u.name === 'System Admin') return false;
+                  if (hasStaffAccess) return true;
+                  if (u.role === 'Admin' || u.role === 'Super Admin') return true;
+                  return chats.some(c => c.type === 'direct' && c.participants?.includes(currentUser.id) && c.participants?.includes(u.id));
                 });
 
-                if (!isAdminOrEmp) {
-                  chats.filter(c => c.type === 'group' && !c.disabled && c.participants?.includes(currentUser.id)).forEach(g => {
-                    g.participants.forEach(pid => allowed.add(pid));
-                  });
-                }
-
-                const contactList = Object.values(users).filter(u => allowed.has(u.id) && u.id !== currentUser.id);
-
                 return contactList.map(u => (
-                  <div key={u.id} onClick={() => {
-                    // Check if direct chat already exists
-                    let existing = chats.find(c => c.type === 'direct' && c.participants?.includes(currentUser.id) && c.participants?.includes(u.id));
-                    if (!existing) {
-                      existing = {
-                        id: `d_${Date.now()}`,
-                        type: 'direct',
-                        name: u.name,
-                        initials: u.initials,
-                        color: u.color,
-                        participants: [currentUser.id, u.id],
-                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        unread: 0,
-                        sub: 'Started a new chat'
-                      };
-                      setChats(prev => [...prev, existing]);
-                    }
+                  <div key={u.id} onClick={async () => {
+                    const existing = await startDirectChat(u.id);
+                    if (!existing) return alert('Please send a chat access request from the profile page.');
                     setActiveChat(existing);
                     setChatTab('Chats');
                     setShowNewChat(false);
@@ -2217,8 +2546,8 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         </div>
       )}
       {showForwardModal && (
-        <div 
-          onClick={(e) => { if (e.target === e.currentTarget) setShowForwardModal(false); }} 
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setShowForwardModal(false); }}
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}
         >
           <div style={{ background: '#fff', width: '100%', maxWidth: 360, borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
@@ -2230,21 +2559,21 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
             </div>
             <div style={{ overflowY: 'auto', flex: 1, padding: 12 }}>
               {filteredChats.map(c => (
-                <div key={c.id} 
+                <div key={c.id}
                   onClick={(e) => {
                     e.stopPropagation();
                     forwardMessages(Array.from(selectedMsgIds), activeChat.id, c.id);
                     setShowForwardModal(false);
                     setSelectedMsgIds(new Set());
-                  }} 
+                  }}
                   onTouchEnd={(e) => {
                     e.stopPropagation();
                     forwardMessages(Array.from(selectedMsgIds), activeChat.id, c.id);
                     setShowForwardModal(false);
                     setSelectedMsgIds(new Set());
-                  }} 
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px', cursor: 'pointer', borderRadius: 8, transition: 'background 0.15s' }} 
-                  onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'} 
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px', cursor: 'pointer', borderRadius: 8, transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ width: 36, height: 36, background: c.color, borderRadius: c.type === 'group' ? 10 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 800 }}>{c.initials}</div>
@@ -2259,8 +2588,8 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
         </div>
       )}
       {showDeleteModal && (
-        <div 
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }} 
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}
         >
           <div style={{ background: '#fff', width: '100%', maxWidth: 320, borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -2274,27 +2603,27 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
                 return (
                   <>
                     {allMine && (
-                      <button 
+                      <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), true); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }} 
-                        onTouchEnd={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), true); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }} 
+                        onClick={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), true); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), true); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }}
                         style={{ padding: '16px', border: 'none', background: '#fff', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', color: '#DC2626', fontSize: 15, fontWeight: 600, textAlign: 'center' }}
                       >
                         Delete for everyone
                       </button>
                     )}
-                    <button 
+                    <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), false); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }} 
-                      onTouchEnd={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), false); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }} 
+                      onClick={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), false); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }}
+                      onTouchEnd={(e) => { e.stopPropagation(); deleteMessages(activeChat.id, Array.from(selectedMsgIds), false); setShowDeleteModal(false); setSelectedMsgIds(new Set()); }}
                       style={{ padding: '16px', border: 'none', background: '#fff', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', color: '#0F172A', fontSize: 15, fontWeight: 600, textAlign: 'center' }}
                     >
                       Delete for me
                     </button>
-                    <button 
+                    <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setShowDeleteModal(false); }} 
-                      onTouchEnd={(e) => { e.stopPropagation(); setShowDeleteModal(false); }} 
+                      onClick={(e) => { e.stopPropagation(); setShowDeleteModal(false); }}
+                      onTouchEnd={(e) => { e.stopPropagation(); setShowDeleteModal(false); }}
                       style={{ padding: '16px', border: 'none', background: '#F8FAFC', cursor: 'pointer', color: '#64748B', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
                     >
                       Cancel
@@ -2308,10 +2637,20 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
       )}
 
       {showAutoSendModal && (
-        <AutoSendModal 
+        <AutoSendModal
           onClose={() => setShowAutoSendModal(false)}
-          onSave={() => {
-            alert('Message scheduled for auto-send!');
+          onSave={async (scheduleData) => {
+            const selMsg = msgs.find(m => m.id === Array.from(selectedMsgIds)[0]);
+            if (selMsg) {
+              await scheduleMessage({
+                chatId: activeChat.id,
+                senderId: currentUser.id,
+                content: selMsg.text || selMsg.content,
+                attachment: selMsg.attachment || null,
+                ...scheduleData
+              });
+              alert('Message scheduled for auto-send!');
+            }
             setShowAutoSendModal(false);
             setSelectedMsgIds(new Set());
           }}
@@ -2351,6 +2690,17 @@ function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle }) {
           </div>
         );
       })()}
+      {showAddMembers && (
+        <AddMembersModal
+          users={users}
+          currentUser={currentUser}
+          participants={activeChat?.participants}
+          busy={addingMembers}
+          onClose={() => setShowAddMembers(false)}
+          onSave={handleAddMembers}
+        />
+      )}
+      {chatActionTarget && <ChatActionMenu chat={chatActionTarget} busy={chatActionBusy} onClose={() => setChatActionTarget(null)} onAction={handleChatAction} />}
     </div>
   );
 }
@@ -2374,18 +2724,28 @@ function ConfirmModal({ title, message, confirmLabel = 'Delete', confirmColor = 
 }
 
 /* ─── Service Upload Modal ─────────────────── */
-function ServiceUploadModal({ onClose, onSubmit }) {
+function ServiceUploadModal({ onClose, onSubmit, users }) {
+  const { uploadChatMedia } = useApp();
   const [form, setForm] = useState({ title: '', module: 'Finance', shortDesc: '', fullDesc: '', imageUrl: '' });
   const [benefits, setBenefits] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [servers, setServers] = useState([]);
+  const [attachedSkills, setAttachedSkills] = useState([]);
   const [benefitInput, setBenefitInput] = useState('');
   const [jobInput, setJobInput] = useState('');
   const [serverInput, setServerInput] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
   const MODULES = ['Finance', 'Supply Chain', 'Sales', 'HR', 'Manufacturing', 'Quality', 'Maintenance', 'Technology'];
+  const availableSkills = [...new Set(Object.values(users || {})
+    .filter(user => user.role === 'Trainer')
+    .flatMap(user => Array.isArray(user.profession) ? user.profession : [])
+    .map(skill => String(skill).trim())
+    .filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   const addTag = (list, setList, input, setInput) => {
     if (input.trim() && !list.includes(input.trim())) {
@@ -2398,20 +2758,42 @@ function ServiceUploadModal({ onClose, onSubmit }) {
   const handleImageFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 30 * 1024 * 1024) {
-      alert('Image file size exceeds 30MB limit.');
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Image file size exceeds 15MB limit.');
       e.target.value = '';
       return;
     }
     const url = URL.createObjectURL(file);
     setImagePreview(url);
-    setForm(f => ({ ...f, imageUrl: url }));
+    setImageFile(file);
+    setForm(f => ({ ...f, imageUrl: '' }));
   };
 
-  const handleSubmit = (e) => {
+  useEffect(() => () => {
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return alert('Title is required');
-    onSubmit({ ...form, image: imagePreview || form.imageUrl, benefits, jobs, servers });
+    const selectedSkillKeys = new Set(attachedSkills.map(skill => skill.toLowerCase()));
+    const trainers = Object.values(users || {})
+      .filter(user => user.role === 'Trainer' && (user.profession || []).some(skill => selectedSkillKeys.has(String(skill).trim().toLowerCase())))
+      .map(user => user.id);
+    setUploading(true);
+    setUploadProgress(imageFile ? 0 : 100);
+    try {
+      let image = form.imageUrl || '';
+      if (imageFile) {
+        const uploaded = await uploadChatMedia(imageFile, setUploadProgress);
+        image = uploaded?.url || '';
+      }
+      await onSubmit({ ...form, image, imageUrl: image, benefits, jobs, servers, attachedSkills, trainers });
+    } catch (error) {
+      alert(error.message || 'Could not upload the service image.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const tagStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, marginRight: 6, marginBottom: 6 };
@@ -2438,12 +2820,13 @@ function ServiceUploadModal({ onClose, onSubmit }) {
                 <div style={{ textAlign: 'center', color: '#94A3B8' }}>
                   <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" style={{ marginBottom: 8 }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Click to upload image</p>
-                  <p style={{ margin: '4px 0 0', fontSize: 12 }}>PNG, JPG up to 5MB</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12 }}>PNG, JPG up to 15MB</p>
                 </div>
               )}
             </div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFile} />
-            <input value={form.imageUrl} onChange={e => { setForm(f => ({ ...f, imageUrl: e.target.value })); setImagePreview(e.target.value); }} placeholder="Or paste image URL..." style={{ ...inputStyle, marginTop: 8 }} />
+            <input value={form.imageUrl} onChange={e => { setImageFile(null); setForm(f => ({ ...f, imageUrl: e.target.value })); setImagePreview(e.target.value); }} placeholder="Or paste image URL..." style={{ ...inputStyle, marginTop: 8 }} />
+            {uploading && imageFile && <div style={{ marginTop: 8 }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748B', marginBottom: 4 }}><span>Uploading image...</span><strong>{uploadProgress}%</strong></div><div style={{ height: 6, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}><div style={{ width: `${uploadProgress}%`, height: '100%', background: '#0A6ED1', transition: 'width 0.2s' }} /></div></div>}
           </div>
 
           {/* Title */}
@@ -2453,12 +2836,23 @@ function ServiceUploadModal({ onClose, onSubmit }) {
             <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>{form.title.length}/200 characters</p>
           </div>
 
-          {/* Module */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Category / Module</label>
-            <select value={form.module} onChange={e => setForm(f => ({ ...f, module: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
-              {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+          {/* Module Category */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Category / Module</label>
+              <select value={form.module} onChange={e => setForm(f => ({ ...f, module: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+                {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Module Type</label>
+              <select value={form.moduleType || 'Functional'} onChange={e => setForm(f => ({ ...f, moduleType: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+                <option value="Functional">Functional</option>
+                <option value="Technical">Technical</option>
+                <option value="Techno-Functional">Techno-Functional</option>
+                <option value="Industry Specific">Industry Specific</option>
+              </select>
+            </div>
           </div>
 
           {/* Short Description */}
@@ -2494,6 +2888,41 @@ function ServiceUploadModal({ onClose, onSubmit }) {
             <div style={{ marginTop: 10 }}>{jobs.map(j => <span key={j} style={{ ...tagStyle, background: '#F0FDF4', color: '#16A34A' }}>{j} <span onClick={() => removeTag(jobs, setJobs, j)} style={{ cursor: 'pointer', opacity: 0.6, marginLeft: 2 }}>✕</span></span>)}</div>
           </div>
 
+          {/* Trainer Skill Attachments */}
+          <div style={{ marginBottom: 20, padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+            <label style={labelStyle}>Attach Trainers by Skill</label>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: '#64748B' }}>Choose a skill and every trainer with that skill will appear on this service.</p>
+            {availableSkills.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {availableSkills.map(skill => {
+                  const selected = attachedSkills.some(item => item.toLowerCase() === skill.toLowerCase());
+                  return (
+                    <button key={skill} type="button" onClick={() => setAttachedSkills(prev => selected ? prev.filter(item => item.toLowerCase() !== skill.toLowerCase()) : [...prev, skill])} style={{ padding: '7px 12px', borderRadius: 20, border: `1px solid ${selected ? '#0A6ED1' : '#CBD5E1'}`, background: selected ? '#DBEAFE' : '#fff', color: selected ? '#0A6ED1' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      {selected ? '✓ ' : ''}{skill}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <span style={{ fontSize: 13, color: '#94A3B8' }}>No trainer skills have been added yet.</span>
+            )}
+            {attachedSkills.length > 0 && <p style={{ margin: '12px 0 0', fontSize: 12, color: '#0A6ED1', fontWeight: 700 }}>{Object.values(users || {}).filter(user => user.role === 'Trainer' && (user.profession || []).some(skill => attachedSkills.some(selected => selected.toLowerCase() === String(skill).toLowerCase()))).length} trainers will be attached</p>}
+          </div>
+
+          {/* Visibility Toggle */}
+          <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', gap: 12, background: '#EFF6FF', padding: 16, borderRadius: 8, border: '1px solid #BFDBFE' }}>
+            <input
+              type="checkbox"
+              checked={form.publishToWebsite !== false}
+              onChange={e => setForm(f => ({ ...f, publishToWebsite: e.target.checked }))}
+              style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
+            />
+            <div>
+              <label style={{ fontSize: 14, fontWeight: 700, color: '#1E3A8A', display: 'block' }}>Sync to Public Website</label>
+              <span style={{ fontSize: 12, color: '#3B82F6', display: 'block', marginTop: 4 }}>If checked, this course will automatically go live on your main public-facing website. Uncheck to keep it internal for employees only.</span>
+            </div>
+          </div>
+
           {/* Servers */}
           <div style={{ marginBottom: 24 }}>
             <label style={labelStyle}>Required Servers / Systems</label>
@@ -2505,10 +2934,10 @@ function ServiceUploadModal({ onClose, onSubmit }) {
           </div>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} style={{ padding: '12px 24px', background: '#F1F5F9', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" style={{ padding: '12px 28px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button type="button" disabled={uploading} onClick={onClose} style={{ padding: '12px 24px', background: '#F1F5F9', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#475569', cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>Cancel</button>
+            <button type="submit" disabled={uploading} style={{ padding: '12px 28px', background: uploading ? '#93C5FD' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: uploading ? 'wait' : 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Upload & Publish
+              {uploading ? 'Uploading...' : 'Upload & Publish'}
             </button>
           </div>
         </form>
@@ -2518,12 +2947,13 @@ function ServiceUploadModal({ onClose, onSubmit }) {
 }
 
 function CoursesPanel({ currentUser }) {
-  const { courses, toggleCourseSave, addCourse, deleteCourse, users } = useApp();
+  const { courses, toggleCourseSave, addCourse, deleteCourse, users, viewUserProfile, getTrainerRatingSummary } = useApp();
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
+  const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
 
   const handleUpload = (courseData) => {
     addCourse(courseData);
@@ -2537,12 +2967,12 @@ function CoursesPanel({ currentUser }) {
           ← Back to Services
         </button>
         <div style={{ background: '#fff', borderRadius: 12, padding: '32px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #E8ECF0', position: 'relative' }}>
-          
+
           <button onClick={() => {
             toggleCourseSave(selectedCourse.id);
             setSelectedCourse({ ...selectedCourse, saved: !selectedCourse.saved });
-          }} style={{ position: 'absolute', top: 20, right: 20, background: '#fff', border: '1px solid #E2E8F0', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: selectedCourse.saved ? '#0A6ED1' : '#64748B', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-            <svg width="22" height="22" fill={selectedCourse.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+          }} style={{ position: 'absolute', top: 20, right: 20, background: '#fff', border: '1px solid #E2E8F0', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: (selectedCourse.savedBy?.includes(currentUser?.id) || selectedCourse.saved) ? '#0A6ED1' : '#64748B', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <svg width="22" height="22" fill={(selectedCourse.savedBy?.includes(currentUser?.id) || selectedCourse.saved) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
           </button>
 
           {selectedCourse.image ? (
@@ -2554,7 +2984,7 @@ function CoursesPanel({ currentUser }) {
               {selectedCourse.icon || '📚'}
             </div>
           )}
-          
+
           <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <span style={{ background: '#E0F2FE', color: '#0A6ED1', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{selectedCourse.module}</span>
@@ -2566,9 +2996,9 @@ function CoursesPanel({ currentUser }) {
               Book a call to buy
             </button>
           </div>
-          
+
           <hr style={{ borderWidth: 0, borderTop: '1px solid #E8ECF0', margin: '32px 0' }} />
-          
+
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>About this service</h3>
           <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.6, marginBottom: 32 }}>{selectedCourse.fullDesc}</p>
 
@@ -2602,22 +3032,25 @@ function CoursesPanel({ currentUser }) {
             </div>
           )}
 
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Your Trainers</h3>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Attached Trainers</h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {(selectedCourse.trainers || []).map(tKey => {
               const t = users[tKey];
               if (!t) return null;
+              const summary = getTrainerRatingSummary(t.id);
               return (
-                <div key={tKey} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E8ECF0', width: 280 }}>
+                <button key={tKey} type="button" onClick={() => viewUserProfile(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E8ECF0', width: 280, textAlign: 'left', cursor: 'pointer' }}>
                   <div style={{ width: 48, height: 48, borderRadius: '50%', background: t.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>{t.initials}</div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{t.name}</h5>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748B' }}>{t.title} · {t.experience}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(t.profession || []).join(' · ') || t.title || 'SAP Trainer'}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: '#F59E0B', fontWeight: 700 }}>★ {summary.average || '—'} <span style={{ color: '#94A3B8', fontWeight: 500 }}>({summary.count})</span></p>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
+          {(selectedCourse.trainers || []).length === 0 && <p style={{ margin: 0, color: '#94A3B8', fontSize: 14 }}>No trainers attached to this service.</p>}
         </div>
       </div>
     );
@@ -2625,7 +3058,7 @@ function CoursesPanel({ currentUser }) {
 
   return (
     <div style={{ padding: '20px', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
-      {showUpload && <ServiceUploadModal onClose={() => setShowUpload(false)} onSubmit={handleUpload} />}
+      {showUpload && <ServiceUploadModal users={users} onClose={() => setShowUpload(false)} onSubmit={handleUpload} />}
       {deleteTarget && (
         <ConfirmModal
           title="Delete Service?"
@@ -2634,12 +3067,12 @@ function CoursesPanel({ currentUser }) {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>SAP Services</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ color: '#64748B', fontSize: 14 }}>{courses.length} Available</span>
-          {isAdminUser && !currentUser?.isImpersonating && (
+          {canManageServices && (
             <button onClick={() => setShowUpload(true)} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(10,110,209,0.25)' }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Upload
@@ -2647,21 +3080,21 @@ function CoursesPanel({ currentUser }) {
           )}
         </div>
       </div>
-      
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 24 }}>
         {courses.map(course => (
           <div key={course.id} style={{ background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', position: 'relative' }}
                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.06)'; }}
                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
                onClick={() => setSelectedCourse(course)}>
-            
+
             {/* Bookmark */}
-            <button onClick={e => { e.stopPropagation(); toggleCourseSave(course.id); }} style={{ position: 'absolute', top: 12, right: isAdminUser ? 44 : 12, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: course.saved ? '#0A6ED1' : '#64748B', zIndex: 10 }}>
-              <svg width="16" height="16" fill={course.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+            <button onClick={e => { e.stopPropagation(); toggleCourseSave(course.id); }} style={{ position: 'absolute', top: 12, right: isAdminUser ? 44 : 12, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: (course.savedBy?.includes(currentUser?.id) || course.saved) ? '#0A6ED1' : '#64748B', zIndex: 10 }}>
+              <svg width="16" height="16" fill={(course.savedBy?.includes(currentUser?.id) || course.saved) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
             </button>
-            
+
             {/* Admin Delete */}
-            {isAdminUser && !currentUser?.isImpersonating && (
+            {canManageServices && isAdminUser && (
               <button onClick={e => { e.stopPropagation(); setDeleteTarget(course); }} title="Delete service" style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#DC2626', zIndex: 10 }}>
                 <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
               </button>
@@ -2675,12 +3108,20 @@ function CoursesPanel({ currentUser }) {
               )}
               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%', background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent)' }}></div>
             </div>
-            
+
             <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <span style={{ alignSelf: 'flex-start', background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, marginBottom: 12 }}>{course.module}</span>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                <span style={{ background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{course.module}</span>
+                {course.moduleType && (
+                  <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{course.moduleType}</span>
+                )}
+                {course.publishToWebsite === false && (
+                  <span style={{ background: '#FEF2F2', color: '#DC2626', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>Internal Only</span>
+                )}
+              </div>
               <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>{course.title}</h3>
               <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748B', lineHeight: 1.5, flex: 1 }}>{course.shortDesc}</p>
-              
+
               <button style={{ width: '100%', padding: '10px', background: '#fff', border: '1.5px solid #0A6ED1', color: '#0A6ED1', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = '#0A6ED1'; e.currentTarget.style.color = '#fff'; }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0A6ED1'; }}>
@@ -2697,12 +3138,30 @@ function CoursesPanel({ currentUser }) {
 
 
 function TrainersPanel() {
-  const { users, viewUserProfile, viewProfilePic } = useApp();
+  const { users, viewUserProfile, viewProfilePic, getTrainerRatingSummary } = useApp();
   const [search, setSearch] = useState('');
-  const allTrainers = Object.values(users).filter(u => u.role === 'Trainer' || u.role === 'Admin');
-  const trainers = allTrainers.filter(t => 
-    !search || t.name.toLowerCase().includes(search.toLowerCase()) || 
-    (t.title || '').toLowerCase().includes(search.toLowerCase())
+
+  const directoryUsers = Object.values(users).filter(u =>
+    (u.role === 'Trainer' || u.role === 'Participant' || u.role === 'Admin' || u.role === 'Super Admin') &&
+    u.name !== 'System Admin'
+  );
+
+  const sortedDirectoryUsers = [...directoryUsers].map(t => {
+    const summary = getTrainerRatingSummary(t.id);
+    const rating = summary.average || t.rating || 0;
+    const reviews = summary.count || t.reviews || 0;
+    return { ...t, rating, reviews };
+  }).sort((a, b) => {
+    if ((a.role === 'Admin' || a.role === 'Super Admin') && !(b.role === 'Admin' || b.role === 'Super Admin')) return -1;
+    if ((b.role === 'Admin' || b.role === 'Super Admin') && !(a.role === 'Admin' || a.role === 'Super Admin')) return 1;
+    return b.reviews - a.reviews;
+  });
+
+  const profiles = sortedDirectoryUsers.filter(t =>
+    !search || t.name.toLowerCase().includes(search.toLowerCase()) ||
+    (t.role || '').toLowerCase().includes(search.toLowerCase()) ||
+    (t.title || '').toLowerCase().includes(search.toLowerCase()) ||
+    (t.profession || []).some(p => p.toLowerCase().includes(search.toLowerCase()))
   );
 
   const MOCK_TRAINER_EXTRAS = {
@@ -2714,31 +3173,26 @@ function TrainersPanel() {
     <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <p style={{ margin: '0 0 12px', fontSize: 14, color: '#64748B' }}><strong style={{ color: '#0F172A' }}>{trainers.length} trainers</strong> found</p>
+        <p style={{ margin: '0 0 12px', fontSize: 14, color: '#64748B' }}><strong style={{ color: '#0F172A' }}>{profiles.length} profiles</strong> found</p>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or specialization..."
+          placeholder="Search by name, role, or specialization..."
           style={{ width: '100%', padding: '10px 16px', border: '1.5px solid #E2E8F0', borderRadius: 22, fontSize: 14, outline: 'none', color: '#0F172A', background: '#fff', boxSizing: 'border-box' }}
         />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {trainers.map((trainer, idx) => {
+        {profiles.map((trainer, idx) => {
           const extras = MOCK_TRAINER_EXTRAS[trainer.id] || { location: 'Varanasi', clients: '10+ clients served', mode: 'Online + In-person', specializations: ['SAP Training', 'Corporate Consulting'] };
-          const isFirst = idx === 0;
+          const isAdminProfile = trainer.role === 'Admin' || trainer.role === 'Super Admin';
+          const isTrainerProfile = trainer.role === 'Trainer' || isAdminProfile;
+          const isFirst = idx === 0 && isTrainerProfile;
           return (
             <div key={trainer.id} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${isFirst ? '#E11D48' : '#E8ECF0'}`, padding: '20px', display: 'flex', gap: 18, alignItems: 'flex-start', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
               {/* Avatar */}
               <div onClick={() => viewProfilePic(trainer)} style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
-                <div style={{ width: 90, height: 90, background: trainer.color, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 26, fontWeight: 800 }}>
-                  {trainer.initials}
-                </div>
-                {trainer.online && (
-                  <div style={{ position: 'absolute', bottom: -4, right: -4, width: 20, height: 20, background: '#10B981', borderRadius: '50%', border: '3px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="10" height="10" fill="#fff" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                )}
+                <Avatar initials={trainer.initials} color={trainer.color} src={trainer.avatar} size={90} online={trainer.online} shape="rounded" />
               </div>
 
               {/* Info */}
@@ -2746,34 +3200,41 @@ function TrainersPanel() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
                   <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0F172A' }}>{trainer.name}</h3>
                 </div>
-                <p style={{ margin: '0 0 8px', fontSize: 13, color: '#475569', fontWeight: 600 }}>{trainer.title || 'SAP Instructor'}</p>
-                
+                <p style={{ margin: '0 0 8px', fontSize: 13, color: '#475569', fontWeight: 600 }}>{trainer.title || (isAdminProfile ? 'CEO' : trainer.role === 'Trainer' ? 'SAP Instructor' : 'Learner')}</p>
+
                 {/* Chips */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748B' }}>
-                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    {extras.location}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748B' }}>
-                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                    {extras.clients}
-                  </span>
-                  <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{extras.mode}</span>
+                  {isTrainerProfile && (
+                    <>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748B' }}>
+                        <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {trainer.location || extras.location}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748B' }}>
+                        <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                        {extras.clients}
+                      </span>
+                      <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{trainer.teachingMode || trainer.mode || extras.mode}</span>
+                    </>
+                  )}
                   <span style={{ background: '#F0FDF4', color: '#16A34A', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{trainer.role}</span>
+                  {trainer.role === 'Trainer' && <span style={{ color: '#F59E0B', fontSize: 12, fontWeight: 700 }}>★ {trainer.rating || '—'} <span style={{ color: '#94A3B8', fontWeight: 500 }}>({trainer.reviews})</span></span>}
                 </div>
 
                 {/* Bio */}
                 <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.6 }}>
-                  {(trainer.description || 'Experienced SAP professional with a strong track record of successful implementations and corporate training.').slice(0, 150)}
-                  {(trainer.description || '').length > 150 ? '...' : ''}
+                  {(trainer.bio || trainer.shortDesc || trainer.description || (isTrainerProfile ? 'Experienced SAP professional with a strong track record of successful implementations and corporate training.' : 'SAP Learning Platform member.')).slice(0, 150)}
+                  {(trainer.bio || trainer.shortDesc || trainer.description || '').length > 150 ? '...' : ''}
                 </p>
 
                 {/* Specialization tags */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {extras.specializations.map(s => (
-                    <span key={s} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{s}</span>
-                  ))}
-                </div>
+                {isTrainerProfile && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(trainer.profession?.length ? trainer.profession : extras.specializations).map(s => (
+                      <span key={s} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{s}</span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Action */}
@@ -2786,9 +3247,9 @@ function TrainersPanel() {
             </div>
           );
         })}
-        {trainers.length === 0 && (
+        {profiles.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#CBD5E1' }}>
-            <p style={{ fontWeight: 600, fontSize: 15 }}>No trainers found</p>
+            <p style={{ fontWeight: 600, fontSize: 15 }}>No profiles found</p>
           </div>
         )}
       </div>
@@ -2803,20 +3264,21 @@ function MeetingsPanel({ currentUser }) {
   return (
     <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Live Meetings & Classes</h2>
-        {(currentUser.role === 'Admin' || currentUser.role === 'Trainer') && (
-          <button style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            ＋ Schedule Meeting
-          </button>
-        )}
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Meetings</h2>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {meetings.map(m => {
+        {meetings.filter(m => {
+          if (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') return true;
+          if (m.hostId === currentUser.id) return true;
+          if (m.participants && m.participants.includes(currentUser.id)) return true;
+          if (!m.participants) return true; // legacy mock meetings
+          return false;
+        }).map(m => {
           const host = users[m.hostId];
           return (
             <div key={m.id} style={{ background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0', display: 'flex', gap: 20, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-              
+
               <div style={{ width: 80, height: 80, background: '#F8FAFC', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{m.date.split(' ')[1]}</span>
                 <span style={{ fontSize: 24, fontWeight: 800, color: '#0A6ED1', lineHeight: 1 }}>{m.date.split(' ')[0]}</span>
@@ -2852,8 +3314,8 @@ function MeetingsPanel({ currentUser }) {
 
 function BookmarksPanel({ currentUser }) {
   const { posts, courses, toggleCourseSave } = useApp();
-  const bookmarkedPosts = posts.filter(p => p.saved);
-  const bookmarkedCourses = courses.filter(c => c.saved);
+  const bookmarkedPosts = posts.filter(p => p.savedBy?.includes(currentUser?.id));
+  const bookmarkedCourses = courses.filter(c => c.savedBy?.includes(currentUser?.id) || c.saved);
 
   const hasBookmarks = bookmarkedPosts.length > 0 || bookmarkedCourses.length > 0;
 
@@ -2863,7 +3325,7 @@ function BookmarksPanel({ currentUser }) {
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Saved Items</h2>
         <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 14 }}>Your bookmarked courses and feed posts</p>
       </div>
-      
+
       {!hasBookmarks ? (
         <div style={{ textAlign: 'center', padding: '60px 0', color: '#CBD5E1' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, color: '#CBD5E1', transform: 'scale(2)' }}>{MenuIcons.bookmark}</div>
@@ -2880,8 +3342,8 @@ function BookmarksPanel({ currentUser }) {
                     <button onClick={(e) => {
                       e.stopPropagation();
                       toggleCourseSave(course.id);
-                    }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: course.saved ? '#0A6ED1' : '#64748B', zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                      <svg width="14" height="14" fill={course.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                    }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: (course.savedBy?.includes(currentUser?.id) || course.saved) ? '#0A6ED1' : '#64748B', zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                      <svg width="14" height="14" fill={(course.savedBy?.includes(currentUser?.id) || course.saved) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
                     </button>
                     <div style={{ height: 100, background: '#0F172A', position: 'relative' }}>
                       <img src={course.image} alt={course.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} />
@@ -2966,14 +3428,14 @@ const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
   }, { delay: 500 });
 
   return (
-    <div 
+    <div
       {...handlers}
-      style={{ 
-        position: 'relative', 
-        aspectRatio: '1', 
-        background: '#F1F5F9', 
-        borderRadius: 12, 
-        overflow: 'hidden', 
+      style={{
+        position: 'relative',
+        aspectRatio: '1',
+        background: '#F1F5F9',
+        borderRadius: 12,
+        overflow: 'hidden',
         cursor: 'pointer',
         border: isSelected ? '3px solid #0A6ED1' : '3px solid transparent',
         boxSizing: 'border-box'
@@ -2998,16 +3460,20 @@ const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
 };
 
 function SettingsPanel({ currentUser, onNavigateToChat }) {
-  const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats } = useApp();
+  const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats, updateUserProfile, uploadChatMedia, deleteAccount } = useApp();
   const [activeTab, setActiveTab] = useState('profile');
   const [selectedMediaIds, setSelectedMediaIds] = useState(new Set());
-  
-  const allMedia = Object.entries(chatMessages).flatMap(([chatId, msgs]) => 
-    msgs.filter(m => m.attachment && m.attachment.isDownloaded).map(m => ({ 
-      ...m.attachment, 
-      msgId: m.id, 
-      chatId, 
-      chatName: chats.find(c => c.id === chatId)?.name || 'Unknown' 
+
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const router = useRouter();
+
+  const allMedia = Object.entries(chatMessages).flatMap(([chatId, msgs]) =>
+    msgs.filter(m => m.attachment).map(m => ({
+      ...m.attachment,
+      msgId: m.id,
+      chatId,
+      chatName: chats.find(c => c.id === chatId)?.name || 'Unknown'
     }))
   );
 
@@ -3018,21 +3484,29 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
     messages: true,
     announcements: false
   });
-  const [profilePic, setProfilePic] = useState(null);
+  const [profilePic, setProfilePic] = useState(currentUser?.avatar || null);
+  const [profilePicFile, setProfilePicFile] = useState(null);
   const [cropMode, setCropMode] = useState(false);
   const [cropScale, setCropScale] = useState(1);
   const [cropX, setCropX] = useState(50);
   const [cropY, setCropY] = useState(50);
   const [name, setName] = useState(currentUser.name);
   const [title, setTitle] = useState(currentUser.title || currentUser.role);
+  const [description, setDescription] = useState(currentUser.description || currentUser.bio || '');
+  const [location, setLocation] = useState(currentUser.location || '');
+  const [teachingMode, setTeachingMode] = useState(currentUser.teachingMode || currentUser.mode || 'Online + In-person');
+  const [profession, setProfession] = useState(currentUser.profession || []);
+  const [profInput, setProfInput] = useState('');
+  const [resumeName, setResumeName] = useState(currentUser.resumeName || currentUser.resume || '');
   const picInputRef = useRef(null);
+  const resumeInputRef = useRef(null);
 
   const Toggle = ({ checked, onChange }) => (
     <div onClick={onChange} style={{ width: 44, height: 24, background: checked ? '#0A6ED1' : '#E2E8F0', borderRadius: 12, position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
       <div style={{ width: 20, height: 20, background: '#fff', borderRadius: '50%', position: 'absolute', top: 2, left: checked ? 22 : 2, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} />
     </div>
   );
-  
+
   return (
     <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%', display: 'flex', gap: 24, minHeight: 'calc(100vh - 100px)' }}>
       {/* Settings Sidebar */}
@@ -3046,36 +3520,36 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
           ))}
         </div>
       </div>
-      
+
       {/* Settings Content */}
       <div style={{ flex: 1, background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', padding: '32px' }}>
         {activeTab === 'profile' && (
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Profile Details</h3>
-            
+
             {/* Profile picture + crop */}
-            <input ref={picInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) { setProfilePic(URL.createObjectURL(e.target.files[0])); setCropMode(true); } }} />
-            
+            <input ref={picInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) { const file = e.target.files[0]; setProfilePicFile(file); setProfilePic(URL.createObjectURL(file)); setCropMode(true); } }} />
+
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 32 }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <div style={{ width: 90, height: 90, borderRadius: '50%', overflow: 'hidden', border: '3px solid #E8ECF0' }}>
                   {profilePic ? (
                     <img src={profilePic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', transformOrigin: `${cropX}% ${cropY}%`, transform: `scale(${cropScale})` }} />
                   ) : (
-                    <Avatar initials={currentUser.initials} color={currentUser.color} size={90} />
+                    <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={90} />
                   )}
                 </div>
                 <button onClick={() => picInputRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, background: '#0A6ED1', border: '2px solid #fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
                   <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 </button>
               </div>
-              
+
               <div style={{ flex: 1 }}>
                 <button onClick={() => picInputRef.current?.click()} style={{ padding: '8px 16px', background: '#F1F5F9', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer', marginBottom: 8, display: 'block' }}>
                   Change Picture
                 </button>
                 <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: profilePic ? 12 : 0 }}>JPG, GIF or PNG. Max size 2MB.</div>
-                
+
                 {/* Crop controls */}
                 {profilePic && cropMode && (
                   <div style={{ background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E8ECF0' }}>
@@ -3092,13 +3566,13 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                     ))}
                     <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                       <button onClick={() => setCropMode(false)} style={{ flex: 1, padding: '7px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
-                      <button onClick={() => { setProfilePic(null); setCropMode(false); setCropScale(1); }} style={{ flex: 1, padding: '7px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Remove</button>
+                      <button onClick={() => { setProfilePic(null); setProfilePicFile(null); setCropMode(false); setCropScale(1); }} style={{ flex: 1, padding: '7px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Remove</button>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Full Name</label>
@@ -3113,10 +3587,69 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                 <input type="text" value={title} onChange={e => setTitle(e.target.value)} disabled={currentUser?.isImpersonating} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }} />
               </div>
             </div>
-            <button disabled={currentUser?.isImpersonating} style={{ padding: '10px 20px', background: currentUser?.isImpersonating ? '#94A3B8' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: currentUser?.isImpersonating ? 'not-allowed' : 'pointer' }}>Save Changes</button>
+
+            {currentUser.role === 'Trainer' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Bio / Description</label>
+                  <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={currentUser?.isImpersonating} rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1, resize: 'vertical' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Location</label>
+                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} disabled={currentUser?.isImpersonating} placeholder="e.g. Mumbai" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Teaching Mode</label>
+                  <select value={teachingMode} onChange={e => setTeachingMode(e.target.value)} disabled={currentUser?.isImpersonating} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }}>
+                    <option value="Online">Online</option>
+                    <option value="In-person">In-person</option>
+                    <option value="Online + In-person">Online + In-person</option>
+                  </select>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Profession / Technologies</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: profession.length > 0 ? 8 : 0 }}>
+                    {profession.map((prof, idx) => (
+                      <span key={idx} style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 16, fontSize: 13, fontWeight: 600, border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {prof}
+                        <button type="button" onClick={() => setProfession(p => p.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#0A6ED1', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%' }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input type="text" value={profInput} onChange={e => setProfInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (profInput.trim()) { setProfession(p => [...p, profInput.trim()]); setProfInput(''); } } }} disabled={currentUser?.isImpersonating} placeholder="e.g. FICO (press enter or +)" style={{ flex: 1, padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }} />
+                    <button type="button" onClick={() => { if (profInput.trim()) { setProfession(p => [...p, profInput.trim()]); setProfInput(''); } }} disabled={currentUser?.isImpersonating} style={{ background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, width: 44, cursor: currentUser?.isImpersonating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 'bold', opacity: currentUser?.isImpersonating ? 0.7 : 1 }}>+</button>
+                  </div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Resume / CV</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button onClick={() => resumeInputRef.current?.click()} disabled={currentUser?.isImpersonating} style={{ padding: '8px 16px', background: '#F1F5F9', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#334155', cursor: currentUser?.isImpersonating ? 'not-allowed' : 'pointer' }}>Update Resume</button>
+                    <span style={{ fontSize: 14, color: '#64748B' }}>{resumeName || 'No file selected'}</span>
+                    <input ref={resumeInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) setResumeName(e.target.files[0].name); }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            <button onClick={async () => {
+              if (currentUser?.isImpersonating) return;
+              const updates = { name, title, description, location, teachingMode, profession, resumeName, avatar: profilePic };
+              if (profilePicFile) {
+                const uploaded = await uploadChatMedia(profilePicFile);
+                if (!uploaded?.url) return alert('Could not upload profile picture.');
+                updates.avatar = uploaded.url;
+                setProfilePic(uploaded.url);
+                setProfilePicFile(null);
+              }
+              const result = await updateUserProfile(currentUser.id, updates);
+              if (!result?.success) {
+                return alert(result?.error || 'Could not save profile. Run Prisma generate and try again.');
+              }
+              alert('Profile updated successfully!');
+            }} disabled={currentUser?.isImpersonating} style={{ padding: '10px 20px', background: currentUser?.isImpersonating ? '#94A3B8' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: currentUser?.isImpersonating ? 'not-allowed' : 'pointer' }}>Save Changes</button>
           </div>
         )}
-        
+
         {activeTab === 'security' && (
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Change Password</h3>
@@ -3131,14 +3664,42 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
               </div>
               <button disabled={currentUser?.isImpersonating} style={{ padding: '10px 20px', background: currentUser?.isImpersonating ? '#94A3B8' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: currentUser?.isImpersonating ? 'not-allowed' : 'pointer', alignSelf: 'flex-start', marginTop: 8 }}>Update Password</button>
             </div>
+
+            <hr style={{ margin: '32px 0', border: 'none', borderTop: '1px solid #E2E8F0' }} />
+
+            <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: '#DC2626' }}>Delete Account</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748B', maxWidth: 400 }}>
+              Permanently delete your account and all associated data. Enter your current password to confirm this action.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 400 }}>
+              <div>
+                <input type="password" placeholder="Confirm Current Password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} disabled={currentUser?.isImpersonating} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }} />
+              </div>
+              {deleteError && <div style={{ color: '#DC2626', fontSize: 13 }}>{deleteError}</div>}
+              <button
+                disabled={currentUser?.isImpersonating || !deletePassword}
+                onClick={async () => {
+                  if (!confirm("Are you absolutely sure you want to delete your account? This cannot be undone.")) return;
+                  const res = await deleteAccount(currentUser.email, deletePassword);
+                  if (res.success) {
+                    router.push('/ssr-app');
+                  } else {
+                    setDeleteError(res.error || 'Failed to delete account');
+                  }
+                }}
+                style={{ padding: '10px 20px', background: (currentUser?.isImpersonating || !deletePassword) ? '#FCA5A5' : '#DC2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: (currentUser?.isImpersonating || !deletePassword) ? 'not-allowed' : 'pointer', alignSelf: 'flex-start', marginTop: 8 }}
+              >
+                Delete Account
+              </button>
+            </div>
           </div>
         )}
-        
+
         {activeTab === 'notifications' && (
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Notification Preferences</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 500 }}>
-              
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: currentUser?.isImpersonating ? 0.6 : 1 }}>
                 <div>
                   <h4 style={{ margin: '0 0 4px', fontSize: 15, color: '#0F172A' }}>Push Notifications</h4>
@@ -3172,7 +3733,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                 </div>
                 <Toggle checked={notifs.announcements} onChange={() => setNotifs(n => ({...n, announcements: !n.announcements}))} />
               </div>
-              
+
             </div>
           </div>
         )}
@@ -3181,7 +3742,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Chat & Media Settings</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 500 }}>
-              
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <h4 style={{ margin: '0 0 4px', fontSize: 15, color: '#0F172A' }}>Auto-Download Media</h4>
@@ -3234,9 +3795,9 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                   {allMedia.map((media) => {
                     const isSelected = selectedMediaIds.has(media.msgId);
                     return (
-                      <MediaGridItem 
-                        key={media.msgId} 
-                        media={media} 
+                      <MediaGridItem
+                        key={media.msgId}
+                        media={media}
                         isSelected={isSelected}
                         selectionMode={selectedMediaIds.size > 0}
                         onToggle={() => {
@@ -3261,7 +3822,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   );
 }
 
-function AccountManagementPanel({ currentUser }) {
+function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
   const { users, login, deleteUser, restrictUser, addEmployee, updateUserPermissions, updateEmployeeProfile, viewUserProfile, posts, courses } = useApp();
   const [tab, setTab] = useState('dashboard');
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -3272,6 +3833,8 @@ function AccountManagementPanel({ currentUser }) {
   const [editPerms, setEditPerms] = useState([]);
   const [editPassword, setEditPassword] = useState('');
   const [editName, setEditName] = useState('');
+  const [savingEmployee, setSavingEmployee] = useState(false);
+  const [employeeError, setEmployeeError] = useState('');
 
   if (currentUser.role !== 'Admin' && currentUser.role !== 'Super Admin') return null;
 
@@ -3284,8 +3847,10 @@ function AccountManagementPanel({ currentUser }) {
   const PERMS = [
     { id: 'view_users', label: 'View User/Trainer Accounts' },
     { id: 'view_chats', label: 'View Chats' },
+    { id: 'request_access', label: 'Manage Chat Requests' },
     { id: 'post_feeds', label: 'Post Feeds' },
     { id: 'post_services', label: 'Post Services' },
+    { id: 'arrange_meetings', label: 'Arrange Meetings' },
     { id: 'all_access', label: 'All Access' },
   ];
 
@@ -3306,7 +3871,7 @@ function AccountManagementPanel({ currentUser }) {
     const rc = roleColor(u.role);
     return (
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 16, background: u.restricted ? '#FFFBEB' : '#fff' }}>
-        <Avatar initials={u.initials} color={u.color} size={42} />
+        <Avatar initials={u.initials} color={u.color} src={u.avatar} size={42} online={u.online} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>{u.name}</span>
@@ -3372,8 +3937,8 @@ function AccountManagementPanel({ currentUser }) {
               { label: 'Services', value: courses.length, icon: '📚', color: '#ECFDF5', border: '#A7F3D0' },
               { label: 'Total Posts', value: posts.length, icon: '📝', color: '#F0F9FF', border: '#BAE6FD' },
               { label: 'Total Likes', value: posts.reduce((sum, p) => sum + (p.likes || 0), 0), icon: '❤️', color: '#FFF1F2', border: '#FECDD3' },
-              { label: 'Comments', value: posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0), icon: '💬', color: '#F5F3FF', border: '#DDD6FE' },
-              { label: 'Total Views', value: posts.reduce((sum, p) => sum + (p.likes || 0) * 14 + (p.comments?.length || 0) * 7 + 34, 0), icon: '👁️', color: '#EFF6FF', border: '#BFDBFE' },
+              { label: 'Comments', value: posts.reduce((sum, p) => sum + (Array.isArray(p.comments) ? p.comments.length : (p.comments || 0)), 0), icon: '💬', color: '#F5F3FF', border: '#DDD6FE' },
+              { label: 'Total Views', value: posts.reduce((sum, p) => sum + (p.likes || 0) * 14 + (Array.isArray(p.comments) ? p.comments.length : (p.comments || 0)) * 7 + 34, 0), icon: '👁️', color: '#EFF6FF', border: '#BFDBFE' },
               { label: 'Online Now', value: allUsers.filter(u => u.online).length, icon: '🟢', color: '#F7FEE7', border: '#BBF7D0' },
             ].map(s => (
               <div key={s.label} style={{ background: s.color, border: `1px solid ${s.border}`, borderRadius: 12, padding: '18px 20px' }}>
@@ -3394,13 +3959,12 @@ function AccountManagementPanel({ currentUser }) {
               const rc = roleColor(u.role);
               return (
                 <div key={u.id} style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <Avatar initials={u.initials} color={u.color} size={38} />
+                  <Avatar initials={u.initials} color={u.color} src={u.avatar} size={38} online={u.online} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{u.name}</div>
                     <div style={{ fontSize: 12, color: '#94A3B8' }}>{u.email}</div>
                   </div>
                   <span style={{ background: rc.bg, color: rc.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{u.role}</span>
-                  {u.online && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} title="Online" />}
                   {u.restricted && <span style={{ background: '#FEF9C3', color: '#92400E', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>Restricted</span>}
                   {u.id !== currentUser.id && !currentUser.isImpersonating && btnSm('View As', () => login(u.email, null, u.id))}
                 </div>
@@ -3452,7 +4016,7 @@ function AccountManagementPanel({ currentUser }) {
       {tab === 'employees' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-            <button onClick={() => { setShowCreateEmp(true); setEmpForm({ name: '', email: '' }); setEmpPerms([]); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => { setShowCreateEmp(true); setEmpForm({ name: '', email: '' }); setEmpPerms([]); setEmployeeError(''); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Create Employee ID
             </button>
@@ -3478,6 +4042,7 @@ function AccountManagementPanel({ currentUser }) {
               </div>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8 }}>Access Permissions <span style={{ color: '#94A3B8', fontWeight: 400 }}>(default: none)</span></label>
+                <p style={{ margin: '0 0 10px', fontSize: 12, color: '#64748B' }}>Select <strong>View Chats</strong> to let this employee see chats and create groups.</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {PERMS.map(p => (
                     <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#334155' }}>
@@ -3487,9 +4052,10 @@ function AccountManagementPanel({ currentUser }) {
                   ))}
                 </div>
               </div>
+              {employeeError && <p style={{ margin: '0 0 12px', padding: '9px 11px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>{employeeError}</p>}
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => { if (!empForm.name || !empForm.email) return alert('Name and email required'); addEmployee({ ...empForm, permissions: empPerms }); setShowCreateEmp(false); }} style={{ padding: '9px 20px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Create Account</button>
-                <button onClick={() => setShowCreateEmp(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                <button disabled={savingEmployee} onClick={async () => { if (!empForm.name?.trim() || !empForm.email?.trim()) { setEmployeeError('Name and email are required'); return; } setSavingEmployee(true); setEmployeeError(''); const result = await addEmployee({ ...empForm, permissions: empPerms }); setSavingEmployee(false); if (!result.success) { setEmployeeError(result.error); return; } setShowCreateEmp(false); }} style={{ padding: '9px 20px', background: savingEmployee ? '#93C5FD' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: savingEmployee ? 'wait' : 'pointer' }}>{savingEmployee ? 'Saving...' : 'Create Account'}</button>
+                <button disabled={savingEmployee} onClick={() => setShowCreateEmp(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: savingEmployee ? 'default' : 'pointer' }}>Cancel</button>
               </div>
             </div>
           )}
@@ -3509,6 +4075,7 @@ function AccountManagementPanel({ currentUser }) {
               return (
                 <div key={u.id}>
                   <UserRow u={u} actions={<>
+                    {onViewEmployeeChats && btnSm('View Chats', () => onViewEmployeeChats(u), '#0A6ED1', '#EFF6FF')}
                     <button onClick={() => { setEditingPermsFor(isEditingThis ? null : u.id); setEditPerms(u.permissions || []); setEditPassword(u.password || ''); setEditName(u.name || ''); }} style={{ padding: '6px 12px', background: isEditingThis ? '#EFF6FF' : '#F1F5F9', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, color: isEditingThis ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>Edit Access</button>
                     {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
                     {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
@@ -3552,31 +4119,187 @@ function AccountManagementPanel({ currentUser }) {
   );
 }
 
+function RequestsPanel() {
+  const { chatRequests, users, currentUser, decideChatRequest, canManageChatRequests } = useApp();
+  const [busyId, setBusyId] = useState(null);
 
-function GlobalUserProfileModal() {
-  const { currentUser, userProfileToView, closeUserProfile, viewProfilePic } = useApp();
-  
-  if (!userProfileToView) return null;
-  const user = userProfileToView;
-  const isTrainer = user.role === 'Trainer' || user.role === 'Admin';
-  const isAdminViewer = currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin');
+  if (!canManageChatRequests(currentUser)) {
+    return (
+      <div style={{ padding: '32px', maxWidth: 760, margin: '0 auto', width: '100%' }}>
+        <div style={{ background: '#fff', border: '1px solid #E8ECF0', borderRadius: 12, padding: 24, textAlign: 'center' }}>
+          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800, color: '#0F172A' }}>Requests</h2>
+          <p style={{ margin: 0, fontSize: 14, color: '#64748B' }}>You do not have access to manage chat requests.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const sortedRequests = [...chatRequests].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const pendingCount = sortedRequests.filter(r => r.status === 'pending').length;
+
+  const statusStyle = (status) => {
+    if (status === 'approved') return { bg: '#F0FDF4', color: '#16A34A', text: 'Approved' };
+    if (status === 'rejected') return { bg: '#FEF2F2', color: '#DC2626', text: 'Rejected' };
+    return { bg: '#FFFBEB', color: '#B45309', text: 'Pending' };
+  };
+
+  const handleDecision = async (request, action) => {
+    setBusyId(request.id);
+    const result = await decideChatRequest(request.id, action);
+    setBusyId(null);
+    if (!result.success) {
+      alert(result.error || 'Could not update request');
+      return;
+    }
+    alert(action === 'approve' ? 'Chat access approved.' : 'Chat request rejected.');
+  };
 
   return (
-    <div 
+    <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Chat Requests</h2>
+        <p style={{ margin: 0, fontSize: 14, color: '#64748B' }}>
+          {pendingCount} pending request{pendingCount === 1 ? '' : 's'}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {sortedRequests.length === 0 && (
+          <div style={{ background: '#fff', border: '1px solid #E8ECF0', borderRadius: 12, padding: '40px 24px', textAlign: 'center', color: '#94A3B8' }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>No chat access requests yet</p>
+          </div>
+        )}
+
+        {sortedRequests.map(request => {
+          const requester = users[request.requesterId];
+          const target = users[request.targetId];
+          const decidedBy = request.decidedById ? users[request.decidedById] : null;
+          const status = statusStyle(request.status);
+          const isBusy = busyId === request.id;
+
+          return (
+            <div key={request.id} style={{ background: '#fff', border: '1px solid #E8ECF0', borderRadius: 12, padding: 18, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <span style={{ background: status.bg, color: status.color, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 800 }}>{status.text}</span>
+                <span style={{ fontSize: 12, color: '#94A3B8' }}>{request.createdAt ? new Date(request.createdAt).toLocaleString() : ''}</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 32px 1fr', gap: 14, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Avatar initials={requester?.initials || 'NA'} color={requester?.color || '#94A3B8'} src={requester?.avatar} size={42} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requester?.name || 'Deleted account'}</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>Requester - {requester?.role || 'Unknown'}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', color: '#CBD5E1', fontWeight: 800 }}>to</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Avatar initials={target?.initials || 'NA'} color={target?.color || '#94A3B8'} src={target?.avatar} size={42} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{target?.name || 'Deleted account'}</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>Requested contact - {target?.role || 'Unknown'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {decidedBy && (
+                <p style={{ margin: '14px 0 0', fontSize: 12, color: '#64748B' }}>Handled by {decidedBy.name}</p>
+              )}
+
+              {request.status === 'pending' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+                  <button disabled={isBusy} onClick={() => handleDecision(request, 'reject')} style={{ padding: '8px 14px', background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: isBusy ? 'default' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>Reject</button>
+                  <button disabled={isBusy} onClick={() => handleDecision(request, 'approve')} style={{ padding: '8px 14px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: isBusy ? 'default' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>Approve</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function GlobalUserProfileModal() {
+  const { currentUser, userProfileToView, closeUserProfile, viewProfilePic, startDirectChat, requestChatAccess, canDirectChatWith, canViewPrivateUserDetails, setTargetChat, getTrainerRatingSummary, rateTrainer, trainerRatings, users } = useApp();
+  const router = useRouter();
+  const [draftRating, setDraftRating] = useState(0);
+  const [draftComment, setDraftComment] = useState('');
+  const [ratingDraftFor, setRatingDraftFor] = useState(null);
+  const [savingRating, setSavingRating] = useState(false);
+  const [ratingError, setRatingError] = useState('');
+  useBackHandler(Boolean(userProfileToView), closeUserProfile);
+
+  useEffect(() => {
+    if (!userProfileToView?.id || userProfileToView.id === ratingDraftFor) return;
+    const summary = getTrainerRatingSummary(userProfileToView.id);
+    setRatingDraftFor(userProfileToView.id);
+    setDraftRating(summary.myRating);
+    setDraftComment(summary.myComment || '');
+    setRatingError('');
+  }, [userProfileToView?.id, trainerRatings]);
+
+  if (!userProfileToView) return null;
+  const user = userProfileToView;
+  const isTrainer = user.role === 'Trainer';
+  const ratingSummary = isTrainer ? getTrainerRatingSummary(user.id) : { average: 0, count: 0, myRating: 0 };
+  const isAdminViewer = currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin');
+  const canViewPrivateDetails = canViewPrivateUserDetails(currentUser) || currentUser?.id === user.id;
+  const displayTitle = user.title || (isAdmin(user) ? 'CEO' : user.role);
+  const descriptionText = user.bio || user.shortDesc || user.description || `Experienced ${user.role} on the SAP Learning Platform.`;
+  const contactPhone = user.phone || user.mobile || 'Not provided';
+
+  const handleRatingSubmit = async () => {
+    if (!draftRating || !draftComment.trim()) {
+      setRatingError('Choose stars and write a comment before sending.');
+      return;
+    }
+    setSavingRating(true);
+    setRatingError('');
+    const result = await rateTrainer(user.id, draftRating, draftComment);
+    setSavingRating(false);
+    if (!result.success) setRatingError(result.error || 'Could not save your review.');
+  };
+
+  const handleProfileChat = async () => {
+    if (!currentUser || currentUser.id === user.id) return;
+    if (canDirectChatWith(user.id)) {
+      const chat = await startDirectChat(user.id);
+      if (chat) {
+        setTargetChat({ chatId: chat.id });
+        closeUserProfile();
+        router.push(`/ssr-app/chat/${chat.id}`);
+      }
+      return;
+    }
+
+    const shouldRequest = window.confirm('Send request to Admin Service for chat access?');
+    if (!shouldRequest) return;
+    const result = await requestChatAccess(user.id);
+    if (result.chat) {
+      setTargetChat({ chatId: result.chat.id });
+      closeUserProfile();
+      router.push(`/ssr-app/chat/${result.chat.id}`);
+      return;
+    }
+    alert(result.success ? (result.existing ? 'Request is already pending with Admin Service.' : 'Request sent to Admin Service.') : (result.error || 'Could not send request.'));
+  };
+
+  return (
+    <div
       onClick={(e) => { if (e.target === e.currentTarget) closeUserProfile(); }}
       style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 9999, padding: '20px'
       }}
     >
       <div style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 800, 
-        maxHeight: '90vh', overflowY: 'auto', position: 'relative',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+        background: '#fff', width: '100%', height: '100%', overflowY: 'auto', position: 'relative'
       }}>
-        <button 
+        <button
           onClick={closeUserProfile}
           style={{
             position: 'absolute', top: 20, right: 20, width: 36, height: 36,
@@ -3588,31 +4311,43 @@ function GlobalUserProfileModal() {
           <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
-        <div style={{ padding: '40px', display: 'flex', gap: 40, flexWrap: 'wrap' }}>
+        <div style={{ padding: '40px', display: 'flex', gap: 40, flexWrap: 'wrap', maxWidth: 1000, margin: '0 auto' }}>
           {/* Left: Profile Picture */}
-          <div 
+          <div
             onClick={() => viewProfilePic(user)}
             style={{ position: 'relative', flexShrink: 0, margin: '0 auto', cursor: 'pointer' }}
           >
-            <div style={{ width: 160, height: 160, background: user.color || '#0A6ED1', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 56, fontWeight: 800 }}>
-              {user.initials}
-            </div>
-            {user.online && (
-              <div style={{ position: 'absolute', bottom: 8, right: 8, width: 24, height: 24, background: '#10B981', borderRadius: '50%', border: '4px solid #fff' }} />
-            )}
+            <Avatar initials={user.initials} color={user.color || '#0A6ED1'} src={user.avatar} size={160} online={user.online} />
           </div>
 
           {/* Right: Info */}
           <div style={{ flex: 1, minWidth: 280 }}>
             <h2 style={{ margin: '0 0 8px', fontSize: 32, fontWeight: 800, color: '#0F172A' }}>{user.name}</h2>
-            <p style={{ margin: '0 0 16px', fontSize: 18, color: '#0A6ED1', fontWeight: 600 }}>{user.title || user.role}</p>
-            
+            <p style={{ margin: '0 0 12px', fontSize: 18, color: '#0A6ED1', fontWeight: 600 }}>{displayTitle}</p>
+            {currentUser?.id !== user.id && !currentUser?.isImpersonating && (
+              <button onClick={handleProfileChat} style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: '#0F172A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H7l-4 4V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>
+                Chat
+              </button>
+            )}
+
+            {user.profession && Array.isArray(user.profession) && user.profession.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {user.profession.map((prof, i) => (
+                  <span key={i} style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 16, fontSize: 13, fontWeight: 600, border: '1px solid #BFDBFE' }}>
+                    {prof}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
               {isTrainer && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ color: '#F59E0B', fontSize: 20 }}>★</span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>{user.rating || '4.8'}</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>{ratingSummary.average || '—'}</span>
+                    <span style={{ fontSize: 12, color: '#94A3B8' }}>({ratingSummary.count})</span>
                   </div>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#CBD5E1' }} />
                 </>
@@ -3623,45 +4358,55 @@ function GlobalUserProfileModal() {
             </div>
 
             <p style={{ margin: '0 0 32px', fontSize: 16, color: '#475569', lineHeight: 1.6 }}>
-              {user.description || `Experienced ${user.role} on the SAP Learning Platform.`}
+              {descriptionText}
             </p>
-            
+
             {isTrainer && (
               <>
-                <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: '#0F172A', borderBottom: '1px solid #E2E8F0', paddingBottom: 8 }}>Classes Completed & Ratings</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {[
-                    { name: 'SAP S/4HANA Finance Integration', rating: '4.9', reviews: 124 },
-                    { name: 'FICO Module Advanced Scenarios', rating: '4.8', reviews: 89 },
-                    { name: 'SAP End-to-End Implementation Bootcamp', rating: '4.9', reviews: 210 }
-                  ].map((cls, idx) => (
-                    <div key={idx} style={{ background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                      <div>
-                        <h4 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{cls.name}</h4>
-                        <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>Successfully completed batch</p>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #E2E8F0' }}>
-                        <span style={{ color: '#F59E0B' }}>★</span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{cls.rating}</span>
-                        <span style={{ fontSize: 12, color: '#94A3B8' }}>({cls.reviews})</span>
-                      </div>
-                    </div>
-                  ))}
+                <div style={{ marginBottom: 24, padding: '16px 18px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10 }}>
+                  <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Rate this trainer</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    {[1, 2, 3, 4, 5].map(value => (
+                      <button key={value} type="button" disabled={currentUser?.id === user.id} onClick={() => { setDraftRating(value); setRatingError(''); }} aria-label={`Give ${value} star${value === 1 ? '' : 's'}`} style={{ border: 'none', background: 'transparent', padding: '2px 3px', color: value <= draftRating ? '#F59E0B' : '#CBD5E1', fontSize: 26, lineHeight: 1, cursor: currentUser?.id === user.id ? 'default' : 'pointer' }}>★</button>
+                    ))}
+                    <span style={{ marginLeft: 8, fontSize: 13, color: '#92400E', fontWeight: 600 }}>{ratingSummary.average ? `${ratingSummary.average} average from ${ratingSummary.count} review${ratingSummary.count === 1 ? '' : 's'}` : 'No reviews yet'}</span>
+                  </div>
+                  <textarea value={draftComment} onChange={e => { setDraftComment(e.target.value); setRatingError(''); }} disabled={currentUser?.id === user.id || savingRating} placeholder="Write a review about this trainer..." maxLength={1000} rows={3} style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '10px 12px', border: '1px solid #FDE68A', borderRadius: 8, resize: 'vertical', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: '#0F172A', background: '#fff' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                    <span style={{ fontSize: 11, color: ratingError ? '#DC2626' : '#92400E' }}>{ratingError || (ratingSummary.myRating ? 'Sending again will update your existing review.' : 'Your account can leave one review per trainer.')}</span>
+                    <button type="button" disabled={currentUser?.id === user.id || savingRating} onClick={handleRatingSubmit} style={{ flexShrink: 0, border: 'none', borderRadius: 7, padding: '8px 14px', background: savingRating ? '#93C5FD' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: savingRating ? 'wait' : 'pointer' }}>{savingRating ? 'Sending...' : 'Send review'}</button>
+                  </div>
                 </div>
+                {ratingSummary.reviews?.length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Reviews</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {ratingSummary.reviews.slice(0, 5).map(review => (
+                        <div key={review.id} style={{ padding: '10px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: '#0F172A' }}>{users[review.raterId]?.name || 'Platform member'}</span>
+                            <span style={{ color: '#F59E0B', fontSize: 12, fontWeight: 800 }}>★ {review.rating}</span>
+                          </div>
+                          <p style={{ margin: '5px 0 0', color: '#475569', fontSize: 13, lineHeight: 1.45 }}>{review.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             )}
-            
-            {!isTrainer && (
-               <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E2E8F0', textAlign: 'center', marginBottom: isAdminViewer ? 24 : 0 }}>
+
+            {!isTrainer && !canViewPrivateDetails && (
+               <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E2E8F0', textAlign: 'center', marginBottom: canViewPrivateDetails ? 24 : 0 }}>
                  <p style={{ margin: 0, fontSize: 14, color: '#64748B', fontWeight: 600 }}>More details are private for this user.</p>
                </div>
             )}
 
-            {isAdminViewer && (
+            {canViewPrivateDetails && (
               <div style={{ marginTop: 32, paddingTop: 24, borderTop: '2px dashed #E2E8F0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <span style={{ fontSize: 20 }}>🔒</span>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Administrative Details</h3>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{isAdminViewer && currentUser?.id !== user.id ? 'Administrative Details' : 'Private Details'}</h3>
                 </div>
                 <div style={{ background: '#FFFBEB', padding: '16px 20px', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
@@ -3670,12 +4415,12 @@ function GlobalUserProfileModal() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Mobile Number</span>
-                    <span style={{ fontSize: 14, color: '#0F172A', fontWeight: 500 }}>{user.mobile || '+1 (555) 019-2834'}</span>
+                    <span style={{ fontSize: 14, color: '#0F172A', fontWeight: 500 }}>{contactPhone}</span>
                   </div>
                   {isTrainer && (
                     <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Resume / CV</span>
-                      <a href="#" onClick={(e) => { e.preventDefault(); alert('Downloading resume...'); }} style={{ fontSize: 14, color: '#0A6ED1', fontWeight: 600, textDecoration: 'none' }}>Download Resume.pdf</a>
+                      <a href="#" onClick={(e) => { e.preventDefault(); alert(`Downloading ${user.resumeName || 'Resume.pdf'}...`); }} style={{ fontSize: 14, color: '#0A6ED1', fontWeight: 600, textDecoration: 'none' }}>Download {user.resumeName || 'Resume.pdf'}</a>
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
@@ -3694,12 +4439,13 @@ function GlobalUserProfileModal() {
 
 function ProfilePicViewerModal() {
   const { profilePicToView, closeProfilePic } = useApp();
+  useBackHandler(Boolean(profilePicToView), closeProfilePic);
 
   if (!profilePicToView) return null;
 
   // Render a large square for the profile picture (WhatsApp style)
   return (
-    <div 
+    <div
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: '#0a0a0a', zIndex: 10000, display: 'flex', flexDirection: 'column'
@@ -3707,8 +4453,13 @@ function ProfilePicViewerModal() {
     >
       <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.5)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 40, height: 40, background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 12 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, fontWeight: 800, overflow: 'hidden' }}>
-            {profilePicToView.groupImage ? <img src={profilePicToView.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+          <div style={{ width: 40, height: 40, position: 'relative' }}>
+            <div style={{ width: 40, height: 40, background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 12 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, fontWeight: 800, overflow: 'hidden' }}>
+              {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+            </div>
+            {profilePicToView.online === true && (
+              <span style={{ position: 'absolute', top: -1, right: -1, width: 11, height: 11, background: '#10B981', borderRadius: '50%', border: '2px solid #000', boxSizing: 'border-box' }} />
+            )}
           </div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>{profilePicToView.name}</span>
         </div>
@@ -3716,15 +4467,18 @@ function ProfilePicViewerModal() {
           <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div 
+      <div
         onClick={closeProfilePic}
         style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       >
-        <div 
-          onClick={(e) => e.stopPropagation()} 
-          style={{ width: '100%', maxWidth: 500, aspectRatio: '1', background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 24 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 140, fontWeight: 800, overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: '100%', maxWidth: 500, aspectRatio: '1', background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 24 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 140, fontWeight: 800, overflow: 'visible', boxShadow: '0 10px 40px rgba(0,0,0,0.5)', position: 'relative' }}
         >
-          {profilePicToView.groupImage ? <img src={profilePicToView.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+          {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+          {profilePicToView.online === true && (
+            <span style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, background: '#10B981', borderRadius: '50%', border: '4px solid #0a0a0a', boxSizing: 'border-box' }} />
+          )}
         </div>
       </div>
     </div>
@@ -3732,9 +4486,139 @@ function ProfilePicViewerModal() {
 }
 
 /* ─── MAIN PAGE ─────────────────────────────────────── */
+function ScheduleMeetingModal() {
+  const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, sendChatMessage, currentUser } = useApp();
+  useBackHandler(showScheduleMeeting, closeScheduleMeeting);
+  const [meetingForm, setMeetingForm] = useState({
+    title: '', link: '', startDate: '', endDate: '', time: '',
+    recurrence: 'none', weekdays: [], monthlyDates: ''
+  });
+
+  if (!showScheduleMeeting) return null;
+
+  const handleScheduleMeeting = () => {
+    if (!meetingForm.title || !meetingForm.link || !meetingForm.startDate || !meetingForm.time) {
+      alert('Please fill all required meeting details (Title, Link, Start Date, Time).');
+      return;
+    }
+
+    // Add meeting to state
+    addMeeting({
+      id: `m${Date.now()}`,
+      title: meetingForm.title,
+      module: activeChatForMeeting?.name || 'General',
+      hostId: currentUser.id,
+      date: meetingForm.startDate,
+      endDate: meetingForm.endDate,
+      time: meetingForm.time,
+      duration: '1 hour',
+      link: meetingForm.link,
+      status: 'upcoming',
+      recurrence: meetingForm.recurrence,
+      weekdays: meetingForm.weekdays,
+      monthlyDates: meetingForm.monthlyDates,
+      chatId: activeChatForMeeting?.id,
+      participants: activeChatForMeeting?.participants || []
+    });
+
+    // Send a system message in the chat
+    let recurrenceMsg = '';
+    if (meetingForm.recurrence === 'daily') recurrenceMsg = '(Daily)';
+    else if (meetingForm.recurrence === 'weekly') recurrenceMsg = `(Weekly on ${meetingForm.weekdays.join(', ')})`;
+    else if (meetingForm.recurrence === 'monthly') recurrenceMsg = `(Monthly on dates: ${meetingForm.monthlyDates})`;
+
+    sendChatMessage(activeChatForMeeting.id, `📅 **Meeting Scheduled:** ${meetingForm.title} ${recurrenceMsg}\n🕒 ${meetingForm.startDate} at ${meetingForm.time}\n🔗 [Join Meeting](${meetingForm.link})`, null);
+
+    // Mock FCM push notification
+    alert(`[FCM PUSH SENT]\nMeeting scheduled successfully! All members of "${activeChatForMeeting.name}" have been notified.`);
+
+    closeScheduleMeeting();
+  };
+
+  const toggleWeekday = (day) => {
+    setMeetingForm(prev => ({
+      ...prev,
+      weekdays: prev.weekdays.includes(day) ? prev.weekdays.filter(d => d !== day) : [...prev.weekdays, day]
+    }));
+  };
+
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+        <div style={{ padding: '20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Schedule Meeting</h3>
+          <button onClick={closeScheduleMeeting} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Title</label>
+            <input type="text" value={meetingForm.title} onChange={e => setMeetingForm({...meetingForm, title: e.target.value})} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Link (Zoom / Jio)</label>
+            <input type="text" value={meetingForm.link} onChange={e => setMeetingForm({...meetingForm, link: e.target.value})} placeholder="https://..." style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Start Date</label>
+              <input type="date" value={meetingForm.startDate} onChange={e => setMeetingForm({...meetingForm, startDate: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>End Date (Optional)</label>
+              <input type="date" value={meetingForm.endDate} onChange={e => setMeetingForm({...meetingForm, endDate: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Time</label>
+              <input type="time" value={meetingForm.time} onChange={e => setMeetingForm({...meetingForm, time: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Recurrence</label>
+              <select value={meetingForm.recurrence} onChange={e => setMeetingForm({...meetingForm, recurrence: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: '#fff' }}>
+                <option value="none">Does not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+          </div>
+
+          {meetingForm.recurrence === 'weekly' && (
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8 }}>Select Weekdays</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {daysOfWeek.map(day => (
+                  <button key={day} onClick={() => toggleWeekday(day)} style={{ padding: '6px 12px', borderRadius: 20, border: '1px solid', borderColor: meetingForm.weekdays.includes(day) ? '#10B981' : '#E2E8F0', background: meetingForm.weekdays.includes(day) ? '#ECFDF5' : '#fff', color: meetingForm.weekdays.includes(day) ? '#10B981' : '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {meetingForm.recurrence === 'monthly' && (
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Dates in Month</label>
+              <input type="text" value={meetingForm.monthlyDates} onChange={e => setMeetingForm({...meetingForm, monthlyDates: e.target.value})} placeholder="e.g. 1, 15, 28" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>Enter comma-separated dates (1-31).</p>
+            </div>
+          )}
+
+        </div>
+        <div style={{ padding: '20px', borderTop: '1px solid #F1F5F9' }}>
+          <button onClick={handleScheduleMeeting} style={{ width: '100%', background: '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Schedule & Notify Group</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
-  const { posts, currentUser, addPost, setTargetChat, endImpersonation } = useApp();
+  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -3752,10 +4636,10 @@ export default function HomePage() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = sessionStorage.getItem('ssr_app_user');
+    const saved = localStorage.getItem('ssr_app_user') || sessionStorage.getItem('ssr_app_user');
     if (!currentUser && saved) { /* user is set from context */ }
     if (!currentUser && !saved) { router.replace('/ssr-app'); }
-    
+
     // Generate random engagement offsets on mount for feed shuffle
     const offsets = {};
     posts.forEach(p => { offsets[p.id] = Math.random() * 25; });
@@ -3770,21 +4654,35 @@ export default function HomePage() {
   }).sort((a, b) => {
     // Engagement Score = Likes (1pt) + Comments (3pts)
     // + randomOffset to shuffle feed on refresh while keeping popular posts near top
-    const scoreA = a.likes + (a.comments?.length || 0) * 3 + (randomOffsets[a.id] || 10);
-    const scoreB = b.likes + (b.comments?.length || 0) * 3 + (randomOffsets[b.id] || 10);
+    const commentsA = Array.isArray(a.comments) ? a.comments.length : (a.comments || 0);
+    const commentsB = Array.isArray(b.comments) ? b.comments.length : (b.comments || 0);
+    const scoreA = (a.likes || 0) + commentsA * 3 + (randomOffsets[a.id] || 10);
+    const scoreB = (b.likes || 0) + commentsB * 3 + (randomOffsets[b.id] || 10);
     return scoreB - scoreA;
   });
 
   const handleNavClick = (id) => {
     setActiveNav(id);
-    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts'].includes(id)) {
+    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'requests', 'notifications'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
 
   const handleLogout = () => {
-    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('ssr_app_user');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('ssr_app_user');
+      sessionStorage.removeItem('ssr_app_user');
+    }
     router.push('/ssr-app');
+  };
+
+  const viewEmployeeChats = async (employee) => {
+    if (!employee?.id || !isAdmin(currentUser) || currentUser.isImpersonating) return;
+    const result = await login('', null, employee.id);
+    if (result) {
+      setActiveNav('feed');
+      setMobilePage('chat');
+    }
   };
 
   /* ── DESKTOP LAYOUT ──────────────────────────────── */
@@ -3793,7 +4691,8 @@ export default function HomePage() {
       <div style={{ minHeight: '100vh', background: '#F0F2F5', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
         <GlobalUserProfileModal />
         <ProfilePicViewerModal />
-        
+        <ScheduleMeetingModal />
+
         {showCreatePost && isAdmin(currentUser) && (
           <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post) => { addPost(post); setShowCreatePost(false); }} />
         )}
@@ -3810,7 +4709,7 @@ export default function HomePage() {
         )}
 
         {/* Top Header */}
-        <div style={{ position: 'fixed', top: currentUser?.isImpersonating ? 40 : 0, left: 0, right: 0, height: 58, background: '#fff', borderBottom: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16, zIndex: 200, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ position: 'fixed', top: currentUser?.isImpersonating ? 40 : 0, left: 0, right: 0, height: 58, background: '#fff', borderBottom: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16, zIndex: 400, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210, flexShrink: 0 }}>
             <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
@@ -3836,7 +4735,7 @@ export default function HomePage() {
             {/* User */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setUserMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: userMenuOpen ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 22, padding: '5px 12px 5px 5px', cursor: 'pointer' }}>
-                <Avatar initials={currentUser.initials} color={currentUser.color} size={30} />
+                <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={30} online={currentUser.online} />
                 <div style={{ textAlign: 'left' }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>{currentUser.name}</p>
                   <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>{currentUser.role}</p>
@@ -3853,6 +4752,12 @@ export default function HomePage() {
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.settings}</span>Settings</button>
+                  {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
+                    <button onClick={() => { setActiveNav('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    ><span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests</button>
+                  )}
                   <button onClick={() => { alert('Help'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -3951,9 +4856,16 @@ export default function HomePage() {
 
               {activeNav === 'accounts' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-                  <AccountManagementPanel currentUser={currentUser} />
+                  <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
                 </div>
               )}
+
+              {activeNav === 'requests' && (
+                <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+                  <RequestsPanel />
+                </div>
+              )}
+
               {activeNav === 'notifications' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <NotificationsPanel />
@@ -3990,7 +4902,8 @@ export default function HomePage() {
     <div style={{ minHeight: '100vh', background: '#F0F2F5', fontFamily: "'Inter','Segoe UI',sans-serif", paddingBottom: 64 }}>
       <GlobalUserProfileModal />
       <ProfilePicViewerModal />
-      
+      <ScheduleMeetingModal />
+
       {showCreatePost && isAdmin(currentUser) && (
         <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post) => { addPost(post); setShowCreatePost(false); }} />
       )}
@@ -4010,11 +4923,9 @@ export default function HomePage() {
       {/* Mobile Header */}
       <div style={{ position: 'sticky', top: currentUser?.isImpersonating ? 40 : 0, background: '#fff', borderBottom: '1px solid #E8ECF0', padding: '0 16px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, background: '#0A6ED1', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#F0AB00', fontWeight: 900, fontSize: 9 }}>SSR</span>
-          </div>
+          <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {mobilePage === 'feed' ? 'Home Feed' : mobilePage === 'meetings' ? 'Live Meetings' : mobilePage}
+            {mobilePage === 'feed' ? 'Home Feed' : mobilePage === 'meetings' ? 'Live Meetings' : mobilePage === 'trainers' ? 'Trainers / Users' : mobilePage === 'requests' ? 'Requests' : mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -4022,9 +4933,9 @@ export default function HomePage() {
             {MenuIcons.bell}
             <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />
           </button>
-          
+
           <button onClick={() => setUserMenuOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <Avatar initials={currentUser.initials} color={currentUser.color} size={30} />
+            <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={30} online={currentUser.online} />
           </button>
 
           {/* Mobile Notifications Dropdown */}
@@ -4056,6 +4967,11 @@ export default function HomePage() {
               {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') && (
                 <button onClick={() => { setMobilePage('accounts'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{MenuIcons.accounts}</span>Account Mgmt
+                </button>
+              )}
+              {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
+                <button onClick={() => { setMobilePage('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                  <span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests
                 </button>
               )}
               <button onClick={() => { setMobilePage('bookmarks'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
@@ -4116,7 +5032,13 @@ export default function HomePage() {
 
       {mobilePage === 'accounts' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          <AccountManagementPanel currentUser={currentUser} />
+          <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
+        </div>
+      )}
+
+      {mobilePage === 'requests' && (
+        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <RequestsPanel />
         </div>
       )}
 
@@ -4147,7 +5069,7 @@ export default function HomePage() {
           { id: 'chat', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>, label: 'Chat' },
           { id: 'courses', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>, label: 'Services' },
           { id: 'meetings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>, label: 'Meetings' },
-          { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Trainers' },
+          { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
         ].map(item => {
           const active = mobilePage === item.id;

@@ -2,7 +2,7 @@
   "name": "SSR Business Solutions",
   "short_name": "SSR Biz",
   "description": "SAP Authorized Training Center | Staffing & Development — Visakhapatnam",
-  "start_url": "/",
+  "start_url": "/ssr-app",
   "display": "standalone",
   "background_color": "#08090d",
   "theme_color": "#0066aa",

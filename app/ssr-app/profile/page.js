@@ -31,7 +31,10 @@ export default function ProfilePage() {
   const { currentUser, logout } = useApp();
 
   const handleLogout = () => {
-    if (typeof window !== 'undefined') sessionStorage.removeItem('ssr_app_user');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('ssr_app_user');
+      sessionStorage.removeItem('ssr_app_user');
+    }
     logout();
     router.push('/ssr-app');
   };

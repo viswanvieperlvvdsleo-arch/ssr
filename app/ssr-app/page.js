@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from './AppContext';
 
@@ -16,42 +16,102 @@ const CATEGORY_TO_ROLE = {
 
 export default function EntryPage() {
   const router = useRouter();
-  const { login, signup, setSelectedRole } = useApp();
+  const { login, signup, users, currentUser } = useApp();
+
+  useEffect(() => {
+    if (currentUser) {
+      router.replace('/ssr-app/home');
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem('ssr_app_user') || sessionStorage.getItem('ssr_app_user');
+      if (saved) router.replace('/ssr-app/home');
+    } catch {
+      // Storage may be unavailable in a privacy-restricted browser.
+    }
+  }, [currentUser, router]);
 
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [category, setCategory] = useState('User');
+  const [profession, setProfession] = useState([]);
+  const [profInput, setProfInput] = useState('');
+  const [resume, setResume] = useState(null);
+
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password || (tab === 'signup' && !name)) {
+    if (!email || !password || (tab === 'signup' && (!name || !phone))) {
       setError('Please fill all required fields.');
       return;
     }
+
+    if (tab === 'signup') {
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+
+      const emailExists = Object.values(users).some(u => u.email?.toLowerCase() === email.trim().toLowerCase());
+      if (emailExists) {
+        setError('Email already exists. Please login instead.');
+        return;
+      }
+      const nameExists = Object.values(users).some(u => u.name?.toLowerCase() === name.trim().toLowerCase());
+      if (nameExists) {
+        setError('Name already exists. Please choose a different name.');
+        return;
+      }
+
+      if (category === 'Trainer' && profession.length === 0) {
+        setError('Please add at least one profession (e.g. FICO).');
+        return;
+      }
+      if (category === 'Trainer' && !resume) {
+        setError('Please attach your resume for secure verification.');
+        return;
+      }
+    }
+
     setError('');
     setLoading(true);
     await new Promise(r => setTimeout(r, 900));
 
     // Normal login/signup
     if (tab === 'signup') {
-      const success = signup(name, email.trim().toLowerCase(), password, category);
-      if (success) {
+      const extraData = {
+        phone: phone.trim(),
+        ...(category === 'Trainer' ? {
+          profession: profession,
+          resumeName: resume?.name
+        } : {})
+      };
+
+      const result = await signup(name, email.trim().toLowerCase(), password, category, extraData);
+      if (result && result.success) {
         router.push('/ssr-app/home');
       } else {
-        setError('Signup failed.');
+        setError(`Signup failed: ${result?.error || 'Unknown error'}`);
         setLoading(false);
       }
     } else {
-      const success = login(email.trim().toLowerCase(), password);
-      if (success) {
+      const result = await login(email.trim().toLowerCase(), password.trim());
+      if (result && result.success) {
         router.push('/ssr-app/home');
       } else {
-        setError('Invalid email or password.');
+        setError(`Login failed: ${result?.error || 'Invalid email or password.'}`);
         setLoading(false);
       }
     }
@@ -73,10 +133,9 @@ export default function EntryPage() {
       <div style={{ marginBottom: 36, textAlign: 'center' }}>
         <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{
           width: 56, height: 56,
-          borderRadius: 16,
+          borderRadius: 8,
           margin: '0 auto 14px',
-          boxShadow: '0 4px 16px rgba(10,110,209,0.25)',
-          objectFit: 'cover',
+          objectFit: 'contain',
           display: 'block'
         }} />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.02em' }}>
@@ -163,6 +222,22 @@ export default function EntryPage() {
             </div>
           )}
 
+          {tab === 'signup' && (
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Contact Number</label>
+              <input
+                type="tel"
+                value={phone}
+                maxLength={20}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="e.g. +91 98765 43210"
+                style={inputStyle}
+                onFocus={e => e.target.style.borderColor = '#0A6ED1'}
+                onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+              />
+            </div>
+          )}
+
           {/* Email */}
           <div style={{ marginBottom: 18 }}>
             <label style={labelStyle}>Email Address</label>
@@ -197,7 +272,7 @@ export default function EntryPage() {
                 type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={tab === 'signup' ? "Min. 6 characters" : "••••••••"}
                 style={{ ...inputStyle, paddingLeft: 40, paddingRight: 44 }}
                 onFocus={e => e.target.style.borderColor = '#0A6ED1'}
                 onBlur={e => e.target.style.borderColor = '#E2E8F0'}
@@ -211,6 +286,83 @@ export default function EntryPage() {
               </button>
             </div>
           </div>
+
+          {tab === 'signup' && (
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Confirm Password</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94A3B8' }}>🔒</span>
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  style={{ ...inputStyle, paddingLeft: 40 }}
+                  onFocus={e => e.target.style.borderColor = '#0A6ED1'}
+                  onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+                />
+              </div>
+            </div>
+          )}
+
+          {tab === 'signup' && category === 'Trainer' && (
+            <>
+              <div style={{ marginBottom: 18 }}>
+                <label style={labelStyle}>Profession / Modules</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: profession.length > 0 ? 8 : 0 }}>
+                  {profession.map((prof, idx) => (
+                    <span key={idx} style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 16, fontSize: 13, fontWeight: 600, border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {prof}
+                      <button type="button" onClick={() => setProfession(p => p.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#0A6ED1', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%' }}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    value={profInput}
+                    onChange={e => setProfInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (profInput.trim()) {
+                          setProfession(p => [...p, profInput.trim()]);
+                          setProfInput('');
+                        }
+                      }
+                    }}
+                    placeholder="e.g. FICO, MM (press enter or +)"
+                    style={{ ...inputStyle, flex: 1 }}
+                    onFocus={e => e.target.style.borderColor = '#0A6ED1'}
+                    onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (profInput.trim()) {
+                        setProfession(p => [...p, profInput.trim()]);
+                        setProfInput('');
+                      }
+                    }}
+                    style={{ background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, width: 44, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 'bold' }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <label style={labelStyle}>Resume for Verification</label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={e => setResume(e.target.files[0] || null)}
+                  style={{ ...inputStyle, padding: '9px 12px', fontSize: 13 }}
+                  onFocus={e => e.target.style.borderColor = '#0A6ED1'}
+                  onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+                />
+              </div>
+            </>
+          )}
 
           {/* Category */}
           <div style={{ marginBottom: 26 }}>

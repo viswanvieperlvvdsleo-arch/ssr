@@ -16,13 +16,14 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const roleKey = searchParams.get('role') || 'participant';
-  const { login, setSelectedRole } = useApp();
+  const { login, signup, setSelectedRole } = useApp();
   const meta = ROLE_META[roleKey] || ROLE_META.participant;
 
   const [tab, setTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -32,23 +33,29 @@ function LoginForm() {
     setError('');
     if (!email || !password) { setError('Please fill all fields.'); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    const user = login(roleKey);
-    setSelectedRole(roleKey);
-    sessionStorage.setItem('ssr_app_user', JSON.stringify(user));
-    router.push('/ssr-app/home');
+    const result = await login(email.trim().toLowerCase(), password.trim());
+    if (result?.success) {
+      setSelectedRole(meta.label);
+      router.push('/ssr-app/home');
+    } else {
+      setError(result?.error || 'Invalid email or password.');
+      setLoading(false);
+    }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
-    if (!name || !email || !password) { setError('Please fill all fields.'); return; }
+    if (!name || !email || !phone || !password) { setError('Please fill all fields.'); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    const user = login(roleKey);
-    setSelectedRole(roleKey);
-    sessionStorage.setItem('ssr_app_user', JSON.stringify(user));
-    router.push('/ssr-app/home');
+    const result = await signup(name.trim(), email.trim().toLowerCase(), password, meta.label, { phone: phone.trim() });
+    if (result?.success) {
+      setSelectedRole(meta.label);
+      router.push('/ssr-app/home');
+    } else {
+      setError(result?.error || 'Could not create account.');
+      setLoading(false);
+    }
   };
 
   return (
@@ -89,6 +96,12 @@ function LoginForm() {
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: '#0F172A' }} />
               </div>
             )}
+            {tab === 'register' && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Contact Number</label>
+                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: '#0F172A' }} />
+              </div>
+            )}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Email Address</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: '#0F172A' }} />
@@ -109,10 +122,10 @@ function LoginForm() {
             <button onClick={() => {}} style={{ background: 'none', border: 'none', color: '#0A6ED1', cursor: 'pointer', fontSize: 13 }}>Forgot password?</button>
           </div>
 
-          {/* Demo hint */}
+          {/* Auth hint */}
           <div style={{ marginTop: 24, background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 14px' }}>
-            <p style={{ margin: 0, fontSize: 12, color: '#0369A1', fontWeight: 600 }}>🔵 Demo Mode</p>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#0369A1' }}>Enter any email & password to continue as <strong>{meta.label}</strong>.</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#0369A1', fontWeight: 600 }}>Database Login</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#0369A1' }}>Use an existing MongoDB account, or register a new <strong>{meta.label}</strong> account.</p>
           </div>
         </div>
       </div>

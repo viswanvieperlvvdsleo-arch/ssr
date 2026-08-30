@@ -15,7 +15,7 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     setMounted(true);
-    const saved = sessionStorage.getItem('ssr_app_user');
+    const saved = localStorage.getItem('ssr_app_user') || sessionStorage.getItem('ssr_app_user');
     if (!currentUser && !saved) {
       router.replace('/ssr-app');
     }
