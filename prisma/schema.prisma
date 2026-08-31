@@ -82,6 +82,7 @@ model AppUser {
   initials String?
   color    String?
   avatar   String?
+  mediaStorageMode String   @default("cloud")
   online   Boolean   @default(false)
   lastSeen DateTime?
 

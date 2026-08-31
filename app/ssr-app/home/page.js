@@ -1652,6 +1652,9 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
     if (!attachment?.url || attachment.cloudDeleted) {
       return { success: false, error: 'Unable to download: this file was deleted from cloud storage.' };
     }
+    if (currentUser?.mediaStorageMode !== 'device') {
+      return { success: true, cloudOnly: true };
+    }
     const response = await fetch(attachment.url);
     if (!response.ok) {
       return { success: false, error: response.status === 410 || response.status === 404
@@ -3555,10 +3558,25 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats, updateUserProfile, uploadChatMedia, deleteAccount } = useApp();
   const [activeTab, setActiveTab] = useState('profile');
   const [selectedMediaIds, setSelectedMediaIds] = useState(new Set());
+  const [mediaStorageMode, setMediaStorageMode] = useState(currentUser?.mediaStorageMode || 'cloud');
 
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const router = useRouter();
+
+  useEffect(() => {
+    setMediaStorageMode(currentUser?.mediaStorageMode || 'cloud');
+  }, [currentUser?.id, currentUser?.mediaStorageMode]);
+
+  const saveMediaStorageMode = async (mode) => {
+    const previousMode = mediaStorageMode;
+    setMediaStorageMode(mode);
+    const result = await updateUserProfile(currentUser.id, { mediaStorageMode: mode });
+    if (!result?.success) {
+      setMediaStorageMode(previousMode);
+      alert(result?.error || 'Could not save media storage preference');
+    }
+  };
 
   const allMedia = Object.entries(chatMessages).flatMap(([chatId, msgs]) =>
       msgs.filter(m => m.attachment).map(m => ({
@@ -3842,6 +3860,25 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                   <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>Automatically download photos, videos, and documents when received.</p>
                 </div>
                 <Toggle checked={autoDownloadMedia} onChange={() => setAutoDownloadMedia(!autoDownloadMedia)} />
+              </div>
+
+              <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>
+                <h4 style={{ margin: '0 0 5px', fontSize: 15, color: '#0F172A' }}>When I download media</h4>
+                <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748B' }}>Choose whether the file is saved on this device or opened from cloud storage only.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {[
+                    { id: 'cloud', label: 'Cloud only', description: 'View from the server; do not save to this device.' },
+                    { id: 'device', label: 'Download to device', description: 'Save a copy in your browser downloads.' },
+                  ].map(option => (
+                    <button key={option.id} type="button" onClick={() => saveMediaStorageMode(option.id)} style={{ textAlign: 'left', padding: '12px 13px', border: `1.5px solid ${mediaStorageMode === option.id ? '#0A6ED1' : '#E2E8F0'}`, background: mediaStorageMode === option.id ? '#EFF6FF' : '#fff', borderRadius: 8, cursor: 'pointer' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${mediaStorageMode === option.id ? '#0A6ED1' : '#94A3B8'}`, background: mediaStorageMode === option.id ? '#0A6ED1' : '#fff', boxShadow: mediaStorageMode === option.id ? 'inset 0 0 0 3px #fff' : 'none' }} />
+                        {option.label}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 6, paddingLeft: 22, fontSize: 11, lineHeight: 1.35, color: '#64748B' }}>{option.description}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div style={{ marginTop: 32, borderTop: '1px solid #E2E8F0', paddingTop: 32 }}>

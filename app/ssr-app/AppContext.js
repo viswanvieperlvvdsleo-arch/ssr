@@ -61,6 +61,7 @@ const normalizeUser = (user = {}) => ({
   initials: user.initials || getInitials(user.name),
   color: user.color || getColor(user.email || user.name),
   avatar: user.avatar || user.profilePic || null,
+  mediaStorageMode: user.mediaStorageMode === 'device' ? 'device' : 'cloud',
   profession: safeArray(user.profession),
   permissions: safeArray(user.permissions),
   restricted: Boolean(user.restricted),
@@ -419,7 +420,7 @@ export function AppProvider({ children }) {
         persistedUpdates.resume = persistedUpdates.resumeName;
         delete persistedUpdates.resumeName;
       }
-      const allowedFields = ['email', 'name', 'phone', 'password', 'role', 'initials', 'color', 'avatar', 'online', 'lastSeen', 'title', 'experience', 'profession', 'mode', 'location', 'shortDesc', 'bio', 'resume', 'rating', 'reviews', 'permissions', 'restricted'];
+      const allowedFields = ['email', 'name', 'phone', 'password', 'role', 'initials', 'color', 'avatar', 'mediaStorageMode', 'online', 'lastSeen', 'title', 'experience', 'profession', 'mode', 'location', 'shortDesc', 'bio', 'resume', 'rating', 'reviews', 'permissions', 'restricted'];
       const dbUpdates = Object.fromEntries(Object.entries(persistedUpdates).filter(([key]) => allowedFields.includes(key)));
       const res = await fetch('/api/ssr/users', {
         method: 'PUT',
