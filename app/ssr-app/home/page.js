@@ -4881,7 +4881,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login } = useApp();
+  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login, logout } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -4932,11 +4932,9 @@ export default function HomePage() {
   };
 
   const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('ssr_app_user');
-      sessionStorage.removeItem('ssr_app_user');
-    }
-    router.push('/ssr-app');
+    logout();
+    setUserMenuOpen(false);
+    router.replace('/ssr-app');
   };
 
   const viewEmployeeChats = async (employee) => {
