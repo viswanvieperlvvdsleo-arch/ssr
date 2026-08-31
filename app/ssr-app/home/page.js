@@ -37,6 +37,7 @@ const NavIcons = {
   bookmarks: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
   settings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
   accounts:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+  data:      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12v7c0 1.66 3.58 3 8 3s8-1.34 8-3v-7"/></svg>,
   help:      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   trainers:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
   requests:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>,
@@ -54,6 +55,7 @@ const getLeftNav = (user) => {
 
   if (user && (user.role === 'Admin' || user.role === 'Super Admin') && !user.isImpersonating) {
     nav.push({ id: 'accounts', label: 'Account Management' });
+    nav.push({ id: 'data-management', label: 'Data Management' });
   }
   if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
     nav.push({ id: 'requests', label: 'Requests' });
@@ -278,10 +280,14 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
         </button>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           {isViewOnly ? (
-            <a href={currentUrl} download={target?.name} style={{ background: 'rgba(255,255,255,0.2)', textDecoration: 'none', border: 'none', borderRadius: 8, color: '#fff', padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{ marginRight: 6 }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download
-            </a>
+            target?.cloudDeleted || !currentUrl ? (
+              <span style={{ background: 'rgba(127,29,29,0.75)', borderRadius: 8, color: '#FECACA', padding: '8px 16px', fontSize: 13, fontWeight: 700 }}>Unable to download</span>
+            ) : (
+              <a href={currentUrl} download={target?.name} style={{ background: 'rgba(255,255,255,0.2)', textDecoration: 'none', border: 'none', borderRadius: 8, color: '#fff', padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{ marginRight: 6 }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
+            )
           ) : (
             isImage && (
               <>
@@ -457,13 +463,46 @@ function NotificationsPanel() {
   );
 }
 
-function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
-  const { autoDownloadMedia } = useApp();
+function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedia, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
+  const { autoDownloadMedia, currentUser } = useApp();
+  const mediaRemovedForUser = Boolean(msg.attachment?.deletedFor?.includes(currentUser?.id));
+  const mediaDeletedFromCloud = Boolean(msg.attachment?.cloudDeleted);
   const [isDownloaded, setIsDownloaded] = useState(() => {
+    if (mediaRemovedForUser || mediaDeletedFromCloud) return false;
     if (msg.isMe) return true;
     if (msg.attachment?.isDownloaded) return true;
     return autoDownloadMedia;
   });
+  const [downloadState, setDownloadState] = useState('idle');
+  const [downloadError, setDownloadError] = useState('');
+
+  useEffect(() => {
+    if (mediaRemovedForUser || mediaDeletedFromCloud) {
+      setIsDownloaded(false);
+      return;
+    }
+    setIsDownloaded(Boolean(msg.isMe || msg.attachment?.isDownloaded || autoDownloadMedia));
+  }, [msg.id, msg.isMe, msg.attachment?.url, msg.attachment?.deletedFor?.join(','), msg.attachment?.cloudDeleted, currentUser?.id, autoDownloadMedia]);
+
+  const handleMediaDownload = async (event) => {
+    event?.stopPropagation();
+    if (mediaDeletedFromCloud) {
+      setDownloadError('Unable to download: this file was deleted from cloud storage.');
+      return;
+    }
+    if (!onDownloadMedia || downloadState === 'loading') return;
+    setDownloadError('');
+    setDownloadState('loading');
+    try {
+      const result = await onDownloadMedia(msg.attachment);
+      if (!result?.success) throw new Error(result?.error || 'Unable to download media');
+      setIsDownloaded(true);
+      setDownloadState('done');
+    } catch (error) {
+      setDownloadState('error');
+      setDownloadError(error.message || 'Unable to download media');
+    }
+  };
 
   const [isHovered, setIsHovered] = useState(false);
 
@@ -600,11 +639,20 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, selectionMode,
             {msg.attachment && (
               <div style={{ marginBottom: msg.text ? 8 : 0, borderRadius: 8, overflow: 'hidden', minWidth: msg.attachment.isImage || msg.attachment.isVideo ? 180 : 0 }}>
                 {!isDownloaded ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.isMe ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.04)', padding: '16px 20px', borderRadius: 8, cursor: 'pointer', flexDirection: 'column', gap: 6 }} onClick={() => { setIsDownloaded(true); if (msg.attachment) msg.attachment.isDownloaded = true; }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: msg.isMe ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: msg.isMe ? '#fff' : '#0A6ED1' }}>
-                      <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <div style={{ position: 'relative', minHeight: msg.attachment.isImage || msg.attachment.isVideo ? 150 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.isMe ? 'rgba(255,255,255,0.15)' : '#E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+                    {msg.attachment.isImage && !mediaDeletedFromCloud && <img src={msg.attachment.url} alt="Attached image" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', filter: 'blur(14px)', opacity: 0.75, transform: 'scale(1.08)' }} />}
+                    {msg.attachment.isVideo && !mediaDeletedFromCloud && <video src={msg.attachment.url} muted style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', filter: 'blur(14px)', opacity: 0.75, transform: 'scale(1.08)' }} />}
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6, padding: 12, background: 'rgba(15,23,42,0.28)', color: '#fff', textAlign: 'center' }}>
+                      {mediaDeletedFromCloud ? (
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>Unable to download</span>
+                      ) : (
+                        <button type="button" onClick={handleMediaDownload} style={{ width: 42, height: 42, borderRadius: '50%', background: '#0A6ED1', border: '2px solid rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: downloadState === 'loading' ? 'wait' : 'pointer' }} aria-label="Download media">
+                          {downloadState === 'loading' ? <span style={{ fontSize: 11, fontWeight: 800 }}>...</span> : <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
+                        </button>
+                      )}
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>{mediaDeletedFromCloud ? 'File removed from cloud storage' : (downloadState === 'loading' ? 'Downloading...' : (msg.attachment.size ? (msg.attachment.size / (1024*1024)).toFixed(1) + ' MB' : 'Download'))}</span>
+                      {downloadError && <span style={{ fontSize: 11, color: '#FECACA', maxWidth: 220 }}>{downloadError}</span>}
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{msg.attachment.size ? (msg.attachment.size / (1024*1024)).toFixed(1) + ' MB' : 'Download'}</span>
                   </div>
                 ) : (
                   <>
@@ -1354,6 +1402,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   const [isRecording, setIsRecording] = useState(false);
   const [recordingPreview, setRecordingPreview] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState(null);
+  const highlightTimerRef = useRef(null);
   const lastChatId = useRef(activeChat?.id);
   const canCreateGroup = canUseStaffChatAccess(currentUser);
 
@@ -1444,6 +1493,10 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
 
   useEffect(() => {
     if (targetChat) {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
+      }
       const chat = chats.find(c => c.id === targetChat.chatId);
       if (chat && chat.id !== activeChat?.id) {
         setActiveChat(chat);
@@ -1453,15 +1506,25 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       setShowAllMedia(false);
 
       // Give it a tiny delay to allow React to render the chat messages before scrolling
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const el = document.getElementById(`msg-${targetChat.msgId}`);
         if (el) {
+          setHighlightMsgId(targetChat.msgId);
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          setTimeout(() => setTargetChat(null), 3000); // Clear highlight after 3s
+          setTargetChat(null);
+          highlightTimerRef.current = setTimeout(() => {
+            setHighlightMsgId(null);
+            highlightTimerRef.current = null;
+          }, 3000);
         }
       }, 100);
+      return () => clearTimeout(scrollTimer);
     }
-  }, [targetChat, chats, activeChat?.id, setTargetChat]);
+  }, [targetChat, chats, chatMessages, activeChat?.id, setTargetChat]);
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+  }, []);
 
   const mappedChats = chats.filter(c => !c.deletedFor?.includes(currentUser.id)).map(c => {
     if (c.type === 'direct') {
@@ -1583,6 +1646,28 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
     const allSeen = recipientIds.every(id => Number(activeChatSnapshot?.unreadBy?.[id] || 0) === 0);
     if (allSeen) return 'seen';
     return recipientIds.some(id => users[id]?.online) ? 'delivered' : 'sent';
+  };
+
+  const downloadChatMedia = async (attachment) => {
+    if (!attachment?.url || attachment.cloudDeleted) {
+      return { success: false, error: 'Unable to download: this file was deleted from cloud storage.' };
+    }
+    const response = await fetch(attachment.url);
+    if (!response.ok) {
+      return { success: false, error: response.status === 410 || response.status === 404
+        ? 'Unable to download: this file is no longer available in cloud storage.'
+        : 'Unable to download media.' };
+    }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = attachment.name || 'download';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    return { success: true };
   };
 
   useEffect(() => {
@@ -1876,6 +1961,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
                 senderAvatar={users[msg.senderId]?.avatar}
                 onReply={(m) => { setReplyingTo(m); textareaRef.current?.focus(); }}
                 onViewMedia={(attachment) => setViewMedia(attachment)}
+                onDownloadMedia={downloadChatMedia}
                 onEdit={(message) => {
                   setEditingMsgId(message.id);
                   setMsgText(message.text || '');
@@ -3421,6 +3507,7 @@ const preventDefault = event => {
 };
 
 const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
+  const unavailable = Boolean(media.cloudDeleted || media.isUnavailable);
   const handlers = useLongPress(() => {
     if (!selectionMode) onToggle();
   }, () => {
@@ -3440,13 +3527,18 @@ const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
         border: isSelected ? '3px solid #0A6ED1' : '3px solid transparent',
         boxSizing: 'border-box'
       }}>
-      {media.isImage ? <img src={media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> :
-       media.isVideo ? <video src={media.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> :
+      {media.isImage && !media.cloudDeleted ? <img src={media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: unavailable ? 'blur(10px)' : 'none', opacity: unavailable ? 0.65 : 1, transform: unavailable ? 'scale(1.08)' : 'none' }} /> :
+       media.isVideo && !media.cloudDeleted ? <video src={media.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover', filter: unavailable ? 'blur(10px)' : 'none', opacity: unavailable ? 0.65 : 1, transform: unavailable ? 'scale(1.08)' : 'none' }} /> :
        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 8, textAlign: 'center', color: '#64748B' }}>
          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
          <span style={{ fontSize: 10, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{media.name}</span>
        </div>
       }
+      {unavailable && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.28)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: 8 }}>
+          {media.cloudDeleted ? 'Cloud file deleted' : 'Removed from this device'}
+        </div>
+      )}
       {isSelected && (
         <div style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, background: '#0A6ED1', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="12" height="12" fill="none" stroke="#fff" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -3469,11 +3561,12 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   const router = useRouter();
 
   const allMedia = Object.entries(chatMessages).flatMap(([chatId, msgs]) =>
-    msgs.filter(m => m.attachment).map(m => ({
+      msgs.filter(m => m.attachment).map(m => ({
       ...m.attachment,
       msgId: m.id,
       chatId,
-      chatName: chats.find(c => c.id === chatId)?.name || 'Unknown'
+      chatName: chats.find(c => c.id === chatId)?.name || 'Unknown',
+      isUnavailable: m.attachment.deletedFor?.includes(currentUser.id),
     }))
   );
 
@@ -3818,6 +3911,139 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DataManagementPanel({ currentUser }) {
+  const [records, setRecords] = useState({ stats: {}, media: [], messages: [] });
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState('');
+
+  const loadRecords = async () => {
+    if (!isAdmin(currentUser)) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/ssr/data-management?adminId=${encodeURIComponent(currentUser.id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load data');
+      setRecords(data);
+    } catch (err) {
+      setError(err.message || 'Could not load data management records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadRecords(); }, [currentUser?.id]);
+
+  const removeMedia = async (mediaId) => {
+    if (!confirm('Permanently delete this file from cloud storage? Chat users will not be able to download it again.')) return;
+    setBusyId(mediaId);
+    try {
+      const res = await fetch('/api/ssr/data-management', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: currentUser.id, action: 'deleteMedia', mediaId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete media');
+      await loadRecords();
+    } catch (err) {
+      setError(err.message || 'Could not delete media');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const removeMessage = async (messageId) => {
+    if (!confirm('Permanently delete this message and its unused attachment?')) return;
+    setBusyId(messageId);
+    try {
+      const res = await fetch('/api/ssr/data-management', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: currentUser.id, action: 'deleteMessage', messageId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete message');
+      await loadRecords();
+    } catch (err) {
+      setError(err.message || 'Could not delete message');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (!isAdmin(currentUser)) return null;
+  const formatSize = (bytes = 0) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  const formatDate = (value) => value ? new Date(value).toLocaleString() : 'Unknown date';
+
+  return (
+    <div style={{ padding: '24px 28px 48px', maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22, color: '#0F172A' }}>Data Management</h2>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>Review chat files and messages stored in MongoDB.</p>
+        </div>
+        <button onClick={loadRecords} style={{ padding: '9px 14px', background: '#F1F5F9', color: '#0F172A', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Refresh</button>
+      </div>
+
+      {error && <div style={{ marginBottom: 16, padding: 12, background: '#FEF2F2', color: '#B91C1C', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 24 }}>
+        {[
+          ['Stored files', records.stats.mediaCount || 0],
+          ['Messages', records.stats.messageCount || 0],
+          ['Cloud storage', formatSize(records.stats.storageBytes || 0)],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 6 }}>{label}</div>
+            <strong style={{ fontSize: 20, color: '#0F172A' }}>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <section style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
+        <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0' }}><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Stored media</h3></div>
+        {loading ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>Loading records...</p> : records.media.length === 0 ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>No stored media.</p> : (
+          <div style={{ overflowX: 'auto' }}>
+            {records.media.map(item => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px', borderBottom: '1px solid #F1F5F9', minWidth: 650 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 8, background: '#EFF6FF', color: '#0A6ED1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {item.mimeType?.startsWith('image/') ? 'IMG' : item.mimeType?.startsWith('video/') ? 'VID' : 'FILE'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>{item.mimeType} · {formatSize(item.size)} · {item.messageCount} message{item.messageCount === 1 ? '' : 's'}</div>
+                </div>
+                <div style={{ fontSize: 11, color: item.complete ? '#15803D' : '#B45309' }}>{item.complete ? 'Complete' : 'Incomplete'}</div>
+                <button onClick={() => removeMedia(item.id)} disabled={busyId === item.id} style={{ padding: '7px 10px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: busyId === item.id ? 'wait' : 'pointer' }}>{busyId === item.id ? 'Deleting...' : 'Delete cloud file'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0' }}><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Message records</h3></div>
+        {loading ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>Loading records...</p> : records.messages.length === 0 ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>No messages.</p> : (
+          <div style={{ overflowX: 'auto' }}>
+            {records.messages.map(message => (
+              <div key={message.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px', borderBottom: '1px solid #F1F5F9', minWidth: 700 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>{message.senderName || 'Unknown'} · {message.chatName} · {formatDate(message.createdAt)}</div>
+                  <div style={{ fontSize: 13, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.content || (message.attachment?.name ? `Attachment: ${message.attachment.name}` : 'Empty message')}</div>
+                </div>
+                {message.attachment && <span style={{ fontSize: 11, color: message.attachment.cloudDeleted ? '#B91C1C' : '#64748B' }}>{message.attachment.cloudDeleted ? 'Cloud file deleted' : message.attachment.name}</span>}
+                <button onClick={() => removeMessage(message.id)} disabled={busyId === message.id} style={{ padding: '7px 10px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: busyId === message.id ? 'wait' : 'pointer' }}>{busyId === message.id ? 'Deleting...' : 'Delete record'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -4663,7 +4889,7 @@ export default function HomePage() {
 
   const handleNavClick = (id) => {
     setActiveNav(id);
-    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'requests', 'notifications'].includes(id)) {
+    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -4850,6 +5076,7 @@ export default function HomePage() {
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <SettingsPanel currentUser={currentUser} onNavigateToChat={(chatId, msgId) => {
                     setTargetChat({ chatId, msgId });
+                    setActiveNav('feed');
                   }} />
                 </div>
               )}
@@ -4857,6 +5084,12 @@ export default function HomePage() {
               {activeNav === 'accounts' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
+                </div>
+              )}
+
+              {activeNav === 'data-management' && (
+                <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+                  <DataManagementPanel currentUser={currentUser} />
                 </div>
               )}
 
@@ -4925,7 +5158,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {mobilePage === 'feed' ? 'Home Feed' : mobilePage === 'meetings' ? 'Live Meetings' : mobilePage === 'trainers' ? 'Trainers / Users' : mobilePage === 'requests' ? 'Requests' : mobilePage}
+            {mobilePage === 'feed' ? 'Home Feed' : mobilePage === 'meetings' ? 'Live Meetings' : mobilePage === 'trainers' ? 'Trainers / Users' : mobilePage === 'requests' ? 'Requests' : mobilePage === 'data-management' ? 'Data Management' : mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -4967,6 +5200,11 @@ export default function HomePage() {
               {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') && (
                 <button onClick={() => { setMobilePage('accounts'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{MenuIcons.accounts}</span>Account Mgmt
+                </button>
+              )}
+              {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') && !currentUser.isImpersonating && (
+                <button onClick={() => { setMobilePage('data-management'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                  <span style={{ color: '#64748B' }}>{NavIcons.data}</span>Data Management
                 </button>
               )}
               {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
@@ -5033,6 +5271,12 @@ export default function HomePage() {
       {mobilePage === 'accounts' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
+        </div>
+      )}
+
+      {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.isImpersonating && (
+        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <DataManagementPanel currentUser={currentUser} />
         </div>
       )}
 

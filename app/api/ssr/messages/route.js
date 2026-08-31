@@ -80,11 +80,22 @@ export async function PUT(req) {
     }
 
     if (action === 'deleteMedia') {
-      await prisma.appMessage.update({
-        where: { id: msgIds[0] },
-        data: { attachment: null }
+      const message = await prisma.appMessage.findUnique({ where: { id: msgIds[0] } });
+      if (!message?.attachment || !userId) {
+        return NextResponse.json({ error: 'Media message not found' }, { status: 404 });
+      }
+      const attachment = typeof message.attachment === 'object' ? message.attachment : {};
+      const deletedFor = Array.isArray(attachment.deletedFor) ? attachment.deletedFor : [];
+      const updatedAttachment = {
+        ...attachment,
+        deletedFor: deletedFor.includes(userId) ? deletedFor : [...deletedFor, userId],
+        isDownloaded: false,
+      };
+      const updated = await prisma.appMessage.update({
+        where: { id: message.id },
+        data: { attachment: updatedAttachment }
       });
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, message: updated });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

@@ -5,7 +5,8 @@ export async function GET(req, { params }) {
   try {
     const { id } = await params;
     const media = await prisma.appMedia.findUnique({ where: { id } });
-    if (!media || !media.complete) return NextResponse.json({ error: 'Media is not ready' }, { status: 404 });
+    if (!media) return NextResponse.json({ error: 'Media was deleted from cloud storage' }, { status: 410 });
+    if (!media.complete) return NextResponse.json({ error: 'Media is not ready' }, { status: 404 });
     const chunks = await prisma.appMediaChunk.findMany({ where: { mediaId: id }, orderBy: { chunkIndex: 'asc' } });
     const bytes = Buffer.concat(chunks.map(chunk => Buffer.from(chunk.data, 'base64')));
     return new NextResponse(bytes, {

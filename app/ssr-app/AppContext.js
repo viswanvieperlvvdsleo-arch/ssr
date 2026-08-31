@@ -646,18 +646,30 @@ export function AppProvider({ children }) {
   };
 
   const deleteChatMedia = async (chatId, msgId, mediaId) => {
+    if (!currentUser?.id) return;
     setChatMessages(prev => {
       const msgs = prev[chatId] || [];
       return {
         ...prev,
-        [chatId]: msgs.map(m => m.id === msgId ? { ...m, attachment: null } : m)
+        [chatId]: msgs.map(m => {
+          if (m.id !== msgId || !m.attachment) return m;
+          const deletedFor = Array.isArray(m.attachment.deletedFor) ? m.attachment.deletedFor : [];
+          return {
+            ...m,
+            attachment: {
+              ...m.attachment,
+              deletedFor: deletedFor.includes(currentUser.id) ? deletedFor : [...deletedFor, currentUser.id],
+              isDownloaded: false,
+            }
+          };
+        })
       };
     });
     try {
       await fetch('/api/ssr/messages', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteMedia', msgIds: [msgId], chatId })
+        body: JSON.stringify({ action: 'deleteMedia', msgIds: [msgId], chatId, mediaId, userId: currentUser.id })
       });
     } catch(e) { console.error(e); }
   };
@@ -697,6 +709,7 @@ export function AppProvider({ children }) {
 
     return {
       url: `/api/ssr/media/${init.id}`,
+      mediaId: init.id,
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,
