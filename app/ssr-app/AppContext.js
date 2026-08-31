@@ -158,6 +158,7 @@ export function AppProvider({ children }) {
   const [targetChat, setTargetChat] = useState(null);
   const [mediaComposer, setMediaComposer] = useState(null);
   const backHandlersRef = useRef([]);
+  const sessionGenerationRef = useRef(0);
 
   const registerBackHandler = useCallback((handler) => {
     const entry = { handler };
@@ -179,6 +180,7 @@ export function AppProvider({ children }) {
     let isLoading = false;
     async function loadData() {
       if (isLoading) return;
+      const requestGeneration = sessionGenerationRef.current;
       isLoading = true;
       try {
         const storedUser = readStoredAppUser();
@@ -234,6 +236,9 @@ export function AppProvider({ children }) {
         if (meetingsRes && !meetingsRes.error && Array.isArray(meetingsRes)) setIfChanged(setMeetings, meetingsRes);
         if (chatRequestsRes && !chatRequestsRes.error && Array.isArray(chatRequestsRes)) setIfChanged(setChatRequests, chatRequestsRes.map(normalizeChatRequest));
         if (ratingsRes && !ratingsRes.error && Array.isArray(ratingsRes)) setIfChanged(setTrainerRatings, ratingsRes);
+
+        // A request that started before logout must never restore that session.
+        if (requestGeneration !== sessionGenerationRef.current) return;
 
         if (storedUser) {
           const freshUser = normalizedUsers?.[currId];
@@ -449,6 +454,7 @@ export function AppProvider({ children }) {
   };
 
   const logout = () => {
+    sessionGenerationRef.current += 1;
     if (currentUser?.id) {
       fetch('/api/ssr/users', {
         method: 'PUT',
