@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useApp, MOCK_CHATS } from '../AppContext';
 import { useBackHandler } from '../useBackHandler';
 
@@ -4876,7 +4876,6 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { posts, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
@@ -4931,13 +4930,14 @@ export default function HomePage() {
   }, [currentUser?.id, activeNav, mobilePage, viewRestored]);
 
   useEffect(() => {
-    const chatId = searchParams.get('chatId');
-    const messageId = searchParams.get('messageId');
+    const params = new URLSearchParams(window.location.search);
+    const chatId = params.get('chatId');
+    const messageId = params.get('messageId');
     if (!currentUser || !chatId || !messageId) return;
     setTargetChat({ chatId, msgId: messageId });
     setActiveNav('feed');
     setMobilePage('chat');
-  }, [currentUser, searchParams, setTargetChat]);
+  }, [currentUser, setTargetChat]);
 
   if (!mounted || !currentUser) return null;
 
