@@ -13,6 +13,24 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url;
+  if (!targetUrl) return;
+  const absoluteTargetUrl = new URL(targetUrl, self.location.origin).toString();
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      const existingClient = windowClients.find(client => 'focus' in client);
+      if (existingClient) {
+        existingClient.navigate(absoluteTargetUrl);
+        return existingClient.focus();
+      }
+      return clients.openWindow(absoluteTargetUrl);
+    })
+  );
+});
+
 // Listens and intercepts incoming notifications while the browser tab is closed/minimized
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);

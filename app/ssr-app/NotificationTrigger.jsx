@@ -11,8 +11,15 @@ export default function NotificationTrigger() {
   const { currentUser } = useApp();
 
   useEffect(() => {
-    if (!currentUser?.id || typeof window === 'undefined' || !messaging || !vapidKey) return undefined;
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) return undefined;
+    if (!currentUser?.id || typeof window === 'undefined' || !messaging) return undefined;
+    if (!vapidKey) {
+      console.error('FCM is not configured: NEXT_PUBLIC_FIREBASE_VAPID_KEY is missing from the client build.');
+      return undefined;
+    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      console.warn('This browser does not support web push notifications.');
+      return undefined;
+    }
 
     let cancelled = false;
     let unsubscribe = () => {};
@@ -20,13 +27,20 @@ export default function NotificationTrigger() {
     const requestPermissionAndRegisterToken = async () => {
       try {
         const permission = await Notification.requestPermission();
-        if (permission !== 'granted' || cancelled) return;
+        if (permission !== 'granted' || cancelled) {
+          console.warn(`Notification permission is ${permission}. Enable it in the browser or phone site settings.`);
+          return;
+        }
 
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
+        await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
-        if (!token || cancelled) return;
+        if (!token || cancelled) {
+          console.error('FCM did not return a device token. Check the Firebase Web Push certificate and VAPID key.');
+          return;
+        }
 
-        await fetch('/api/ssr/push-tokens', {
+        const response = await fetch('/api/ssr/push-tokens', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -36,6 +50,9 @@ export default function NotificationTrigger() {
             userAgent: navigator.userAgent,
           }),
         });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) throw new Error(result.error || 'The device token could not be saved');
+        console.info('FCM device token registered for this account.');
       } catch (error) {
         console.error('Unable to register push notifications:', error);
       }

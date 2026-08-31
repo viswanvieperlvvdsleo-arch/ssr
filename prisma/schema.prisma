@@ -118,6 +118,20 @@ model AppPushToken {
   @@index([userId])
 }
 
+model AppNotification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String
+  type      String   @default("general")
+  title     String
+  body      String
+  url       String?
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
 model AppCourse {
   id               String   @id @default(auto()) @map("_id") @db.ObjectId
   title            String

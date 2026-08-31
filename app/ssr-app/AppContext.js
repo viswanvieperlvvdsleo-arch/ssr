@@ -150,6 +150,7 @@ export function AppProvider({ children }) {
   const [users, setUsers] = useState({});
   const [mutableChats, setMutableChats] = useState([]);
   const [chatRequests, setChatRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [userProfileToView, setUserProfileToView] = useState(null);
   const [profilePicToView, setProfilePicToView] = useState(null);
   const [showScheduleMeeting, setShowScheduleMeeting] = useState(false);
@@ -186,7 +187,7 @@ export function AppProvider({ children }) {
         const storedUser = readStoredAppUser();
         const currId = storedUser ? storedUser.id : null;
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const [usersRes, postsRes, coursesRes, chatsRes, messagesRes, meetingsRes, chatRequestsRes, ratingsRes] = await Promise.all([
+        const [usersRes, postsRes, coursesRes, chatsRes, messagesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await Promise.all([
           fetch(usersUrl).then(res => res.json()).catch(() => ({})),
           fetch('/api/ssr/posts').then(res => res.json()).catch(() => ({})),
           fetch('/api/ssr/courses').then(res => res.json()).catch(() => ({})),
@@ -194,7 +195,8 @@ export function AppProvider({ children }) {
           fetch('/api/ssr/messages').then(res => res.json()).catch(() => ({})),
           fetch('/api/ssr/meetings').then(res => res.json()).catch(() => ({})),
           fetch('/api/ssr/chat-requests').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/ratings').then(res => res.json()).catch(() => ({}))
+          fetch('/api/ssr/ratings').then(res => res.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(res => res.json()).catch(() => ({}))
         ]);
 
         const normalizedUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
@@ -236,6 +238,7 @@ export function AppProvider({ children }) {
         if (meetingsRes && !meetingsRes.error && Array.isArray(meetingsRes)) setIfChanged(setMeetings, meetingsRes);
         if (chatRequestsRes && !chatRequestsRes.error && Array.isArray(chatRequestsRes)) setIfChanged(setChatRequests, chatRequestsRes.map(normalizeChatRequest));
         if (ratingsRes && !ratingsRes.error && Array.isArray(ratingsRes)) setIfChanged(setTrainerRatings, ratingsRes);
+        if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
 
         // A request that started before logout must never restore that session.
         if (requestGeneration !== sessionGenerationRef.current) return;
@@ -826,7 +829,7 @@ export function AppProvider({ children }) {
   };
 
   const addCourse = async (course) => {
-    const newCourse = { ...course, id: undefined };
+    const newCourse = { ...course, id: undefined, creatorId: currentUser?.id };
     try {
       const res = await fetch('/api/ssr/courses', {
         method: 'POST',
@@ -1141,6 +1144,46 @@ export function AppProvider({ children }) {
     } catch(e) { console.error(e); }
   };
 
+  const markNotificationRead = async (id) => {
+    if (!currentUser?.id || !id) return;
+    setNotifications(prev => prev.map(notification => notification.id === id ? { ...notification, read: true } : notification));
+    await fetch('/api/ssr/notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id, id }),
+    }).catch(() => {});
+  };
+
+  const markAllNotificationsRead = async () => {
+    if (!currentUser?.id) return;
+    setNotifications(prev => prev.map(notification => ({ ...notification, read: true })));
+    await fetch('/api/ssr/notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id, action: 'markAllRead' }),
+    }).catch(() => {});
+  };
+
+  const deleteNotification = async (id) => {
+    if (!currentUser?.id || !id) return;
+    setNotifications(prev => prev.filter(notification => notification.id !== id));
+    await fetch('/api/ssr/notifications', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id, id }),
+    }).catch(() => {});
+  };
+
+  const deleteAllNotifications = async () => {
+    if (!currentUser?.id) return;
+    setNotifications([]);
+    await fetch('/api/ssr/notifications', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id, action: 'deleteAll' }),
+    }).catch(() => {});
+  };
+
   const scheduleMessage = async (msgData) => {
     try {
       await fetch('/api/ssr/scheduled-messages', {
@@ -1174,6 +1217,7 @@ export function AppProvider({ children }) {
       deleteUser, restrictUser, addEmployee, updateUserPermissions, updateEmployeeProfile,
       chatRequests, requestChatAccess, decideChatRequest, startDirectChat, canDirectChatWith,
       canManageChatRequests, canViewPrivateUserDetails, canUseStaffChatAccess,
+      notifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications,
       autoDownloadMedia, setAutoDownloadMedia,
       targetChat, setTargetChat,
       uploadChatMedia, markChatRead,

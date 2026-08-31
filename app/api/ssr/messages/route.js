@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildMessageData } from '../defaults';
+import { getSupportRecipientIds, notifyUsers } from '../notify';
 
 export async function GET(req) {
   try {
@@ -30,12 +31,24 @@ export async function POST(req) {
     const chat = await prisma.appChat.findUnique({ where: { id: data.chatId } });
     if (chat) {
       const unreadBy = chat.unreadBy && typeof chat.unreadBy === 'object' && !Array.isArray(chat.unreadBy) ? { ...chat.unreadBy } : {};
-      (chat.participants || []).filter(id => id !== data.senderId).forEach(id => {
+      const participantRecipients = (chat.participants || [])
+        .filter(id => id !== data.senderId && !(chat.mutedBy || []).includes(id));
+      const recipientIds = chat.type === 'support'
+        ? [...new Set([...participantRecipients, ...(await getSupportRecipientIds(data.senderId))])]
+        : participantRecipients;
+      recipientIds.forEach(id => {
         unreadBy[id] = Number(unreadBy[id] || 0) + 1;
       });
       await prisma.appChat.update({
         where: { id: data.chatId },
         data: { updatedAt: new Date(), unreadBy }
+      });
+
+      await notifyUsers(recipientIds, {
+        title: chat.type === 'group' ? (chat.name || 'New group message') : (newMessage.senderName || 'New message'),
+        body: newMessage.content || (newMessage.attachment ? 'Sent an attachment' : 'You have a new message'),
+        url: `/ssr-app/home?chatId=${chat.id}`,
+        data: { type: 'chat', chatId: chat.id, messageId: newMessage.id },
       });
     }
 

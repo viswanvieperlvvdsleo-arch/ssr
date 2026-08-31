@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp, MOCK_CHATS } from '../AppContext';
 import { useBackHandler } from '../useBackHandler';
 
@@ -400,21 +400,13 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
 }
 
 /* ─── Notifications Panel ──────────────────────────── */
-const MOCK_NOTIFICATIONS = [
-  { id: 1, icon: 'announce', text: 'New SAP S/4HANA 2023 batch announcement posted', time: '2m ago', read: false },
-  { id: 2, icon: 'chat', text: 'Arun Kumar replied to your comment in the Announcements post', time: '1h ago', read: false },
-  { id: 3, icon: 'course', text: 'Week 3 recording is now available in SAP FICO module', time: '5h ago', read: true },
-  { id: 4, icon: 'announce', text: 'Trainer posted a new update in General Discussion', time: '1d ago', read: true },
-  { id: 5, icon: 'course', text: 'Your course progress: SAP SD is 65% complete. Keep going!', time: '2d ago', read: true },
-];
-
 function NotificationsPanel() {
-  const [notifs, setNotifs] = useState(MOCK_NOTIFICATIONS);
+  const { notifications: notifs, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications } = useApp();
   const unreadCount = notifs.filter(n => !n.read).length;
 
   const iconFor = (type) => {
     if (type === 'announce') return <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>;
-    if (type === 'chat') return <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>;
+    if (['chat', 'comment', 'like'].includes(type)) return <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>;
     return <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>;
   };
 
@@ -426,10 +418,10 @@ function NotificationsPanel() {
           <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 14 }}>{unreadCount} unread</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setNotifs(notifs.map(n => ({ ...n, read: true })))} style={{ padding: '8px 14px', border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, color: '#0A6ED1', cursor: 'pointer' }}>
+          <button onClick={markAllNotificationsRead} style={{ padding: '8px 14px', border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, color: '#0A6ED1', cursor: 'pointer' }}>
             Mark all read
           </button>
-          <button onClick={() => setNotifs([])} style={{ padding: '8px 14px', border: '1px solid #FEE2E2', borderRadius: 8, background: '#FFF5F5', fontSize: 13, fontWeight: 600, color: '#DC2626', cursor: 'pointer' }}>
+          <button onClick={deleteAllNotifications} style={{ padding: '8px 14px', border: '1px solid #FEE2E2', borderRadius: 8, background: '#FFF5F5', fontSize: 13, fontWeight: 600, color: '#DC2626', cursor: 'pointer' }}>
             Delete all
           </button>
         </div>
@@ -444,15 +436,15 @@ function NotificationsPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {notifs.map((n, i) => (
             <div key={n.id} style={{ display: 'flex', gap: 14, padding: '16px 12px', borderBottom: i < notifs.length - 1 ? '1px solid #F8FAFC' : 'none', background: n.read ? '#fff' : '#F0F7FF', borderRadius: 10, marginBottom: 4, cursor: 'pointer' }}
-              onClick={() => setNotifs(notifs.map(x => x.id === n.id ? { ...x, read: true } : x))}>
+              onClick={() => { markNotificationRead(n.id); if (n.url) window.location.href = n.url; }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: n.read ? '#F1F5F9' : '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: n.read ? '#64748B' : '#0A6ED1' }}>
-                {iconFor(n.icon)}
+                {iconFor(n.type)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 14, color: '#0F172A', fontWeight: n.read ? 400 : 600, lineHeight: 1.5 }}>{n.text}</p>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94A3B8' }}>{n.time}</p>
+                <p style={{ margin: 0, fontSize: 14, color: '#0F172A', fontWeight: n.read ? 400 : 600, lineHeight: 1.5 }}>{n.body}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94A3B8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); setNotifs(notifs.filter(x => x.id !== n.id)); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CBD5E1', display: 'flex', alignItems: 'center', padding: 4, flexShrink: 0 }}>
+              <button onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CBD5E1', display: 'flex', alignItems: 'center', padding: 4, flexShrink: 0 }}>
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -3045,7 +3037,7 @@ function CoursesPanel({ currentUser }) {
   const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
 
   const handleUpload = (courseData) => {
-    addCourse(courseData);
+    addCourse({ ...courseData, creatorId: currentUser?.id });
     setShowUpload(false);
   };
 
@@ -3228,6 +3220,8 @@ function CoursesPanel({ currentUser }) {
 
 function TrainersPanel() {
   const { users, viewUserProfile, viewProfilePic, getTrainerRatingSummary } = useApp();
+  const width = useWindowWidth();
+  const isMobile = width < 900;
   const [search, setSearch] = useState('');
 
   const directoryUsers = Object.values(users).filter(u =>
@@ -3259,7 +3253,7 @@ function TrainersPanel() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+    <div style={{ padding: isMobile ? '12px' : '20px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <p style={{ margin: '0 0 12px', fontSize: 14, color: '#64748B' }}><strong style={{ color: '#0F172A' }}>{profiles.length} profiles</strong> found</p>
@@ -3278,10 +3272,10 @@ function TrainersPanel() {
           const isTrainerProfile = trainer.role === 'Trainer' || isAdminProfile;
           const isFirst = idx === 0 && isTrainerProfile;
           return (
-            <div key={trainer.id} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${isFirst ? '#E11D48' : '#E8ECF0'}`, padding: '20px', display: 'flex', gap: 18, alignItems: 'flex-start', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+            <div key={trainer.id} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${isFirst ? '#E11D48' : '#E8ECF0'}`, padding: isMobile ? '14px' : '20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 18, alignItems: isMobile ? 'stretch' : 'flex-start', boxShadow: '0 2px 6px rgba(0,0,0,0.03)', boxSizing: 'border-box', minWidth: 0 }}>
               {/* Avatar */}
               <div onClick={() => viewProfilePic(trainer)} style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
-                <Avatar initials={trainer.initials} color={trainer.color} src={trainer.avatar} size={90} online={trainer.online} shape="rounded" />
+                <Avatar initials={trainer.initials} color={trainer.color} src={trainer.avatar} size={isMobile ? 72 : 90} online={trainer.online} shape="rounded" />
               </div>
 
               {/* Info */}
@@ -3327,7 +3321,7 @@ function TrainersPanel() {
               </div>
 
               {/* Action */}
-              <button onClick={() => viewUserProfile(trainer.id)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, background: '#0F172A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 30, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              <button onClick={() => viewUserProfile(trainer.id)} style={{ alignSelf: isMobile ? 'stretch' : 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#0F172A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 30, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#0A6ED1'}
                 onMouseLeave={e => e.currentTarget.style.background = '#0F172A'}
               >
@@ -3556,6 +3550,8 @@ const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
 
 function SettingsPanel({ currentUser, onNavigateToChat }) {
   const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats, updateUserProfile, uploadChatMedia, deleteAccount } = useApp();
+  const width = useWindowWidth();
+  const isMobile = width < 900;
   const [activeTab, setActiveTab] = useState('profile');
   const [selectedMediaIds, setSelectedMediaIds] = useState(new Set());
   const [mediaStorageMode, setMediaStorageMode] = useState(currentUser?.mediaStorageMode || 'cloud');
@@ -3619,13 +3615,13 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   );
 
   return (
-    <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%', display: 'flex', gap: 24, minHeight: 'calc(100vh - 100px)' }}>
+    <div style={{ padding: isMobile ? '12px' : '20px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 24, minHeight: 'calc(100vh - 100px)', minWidth: 0 }}>
       {/* Settings Sidebar */}
-      <div style={{ width: 220, flexShrink: 0 }}>
+      <div style={{ width: isMobile ? '100%' : 220, flexShrink: 0, minWidth: 0 }}>
         <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Settings</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 4, overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 2 : 0 }}>
           {[{id: 'profile', label: 'My Profile'}, {id: 'security', label: 'Security & Password'}, {id: 'notifications', label: 'Notifications'}, {id: 'chat-media', label: 'Chat & Media'}].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '10px 14px', textAlign: 'left', background: activeTab === tab.id ? '#EFF6FF' : 'transparent', color: activeTab === tab.id ? '#0A6ED1' : '#475569', fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 14, border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '10px 14px', textAlign: 'left', background: activeTab === tab.id ? '#EFF6FF' : 'transparent', color: activeTab === tab.id ? '#0A6ED1' : '#475569', fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 14, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
               {tab.label}
             </button>
           ))}
@@ -3633,7 +3629,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
       </div>
 
       {/* Settings Content */}
-      <div style={{ flex: 1, background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', padding: '32px' }}>
+      <div style={{ flex: 1, width: '100%', minWidth: 0, boxSizing: 'border-box', background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', padding: isMobile ? '18px 14px' : '32px' }}>
         {activeTab === 'profile' && (
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Profile Details</h3>
@@ -3684,7 +3680,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Full Name</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} disabled={currentUser?.isImpersonating} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1 }} />
@@ -3700,7 +3696,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
             </div>
 
             {currentUser.role === 'Trainer' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 20, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Bio / Description</label>
                   <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={currentUser?.isImpersonating} rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', opacity: currentUser?.isImpersonating ? 0.7 : 1, resize: 'vertical' }} />
@@ -4487,6 +4483,8 @@ function RequestsPanel() {
 function GlobalUserProfileModal() {
   const { currentUser, userProfileToView, closeUserProfile, viewProfilePic, startDirectChat, requestChatAccess, canDirectChatWith, canViewPrivateUserDetails, setTargetChat, getTrainerRatingSummary, rateTrainer, trainerRatings, users } = useApp();
   const router = useRouter();
+  const width = useWindowWidth();
+  const isMobile = width < 900;
   const [draftRating, setDraftRating] = useState(0);
   const [draftComment, setDraftComment] = useState('');
   const [ratingDraftFor, setRatingDraftFor] = useState(null);
@@ -4672,21 +4670,21 @@ function GlobalUserProfileModal() {
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{isAdminViewer && currentUser?.id !== user.id ? 'Administrative Details' : 'Private Details'}</h3>
                 </div>
                 <div style={{ background: '#FFFBEB', padding: '16px 20px', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Email Address</span>
                     <span style={{ fontSize: 14, color: '#0F172A', fontWeight: 500 }}>{user.email || 'Not provided'}</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Mobile Number</span>
                     <span style={{ fontSize: 14, color: '#0F172A', fontWeight: 500 }}>{contactPhone}</span>
                   </div>
                   {isTrainer && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Resume / CV</span>
                       <a href="#" onClick={(e) => { e.preventDefault(); alert(`Downloading ${user.resumeName || 'Resume.pdf'}...`); }} style={{ fontSize: 14, color: '#0A6ED1', fontWeight: 600, textDecoration: 'none' }}>Download {user.resumeName || 'Resume.pdf'}</a>
                     </div>
                   )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Join Date</span>
                     <span style={{ fontSize: 14, color: '#0F172A', fontWeight: 500 }}>{user.createdAt || 'August 2024'}</span>
                   </div>
@@ -4792,9 +4790,6 @@ function ScheduleMeetingModal() {
 
     sendChatMessage(activeChatForMeeting.id, `📅 **Meeting Scheduled:** ${meetingForm.title} ${recurrenceMsg}\n🕒 ${meetingForm.startDate} at ${meetingForm.time}\n🔗 [Join Meeting](${meetingForm.link})`, null);
 
-    // Mock FCM push notification
-    alert(`[FCM PUSH SENT]\nMeeting scheduled successfully! All members of "${activeChatForMeeting.name}" have been notified.`);
-
     closeScheduleMeeting();
   };
 
@@ -4881,7 +4876,8 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login, logout } = useApp();
+  const searchParams = useSearchParams();
+  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -4895,6 +4891,7 @@ export default function HomePage() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const [mounted, setMounted] = useState(false);
+  const [viewRestored, setViewRestored] = useState(false);
   const [randomOffsets, setRandomOffsets] = useState({});
 
   useEffect(() => {
@@ -4908,6 +4905,39 @@ export default function HomePage() {
     posts.forEach(p => { offsets[p.id] = Math.random() * 25; });
     setRandomOffsets(offsets);
   }, [currentUser, router]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    try {
+      const savedView = sessionStorage.getItem(`ssr_home_view_${currentUser.id}`);
+      if (savedView) {
+        const parsed = JSON.parse(savedView);
+        if (parsed.activeNav) setActiveNav(parsed.activeNav);
+        if (parsed.mobilePage) setMobilePage(parsed.mobilePage);
+      }
+    } catch {
+      // Ignore malformed or unavailable view state.
+    }
+    setViewRestored(true);
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id || !viewRestored) return;
+    try {
+      sessionStorage.setItem(`ssr_home_view_${currentUser.id}`, JSON.stringify({ activeNav, mobilePage }));
+    } catch {
+      // Storage may be unavailable in a privacy-restricted browser.
+    }
+  }, [currentUser?.id, activeNav, mobilePage, viewRestored]);
+
+  useEffect(() => {
+    const chatId = searchParams.get('chatId');
+    const messageId = searchParams.get('messageId');
+    if (!currentUser || !chatId || !messageId) return;
+    setTargetChat({ chatId, msgId: messageId });
+    setActiveNav('feed');
+    setMobilePage('chat');
+  }, [currentUser, searchParams, setTargetChat]);
 
   if (!mounted || !currentUser) return null;
 
@@ -4989,7 +5019,7 @@ export default function HomePage() {
             <div style={{ position: 'relative' }}>
               <button onClick={() => setActiveNav('notifications')} style={{ width: 38, height: 38, background: activeNav === 'notifications' ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeNav === 'notifications' ? '#0A6ED1' : '#64748B', position: 'relative' }}>
                 {MenuIcons.bell}
-                <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />
+                {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}
               </button>
             </div>
 
@@ -5199,7 +5229,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
           <button onClick={() => setNotifOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38 }}>
             {MenuIcons.bell}
-            <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />
+            {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}
           </button>
 
           <button onClick={() => setUserMenuOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -5210,15 +5240,16 @@ export default function HomePage() {
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '120%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', width: 280, zIndex: 300, padding: 14 }}>
               <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: 14 }}>Notifications</p>
-              {[{ icon: MenuIcons.announcement, text: 'New batch announcement posted', time: '2m ago', color: '#F59E0B' }, { icon: MenuIcons.chat, text: 'Arun Kumar replied to your comment', time: '1h ago', color: '#10B981' }, { icon: MenuIcons.course, text: 'Week 3 recording is now available', time: '5h ago', color: '#0A6ED1' }].map((n, i) => (
-                <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: i < 2 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer' }}>
-                  <span style={{ color: n.color, display: 'flex', alignItems: 'center' }}>{n.icon}</span>
+              {(notifications || []).slice(0, 5).map((n, i) => (
+                <div key={n.id} onClick={() => { markNotificationRead(n.id); if (n.url) window.location.href = n.url; }} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: i < Math.min((notifications || []).length, 5) - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer' }}>
+                  <span style={{ color: n.read ? '#94A3B8' : '#0A6ED1', display: 'flex', alignItems: 'center' }}>{['chat', 'comment', 'like'].includes(n.type) ? MenuIcons.chat : n.type === 'service' ? MenuIcons.course : MenuIcons.announcement}</span>
                   <div>
-                    <p style={{ margin: 0, fontSize: 13, color: '#0F172A', fontWeight: 500 }}>{n.text}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>{n.time}</p>
+                    <p style={{ margin: 0, fontSize: 13, color: '#0F172A', fontWeight: n.read ? 400 : 600 }}>{n.body}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
                   </div>
                 </div>
               ))}
+              {(!notifications || notifications.length === 0) && <p style={{ margin: 0, padding: '12px 0', color: '#94A3B8', fontSize: 13 }}>No notifications yet.</p>}
             </div>
           )}
 

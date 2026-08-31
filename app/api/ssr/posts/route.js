@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildPostData, hasEmployeePermission } from '../defaults';
+import { notifyUsers } from '../notify';
 
 export async function GET(req) {
   try {
@@ -16,6 +17,16 @@ export async function POST(req) {
   try {
     const data = await req.json();
     const newPost = await prisma.appPost.create({ data: buildPostData(data) });
+    const recipients = await prisma.appUser.findMany({
+      where: { id: { not: newPost.authorId } },
+      select: { id: true },
+    });
+    await notifyUsers(recipients.map(user => user.id), {
+      title: 'New post on SSR Learning Platform',
+      body: newPost.title || newPost.content.slice(0, 100) || 'A new post is available',
+      url: `/ssr-app/home?postId=${newPost.id}`,
+      data: { type: 'post', postId: newPost.id },
+    });
     return NextResponse.json(newPost);
   } catch (error) {
     console.error('Posts POST API Error:', error);
@@ -38,6 +49,15 @@ export async function PUT(req) {
           likedBy: hasLiked ? post.likedBy.filter(uid => uid !== userId) : { push: userId }
         }
       });
+      if (!hasLiked && post.authorId !== userId) {
+        const actor = await prisma.appUser.findUnique({ where: { id: userId }, select: { name: true } });
+        await notifyUsers([post.authorId], {
+          title: 'New like on your post',
+          body: `${actor?.name || 'Someone'} liked your post.`,
+          url: `/ssr-app/home?postId=${post.id}`,
+          data: { type: 'like', postId: post.id },
+        });
+      }
       return NextResponse.json(updatedPost);
     }
 
@@ -55,6 +75,8 @@ export async function PUT(req) {
     }
 
     if (action === 'addComment') {
+      const post = await prisma.appPost.findUnique({ where: { id } });
+      if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
       const updatedPost = await prisma.appPost.update({
         where: { id },
         data: {
@@ -62,6 +84,15 @@ export async function PUT(req) {
           comments: { increment: 1 }
         }
       });
+      const commentAuthorId = comment?.authorId || comment?.userId;
+      if (commentAuthorId && post.authorId !== commentAuthorId) {
+        await notifyUsers([post.authorId], {
+          title: 'New comment on your post',
+          body: `${comment?.authorName || 'Someone'} commented on your post.`,
+          url: `/ssr-app/home?postId=${post.id}`,
+          data: { type: 'comment', postId: post.id },
+        });
+      }
       return NextResponse.json(updatedPost);
     }
 

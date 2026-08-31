@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildCourseData } from '../defaults';
+import { notifyUsers } from '../notify';
 
 export async function GET(req) {
   try {
@@ -16,6 +17,16 @@ export async function POST(req) {
   try {
     const data = await req.json();
     const newCourse = await prisma.appCourse.create({ data: buildCourseData(data) });
+    const recipients = await prisma.appUser.findMany({
+      where: data.creatorId ? { id: { not: data.creatorId } } : {},
+      select: { id: true },
+    });
+    await notifyUsers(recipients.map(user => user.id), {
+      title: 'New service available',
+      body: newCourse.title,
+      url: `/ssr-app/home?courseId=${newCourse.id}`,
+      data: { type: 'service', courseId: newCourse.id },
+    });
     return NextResponse.json(newCourse);
   } catch (error) {
     console.error('Courses POST API Error:', error);
