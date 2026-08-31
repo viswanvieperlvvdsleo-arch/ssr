@@ -3591,6 +3591,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
     messages: true,
     announcements: false
   });
+  const [pushPermission, setPushPermission] = useState('default');
   const [profilePic, setProfilePic] = useState(currentUser?.avatar || null);
   const [profilePicFile, setProfilePicFile] = useState(null);
   const [cropMode, setCropMode] = useState(false);
@@ -3607,6 +3608,21 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   const [resumeName, setResumeName] = useState(currentUser.resumeName || currentUser.resume || '');
   const picInputRef = useRef(null);
   const resumeInputRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(window.Notification.permission);
+    }
+  }, []);
+
+  const enableHardwareNotifications = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('ssr-enable-push'));
+      window.setTimeout(() => {
+        if ('Notification' in window) setPushPermission(window.Notification.permission);
+      }, 500);
+    }
+  };
 
   const Toggle = ({ checked, onChange }) => (
     <div onClick={onChange} style={{ width: 44, height: 24, background: checked ? '#0A6ED1' : '#E2E8F0', borderRadius: 12, position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
@@ -3811,6 +3827,12 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                 <div>
                   <h4 style={{ margin: '0 0 4px', fontSize: 15, color: '#0F172A' }}>Push Notifications</h4>
                   <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>Enable desktop and mobile push notifications.</p>
+                  {!currentUser?.isImpersonating && pushPermission !== 'granted' && (
+                    <button type="button" onClick={enableHardwareNotifications} style={{ marginTop: 10, border: 'none', borderRadius: 7, padding: '8px 12px', background: '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      Enable on this device
+                    </button>
+                  )}
+                  {pushPermission === 'granted' && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#059669', fontWeight: 700 }}>This device is enabled</p>}
                 </div>
                 <Toggle checked={notifs.push} onChange={() => !currentUser?.isImpersonating && setNotifs(n => ({...n, push: !n.push}))} />
               </div>
@@ -4876,10 +4898,11 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead } = useApp();
+  const { posts, chats, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
+  const unreadChatCount = (chats || []).reduce((total, chat) => total + Number(chat.unreadBy?.[currentUser?.id] || 0), 0);
 
   const [activeNav, setActiveNav] = useState('feed');
   const [feedTab, setFeedTab] = useState('All');
@@ -5387,7 +5410,14 @@ export default function HomePage() {
             <button key={item.id} onClick={() => {
               setMobilePage(item.id);
             }} style={{ flex: 1, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>
-              <span style={{ fontSize: 20, filter: active ? 'none' : 'grayscale(1) opacity(0.5)' }}>{item.icon}</span>
+              <span style={{ position: 'relative', fontSize: 20, filter: active ? 'none' : 'grayscale(1) opacity(0.5)' }}>
+                {item.icon}
+                {item.id === 'chat' && unreadChatCount > 0 && (
+                  <span style={{ position: 'absolute', top: -7, right: -10, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 10, background: '#DC2626', color: '#fff', fontSize: 10, lineHeight: '17px', fontWeight: 800, textAlign: 'center', boxSizing: 'border-box' }}>
+                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                  </span>
+                )}
+              </span>
               <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, color: active ? '#0A6ED1' : '#94A3B8', letterSpacing: '0.03em' }}>{item.label}</span>
             </button>
           );

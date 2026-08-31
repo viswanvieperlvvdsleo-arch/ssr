@@ -24,11 +24,14 @@ export default function NotificationTrigger() {
     let cancelled = false;
     let unsubscribe = () => {};
 
-    const requestPermissionAndRegisterToken = async () => {
+    const requestPermissionAndRegisterToken = async (askForPermission = false) => {
       try {
-        const permission = await Notification.requestPermission();
+        let permission = Notification.permission;
+        if (askForPermission && permission === 'default') {
+          permission = await Notification.requestPermission();
+        }
         if (permission !== 'granted' || cancelled) {
-          console.warn(`Notification permission is ${permission}. Enable it in the browser or phone site settings.`);
+          console.warn(`Notification permission is ${permission}. Use the Enable notifications button or browser/site settings.`);
           return;
         }
 
@@ -58,7 +61,9 @@ export default function NotificationTrigger() {
       }
     };
 
-    requestPermissionAndRegisterToken();
+    const enablePushFromSettings = () => requestPermissionAndRegisterToken(true);
+    window.addEventListener('ssr-enable-push', enablePushFromSettings);
+    if (Notification.permission === 'granted') requestPermissionAndRegisterToken(false);
 
     unsubscribe = onMessage(messaging, payload => {
       if (Notification.permission !== 'granted') return;
@@ -73,6 +78,7 @@ export default function NotificationTrigger() {
 
     return () => {
       cancelled = true;
+      window.removeEventListener('ssr-enable-push', enablePushFromSettings);
       unsubscribe();
     };
   }, [currentUser?.id]);
