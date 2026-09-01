@@ -38,6 +38,19 @@ export default function NotificationTrigger() {
     let unsubscribe = () => {};
     let messagingRegistration = null;
 
+    const handleNotificationClick = event => {
+      const url = event.data?.type === 'ssr-notification-click' ? event.data.url : null;
+      if (!url) return;
+      try {
+        const target = new URL(url, window.location.origin);
+        if (target.origin !== window.location.origin) return;
+        window.location.assign(`${target.pathname}${target.search}${target.hash}`);
+      } catch {
+        console.warn('Notification click URL was invalid.');
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleNotificationClick);
+
     const requestPermissionAndRegisterToken = async (askForPermission = false) => {
       try {
         let permission = Notification.permission;
@@ -100,6 +113,7 @@ export default function NotificationTrigger() {
     return () => {
       cancelled = true;
       window.removeEventListener('ssr-enable-push', enablePushFromSettings);
+      navigator.serviceWorker.removeEventListener('message', handleNotificationClick);
       unsubscribe();
     };
   }, [currentUser?.id]);

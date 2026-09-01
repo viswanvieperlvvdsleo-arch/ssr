@@ -28,7 +28,7 @@ self.addEventListener('notificationclick', (event) => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       const existingClient = windowClients.find(client => 'focus' in client);
       if (existingClient) {
-        existingClient.navigate(absoluteTargetUrl);
+        existingClient.postMessage({ type: 'ssr-notification-click', url: absoluteTargetUrl });
         return existingClient.focus();
       }
       return clients.openWindow(absoluteTargetUrl);
