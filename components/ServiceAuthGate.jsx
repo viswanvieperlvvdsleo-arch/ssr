@@ -39,6 +39,7 @@ export default function ServiceAuthGate() {
 
   const isAdmin = pathname?.startsWith("/admin");
   const isServices = pathname?.startsWith("/services");
+  const isApp = pathname?.startsWith("/ssr-app");
 
   // Check if user is already logged in
   const getUser = () => {
