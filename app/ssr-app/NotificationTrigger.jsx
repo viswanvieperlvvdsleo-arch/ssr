@@ -7,6 +7,19 @@ import { useApp } from './AppContext';
 
 const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
 
+function actionsForType(type) {
+  if (type === 'chat') return [
+    { action: 'reply', title: 'Reply' },
+    { action: 'like', title: 'Like' },
+  ];
+  if (type === 'post') return [
+    { action: 'like', title: 'Like' },
+    { action: 'open', title: 'View post' },
+  ];
+  if (type === 'meeting') return [{ action: 'open', title: 'View meeting' }];
+  return [{ action: 'open', title: 'Open' }];
+}
+
 export default function NotificationTrigger() {
   const { currentUser } = useApp();
 
@@ -77,6 +90,8 @@ export default function NotificationTrigger() {
             body: notification.body || '',
             icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
             data: payload.data || {},
+            actions: actionsForType(payload.data?.type),
+            tag: payload.data?.messageId || payload.data?.postId || `ssr-${Date.now()}`,
           });
         }
       }

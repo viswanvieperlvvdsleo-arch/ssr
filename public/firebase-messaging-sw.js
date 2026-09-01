@@ -15,9 +15,14 @@ const messaging = firebase.messaging();
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.url;
+  const data = event.notification?.data || {};
+  const targetUrl = data.url;
   if (!targetUrl) return;
-  const absoluteTargetUrl = new URL(targetUrl, self.location.origin).toString();
+  const target = new URL(targetUrl, self.location.origin);
+  if (event.action === 'reply' || event.action === 'like') {
+    target.searchParams.set('notificationAction', event.action);
+  }
+  const absoluteTargetUrl = target.toString();
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
@@ -31,6 +36,19 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+function actionsForType(type) {
+  if (type === 'chat') return [
+    { action: 'reply', title: 'Reply' },
+    { action: 'like', title: 'Like' },
+  ];
+  if (type === 'post') return [
+    { action: 'like', title: 'Like' },
+    { action: 'open', title: 'View post' },
+  ];
+  if (type === 'meeting') return [{ action: 'open', title: 'View meeting' }];
+  return [{ action: 'open', title: 'Open' }];
+}
+
 // Listens and intercepts incoming notifications while the browser tab is closed/minimized
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
@@ -41,6 +59,8 @@ messaging.onBackgroundMessage((payload) => {
     body: notification.body || 'You have a new notification.',
     icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
     data: payload.data || {},
+    actions: actionsForType(payload.data?.type),
+    tag: payload.data?.messageId || payload.data?.postId || `ssr-${Date.now()}`,
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);

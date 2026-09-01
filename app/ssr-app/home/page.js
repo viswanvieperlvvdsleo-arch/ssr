@@ -456,7 +456,7 @@ function NotificationsPanel() {
   );
 }
 
-function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedia, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
+function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedia, onReact, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
   const { autoDownloadMedia, currentUser } = useApp();
   const mediaRemovedForUser = Boolean(msg.attachment?.deletedFor?.includes(currentUser?.id));
   const mediaDeletedFromCloud = Boolean(msg.attachment?.cloudDeleted);
@@ -501,7 +501,11 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
 
   const [showReactions, setShowReactions] = useState(false);
   const [showAllEmojis, setShowAllEmojis] = useState(false);
-  const [myReaction, setMyReaction] = useState(null);
+  const [myReaction, setMyReaction] = useState(msg.reactions?.[currentUser?.id] || null);
+
+  useEffect(() => {
+    setMyReaction(msg.reactions?.[currentUser?.id] || null);
+  }, [msg.id, msg.reactions?.[currentUser?.id], currentUser?.id]);
 
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -512,6 +516,13 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
   const currentX = useRef(0);
   const pressTimer = useRef(null);
   const swipeOffsetRef = useRef(0);
+
+  const chooseReaction = (emoji) => {
+    setMyReaction(emoji);
+    onReact?.(msg.id, emoji);
+    setShowReactions(false);
+    setShowAllEmojis(false);
+  };
 
   const handleTouchStart = (e) => {
     startX.current = e.touches[0].clientX;
@@ -741,7 +752,7 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
           {showReactions && !showAllEmojis && (
             <div style={{ position: 'absolute', top: -45, [msg.isMe ? 'right' : 'left']: 0, background: '#111', borderRadius: 30, padding: '6px 12px', display: 'flex', gap: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 10 }}>
               {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
-                <span key={emoji} onClick={(e) => { e.stopPropagation(); setMyReaction(emoji); setShowReactions(false); }} style={{ cursor: 'pointer', fontSize: 20, transition: 'transform 0.1s' }} onMouseEnter={e => e.target.style.transform = 'scale(1.2)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>{emoji}</span>
+                <span key={emoji} onClick={(e) => { e.stopPropagation(); chooseReaction(emoji); }} style={{ cursor: 'pointer', fontSize: 20, transition: 'transform 0.1s' }} onMouseEnter={e => e.target.style.transform = 'scale(1.2)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>{emoji}</span>
               ))}
               <span onClick={(e) => { e.stopPropagation(); setShowAllEmojis(true); }} style={{ cursor: 'pointer', fontSize: 18, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>+</span>
               {msg.isMe && onEdit && !msg.isDeletedForEveryone && (
@@ -756,7 +767,7 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
           {showAllEmojis && (
             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: -140, [msg.isMe ? 'right' : 'left']: 0, background: '#111', borderRadius: 12, padding: 10, display: 'flex', flexWrap: 'wrap', gap: 6, width: 220, maxHeight: 120, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 100 }}>
               {['😀','😃','😄','😁','😆','😅','😂','🤣','🥲','☺️','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'].map(emoji => (
-                <span key={emoji} onClick={(e) => { e.stopPropagation(); setMyReaction(emoji); setShowReactions(false); setShowAllEmojis(false); }} style={{ cursor: 'pointer', fontSize: 18 }}>{emoji}</span>
+                <span key={emoji} onClick={(e) => { e.stopPropagation(); chooseReaction(emoji); }} style={{ cursor: 'pointer', fontSize: 18 }}>{emoji}</span>
               ))}
             </div>
           )}
@@ -1412,7 +1423,7 @@ function ChatListRow({ children, onOpen, onLongPress, active, isMobile }) {
 
 export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, conversationOnly = false }) {
   const router = useRouter();
-  const { chats, chatMessages, sendChatMessage, markChatRead, scheduleMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
+  const { chats, chatMessages, sendChatMessage, reactToMessage, markChatRead, scheduleMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
   const [chatTab, setChatTab] = useState('Chats');
 
   const [search, setSearch] = useState('');
@@ -1562,6 +1573,14 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       const scrollTimer = setTimeout(() => {
         const el = document.getElementById(`msg-${targetChat.msgId}`);
         if (el) {
+          const targetMessage = (chatMessages[targetChat.chatId] || []).find(message => message.id === targetChat.msgId);
+          if (targetChat.action === 'reply' && targetMessage) {
+            setReplyingTo(targetMessage);
+            textareaRef.current?.focus();
+          }
+          if (targetChat.action === 'like') {
+            reactToMessage(targetChat.chatId, targetChat.msgId, '👍');
+          }
           setHighlightMsgId(targetChat.msgId);
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           setTargetChat(null);
@@ -1573,7 +1592,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       }, 100);
       return () => clearTimeout(scrollTimer);
     }
-  }, [targetChat, chats, chatMessages, activeChat?.id, setTargetChat]);
+  }, [targetChat, chats, chatMessages, activeChat?.id, setTargetChat, reactToMessage]);
 
   useEffect(() => () => {
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -2019,6 +2038,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
                 onReply={(m) => { setReplyingTo(m); textareaRef.current?.focus(); }}
                 onViewMedia={(attachment) => setViewMedia(attachment)}
                 onDownloadMedia={downloadChatMedia}
+                onReact={(messageId, emoji) => reactToMessage(activeChat.id, messageId, emoji)}
                 onEdit={(message) => {
                   setEditingMsgId(message.id);
                   setMsgText(message.text || '');
@@ -5017,7 +5037,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, chats, currentUser, addPost, uploadChatMedia, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
+  const { posts, chats, currentUser, addPost, likePost, uploadChatMedia, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -5085,19 +5105,25 @@ export default function HomePage() {
     const messageId = params.get('messageId');
     const section = params.get('section');
     const courseId = params.get('courseId');
+    const notificationAction = params.get('notificationAction');
     if (!currentUser) return;
     if (chatId) {
-      setTargetChat({ chatId, msgId: messageId });
+      setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       setMobilePage('chat');
-      return;
-    }
-    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
       setActiveNav(section);
       setMobilePage(section);
       setNotificationCourseId(courseId);
+      if (notificationAction === 'like' && section === 'feed' && params.get('postId')) {
+        likePost(params.get('postId'));
+      }
     }
-  }, [currentUser, setTargetChat]);
+    if (notificationAction) {
+      params.delete('notificationAction');
+      window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
+    }
+  }, [currentUser, likePost, setTargetChat]);
 
   useEffect(() => () => postUploadAbortRef.current?.abort(), []);
 

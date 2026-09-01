@@ -241,6 +241,7 @@ model AppMessage {
   edited               Boolean  @default(false)
   isDeletedForEveryone Boolean  @default(false)
   deletedFor           String[] @default([])
+  reactions            Json?
   attachment           Json?
 
   createdAt DateTime @default(now())

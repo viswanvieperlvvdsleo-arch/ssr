@@ -116,6 +116,7 @@ const normalizeMessage = (message = {}, currentUserId = null) => ({
   senderColor: message.senderColor || getColor(message.senderId || message.senderName),
   senderAvatar: message.senderAvatar || null,
   deletedFor: safeArray(message.deletedFor),
+  reactions: message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions) ? message.reactions : {},
   isMe: message.senderId === currentUserId,
 });
 
@@ -522,6 +523,26 @@ export function AppProvider({ children }) {
     } catch(e) { console.error(e); }
   };
 
+  const likePost = async (postId) => {
+    if (!currentUser?.id) return;
+    setPosts(prev => prev.map(post => {
+      if (post.id !== postId || post.likedBy?.includes(currentUser.id)) return post;
+      return { ...post, likedBy: [...(post.likedBy || []), currentUser.id], likes: (post.likes || 0) + 1 };
+    }));
+    try {
+      const res = await fetch('/api/ssr/posts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'like', id: postId, userId: currentUser.id })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not like post');
+      setPosts(prev => prev.map(post => post.id === postId ? { ...post, ...data } : post));
+    } catch (error) {
+      console.error('Notification like failed:', error);
+    }
+  };
+
   const toggleSave = async (postId) => {
     if (!currentUser) return;
     const currentPost = posts.find(post => post.id === postId);
@@ -841,6 +862,27 @@ export function AppProvider({ children }) {
     } catch(e) {
       console.error(e);
       setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).filter(message => message.id !== tempId) }));
+    }
+  };
+
+  const reactToMessage = async (chatId, messageId, emoji = '👍') => {
+    if (!currentUser?.id || !chatId || !messageId || !emoji) return;
+    setChatMessages(prev => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).map(message => message.id === messageId
+        ? { ...message, reactions: { ...(message.reactions || {}), [currentUser.id]: emoji } }
+        : message)
+    }));
+    try {
+      const res = await fetch('/api/ssr/messages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'react', msgIds: [messageId], chatId, userId: currentUser.id, emoji })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not react to message');
+    } catch (error) {
+      console.error('Message reaction failed:', error);
     }
   };
 
@@ -1250,7 +1292,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       currentUser, login, signup, deleteAccount, logout, endImpersonation, selectedRole, setSelectedRole,
-      posts, toggleLike, toggleSave, addComment, deleteComment, deletePost, addPost,
+      posts, toggleLike, likePost, toggleSave, addComment, deleteComment, deletePost, addPost,
       chats: mutableChats,
       setChats: setMutableChats,
       updateChat,
@@ -1258,6 +1300,7 @@ export function AppProvider({ children }) {
       createGroup,
       chatMessages,
       sendChatMessage,
+      reactToMessage,
       scheduleMessage,
       deleteMessages,
       editMessage,

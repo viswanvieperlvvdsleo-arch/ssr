@@ -151,6 +151,7 @@ export function buildMessageData(data = {}) {
     edited: Boolean(data.edited),
     isDeletedForEveryone: Boolean(data.isDeletedForEveryone),
     deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor : [],
+    reactions: data.reactions && typeof data.reactions === 'object' && !Array.isArray(data.reactions) ? data.reactions : {},
     attachment: data.attachment || null,
   };
 }

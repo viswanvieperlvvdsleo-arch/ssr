@@ -109,7 +109,7 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
   );
   // Chat messages use hardware push only; the in-app bell is reserved for
   // feed, service, meeting, like, and comment activity.
-  if (notificationData.type !== 'chat') {
+  if (!['chat', 'chat-reaction'].includes(notificationData.type)) {
     try {
       await Promise.all(uniqueUserIds.map(userId => prisma.appNotification.create({
         data: {

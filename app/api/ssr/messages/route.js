@@ -60,7 +60,7 @@ export async function POST(req) {
 }
 export async function PUT(req) {
   try {
-    const { action, msgIds, chatId, userId, content, forEveryone, deleteFromCloud } = await req.json();
+    const { action, msgIds, chatId, userId, content, forEveryone, deleteFromCloud, emoji } = await req.json();
 
     if (action === 'edit') {
       const msg = await prisma.appMessage.update({
@@ -68,6 +68,34 @@ export async function PUT(req) {
         data: { content, edited: true }
       });
       return NextResponse.json({ success: true, message: msg });
+    }
+
+    if (action === 'react') {
+      const messageId = msgIds?.[0];
+      const message = messageId ? await prisma.appMessage.findUnique({ where: { id: messageId } }) : null;
+      if (!message || !userId || !emoji) {
+        return NextResponse.json({ error: 'Message and reaction are required' }, { status: 400 });
+      }
+      const chat = await prisma.appChat.findUnique({ where: { id: message.chatId } });
+      if (!chat || !chat.participants.includes(userId)) {
+        return NextResponse.json({ error: 'You are not a member of this chat' }, { status: 403 });
+      }
+      const reactions = message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+        ? { ...message.reactions }
+        : {};
+      reactions[userId] = String(emoji).slice(0, 12);
+      const updated = await prisma.appMessage.update({ where: { id: message.id }, data: { reactions } });
+
+      if (message.senderId !== userId) {
+        const actor = await prisma.appUser.findUnique({ where: { id: userId }, select: { name: true } });
+        await notifyUsers([message.senderId], {
+          title: `${actor?.name || 'Someone'} reacted to your message`,
+          body: `${actor?.name || 'Someone'} reacted ${reactions[userId]} to your message.`,
+          url: `/ssr-app/home?chatId=${encodeURIComponent(message.chatId)}&messageId=${encodeURIComponent(message.id)}`,
+          data: { type: 'chat-reaction', chatId: message.chatId, messageId: message.id, reaction: reactions[userId] },
+        });
+      }
+      return NextResponse.json({ success: true, message: updated });
     }
 
     if (action === 'delete') {

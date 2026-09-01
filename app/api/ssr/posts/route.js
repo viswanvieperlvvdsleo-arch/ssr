@@ -38,10 +38,11 @@ export async function PUT(req) {
   try {
     const { id, action, userId, comment } = await req.json();
     
-    if (action === 'toggleLike') {
+    if (action === 'like' || action === 'toggleLike') {
       const post = await prisma.appPost.findUnique({ where: { id } });
       if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
       const hasLiked = post.likedBy?.includes(userId);
+      if (action === 'like' && hasLiked) return NextResponse.json(post);
       const updatedPost = await prisma.appPost.update({
         where: { id },
         data: {
