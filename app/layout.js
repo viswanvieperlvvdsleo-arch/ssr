@@ -11,14 +11,19 @@ export const metadata = {
   title: "SSR – Business Solutions",
   description:
     "SSR Business Solutions – Premier IT Training, Staffing & Development. SAP Authorized Training Center, Visakhapatnam.",
-  manifest: "/manifest.json"
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SSR Biz"
+  }
 };
 
 export const viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#ffffff"
+  themeColor: "#0A6ED1"
 };
 
 export default function RootLayout({ children }) {

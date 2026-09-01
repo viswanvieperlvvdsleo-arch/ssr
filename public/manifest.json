@@ -4,10 +4,11 @@
   "description": "SAP Authorized Training Center | Staffing & Development — Visakhapatnam",
   "start_url": "/ssr-app/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "theme_color": "#0A6ED1",
   "orientation": "portrait-primary",
-  "scope": "/ssr-app/",
+  "scope": "/",
   "lang": "en",
   "categories": ["education", "business"],
   "icons": [
@@ -21,7 +22,13 @@
       "src": "/logo/SSR_Business_Solutions_512x512_uncropped.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo/SSR_Business_Solutions_512x512_uncropped.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "screenshots": [],
@@ -30,7 +37,7 @@
       "name": "Training Modules",
       "short_name": "Modules",
       "description": "Explore SAP training modules",
-      "url": "/services",
+      "url": "/ssr-app/home",
       "icons": [{ "src": "/logo/SSR_Business_Solutions_192x192_uncropped.png", "sizes": "192x192" }]
     },
     {
