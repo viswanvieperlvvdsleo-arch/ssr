@@ -891,12 +891,12 @@ function PostCard({ post, currentUser, isDesktop }) {
             )}
             {(post.image || post.mediaUrl) && (post.mediaType === 'image' || !post.mediaType) && (
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-                <img onClick={() => window.open(post.image || post.mediaUrl, '_blank')} src={post.image || post.mediaUrl} alt="Post media" style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', display: 'block', cursor: 'pointer' }} />
+                <img loading="lazy" decoding="async" onClick={() => window.open(post.image || post.mediaUrl, '_blank')} src={post.image || post.mediaUrl} alt="Post media" style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', display: 'block', cursor: 'pointer' }} />
               </div>
             )}
             {(post.image || post.mediaUrl) && post.mediaType === 'video' && (
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-                <video src={post.image || post.mediaUrl} controls style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', background: '#000', display: 'block' }} />
+                <video src={post.image || post.mediaUrl} preload="none" controls style={{ maxWidth: '100%', maxHeight: 500, height: 'auto', width: 'auto', borderRadius: 8, border: '1px solid #E2E8F0', background: '#000', display: 'block' }} />
               </div>
             )}
             <PostBanner banner={post.banner} category={post.category} />
@@ -988,18 +988,28 @@ function ActionBtn({ iconEl, label, active, activeColor = '#0A6ED1', onClick }) 
 
 
 function CreatePostModal({ onClose, onSubmit }) {
-  const { currentUser } = useApp();
+  const { currentUser, uploadChatMedia } = useApp();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Announcements');
 
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaType, setMediaType] = useState(null);
+  const [mediaFile, setMediaFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
-    onSubmit({
+    if (!title.trim() || !content.trim() || uploading) return;
+    setUploading(true);
+    try {
+      let storedMediaUrl = mediaUrl;
+      if (mediaFile) {
+        const uploaded = await uploadChatMedia(mediaFile);
+        if (!uploaded?.url) throw new Error('Could not upload post media');
+        storedMediaUrl = uploaded.url;
+      }
+      await onSubmit({
       id: `p${Date.now()}`,
       authorId: currentUser.id,
       authorName: currentUser.name,
@@ -1011,7 +1021,7 @@ function CreatePostModal({ onClose, onSubmit }) {
       category,
       title,
       content,
-      mediaUrl,
+      mediaUrl: storedMediaUrl,
       mediaType,
       banner: null,
       likes: 0,
@@ -1019,8 +1029,13 @@ function CreatePostModal({ onClose, onSubmit }) {
       liked: false,
       createdAt: 'Just now',
       comments: []
-    });
-    onClose();
+      });
+      onClose();
+    } catch (error) {
+      alert(error?.message || 'Could not publish this post.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -1073,6 +1088,7 @@ function CreatePostModal({ onClose, onSubmit }) {
                 if (!file) {
                   setMediaUrl(null);
                   setMediaType(null);
+                  setMediaFile(null);
                   return;
                 }
                 const isImage = file.type.startsWith('image/');
@@ -1087,6 +1103,7 @@ function CreatePostModal({ onClose, onSubmit }) {
                   return;
                 }
 
+                setMediaFile(file);
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   setMediaUrl(reader.result);
@@ -1110,7 +1127,7 @@ function CreatePostModal({ onClose, onSubmit }) {
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1.5px solid #E2E8F0', borderRadius: 10, background: '#fff', color: '#64748B', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-            <button type="submit" disabled={!title.trim() || !content.trim()} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Publish Post</button>
+            <button type="submit" disabled={!title.trim() || !content.trim() || uploading} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() && !uploading ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: uploading ? 'wait' : 'pointer', fontSize: 13 }}>{uploading ? 'Uploading...' : 'Publish Post'}</button>
           </div>
         </form>
       </div>
@@ -4789,6 +4806,45 @@ function ProfilePicViewerModal() {
 }
 
 /* ─── MAIN PAGE ─────────────────────────────────────── */
+function AppShellSkeleton() {
+  const width = useWindowWidth();
+  const isMobile = width < 900;
+  const bar = (width, height = 14) => <div style={{ width, height, borderRadius: 6, background: '#E2E8F0' }} />;
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F0F2F5', color: '#CBD5E1' }}>
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes ssr-skeleton-pulse { 0%,100% { opacity:.55 } 50% { opacity:1 } }' }} />
+      <div style={{ height: 58, background: '#fff', borderBottom: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', gap: 14, padding: isMobile ? '0 14px' : '0 20px', animation: 'ssr-skeleton-pulse 1.4s ease-in-out infinite' }}>
+        <div style={{ width: 40, height: 40, borderRadius: 8, background: '#E2E8F0' }} />
+        {bar(isMobile ? 90 : 210, 16)}
+        {!isMobile && <div style={{ width: 'min(42vw, 520px)', height: 38, borderRadius: 22, background: '#F1F5F9', marginLeft: 10 }} />}
+        <div style={{ marginLeft: 'auto', width: 38, height: 38, borderRadius: '50%', background: '#E2E8F0' }} />
+        {!isMobile && <div style={{ width: 110, height: 38, borderRadius: 22, background: '#E2E8F0' }} />}
+      </div>
+      <div style={{ display: 'flex', minHeight: 'calc(100vh - 58px)' }}>
+        {!isMobile && <div style={{ width: 180, flexShrink: 0, background: '#fff', borderRight: '1px solid #E8ECF0', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {Array.from({ length: 7 }).map((_, index) => <div key={index}>{bar(index === 0 ? 110 : 130, 16)}</div>)}
+        </div>}
+        <div style={{ flex: 1, padding: isMobile ? 14 : 24, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 22 }}>{bar(130, 22)}{bar(120, 38)}</div>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>{bar(52, 16)}{bar(112, 16)}{bar(130, 16)}{bar(100, 16)}</div>
+          <div style={{ maxWidth: 720, minHeight: 300, background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', padding: 24, display: 'flex', flexDirection: 'column', gap: 18, animation: 'ssr-skeleton-pulse 1.4s ease-in-out infinite' }}>
+            {bar(190, 18)}
+            {bar('72%', 14)}
+            {bar('92%', 14)}
+            <div style={{ width: '100%', height: 190, borderRadius: 8, background: '#F1F5F9', marginTop: 8 }} />
+          </div>
+        </div>
+        {!isMobile && <div style={{ width: 320, flexShrink: 0, background: '#fff', borderLeft: '1px solid #E8ECF0', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {bar(70, 20)}
+          <div style={{ width: '100%', height: 38, borderRadius: 20, background: '#F1F5F9' }} />
+          {Array.from({ length: 5 }).map((_, index) => <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{bar(34, 34)}{bar(150, 14)}</div>)}
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function ScheduleMeetingModal() {
   const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, sendChatMessage, currentUser } = useApp();
   useBackHandler(showScheduleMeeting, closeScheduleMeeting);
@@ -4918,7 +4974,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, chats, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead } = useApp();
+  const { posts, chats, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -5006,6 +5062,8 @@ export default function HomePage() {
       </div>
     );
   }
+
+  if (initialDataLoading) return <AppShellSkeleton />;
 
   const filteredPosts = [...posts].filter(p => {
     if (feedTab === 'All') return true;

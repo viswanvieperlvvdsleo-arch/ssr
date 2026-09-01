@@ -17,10 +17,12 @@ function readServiceAccount() {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw);
+    const account = JSON.parse(raw);
+    return account?.private_key ? { ...account, private_key: account.private_key.replace(/\\n/g, '\n') } : account;
   } catch {
     try {
-      return JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+      const account = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+      return account?.private_key ? { ...account, private_key: account.private_key.replace(/\\n/g, '\n') } : account;
     } catch (error) {
       console.error('Firebase service account secret is not valid JSON:', error);
       return null;

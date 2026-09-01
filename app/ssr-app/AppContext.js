@@ -151,6 +151,7 @@ export function AppProvider({ children }) {
   const [mutableChats, setMutableChats] = useState([]);
   const [chatRequests, setChatRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
   const [userProfileToView, setUserProfileToView] = useState(null);
   const [profilePicToView, setProfilePicToView] = useState(null);
   const [showScheduleMeeting, setShowScheduleMeeting] = useState(false);
@@ -186,9 +187,9 @@ export function AppProvider({ children }) {
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const [usersRes, postsRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await Promise.all([
+        const postsPromise = fetch('/api/ssr/posts').then(r => r.json()).catch(() => ({}));
+        const otherDataPromise = Promise.all([
           fetch(usersUrl).then(r => r.json()).catch(() => ({})),
-          fetch('/api/ssr/posts').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/courses').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
@@ -196,9 +197,13 @@ export function AppProvider({ children }) {
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
         ]);
 
+        const postsRes = await postsPromise;
+        if (postsRes && !postsRes.error && Array.isArray(postsRes)) setIfChanged(setPosts, postsRes.map(normalizePost));
+        setInitialDataLoading(false);
+
+        const [usersRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await otherDataPromise;
         const normalizedUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
         if (normalizedUsers) setIfChanged(setUsers, normalizedUsers);
-        if (postsRes && !postsRes.error && Array.isArray(postsRes)) setIfChanged(setPosts, postsRes.map(normalizePost));
         if (coursesRes && !coursesRes.error && Array.isArray(coursesRes)) {
           setIfChanged(setCourses, coursesRes.map(course => ({
             ...course,
@@ -224,6 +229,8 @@ export function AppProvider({ children }) {
         }
       } catch (e) {
         console.error('Failed to load static data:', e);
+      } finally {
+        setInitialDataLoading(false);
       }
     }
 
@@ -1244,6 +1251,7 @@ export function AppProvider({ children }) {
       chatRequests, requestChatAccess, decideChatRequest, startDirectChat, canDirectChatWith,
       canManageChatRequests, canViewPrivateUserDetails, canUseStaffChatAccess,
       notifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications,
+      initialDataLoading,
       autoDownloadMedia, setAutoDownloadMedia,
       targetChat, setTargetChat,
       uploadChatMedia, markChatRead,

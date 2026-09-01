@@ -3,11 +3,22 @@ import { prisma } from './prisma.js';
 
 let initialized = false;
 
+function parseServiceAccount(raw) {
+  const account = JSON.parse(raw);
+  return account?.private_key ? { ...account, private_key: account.private_key.replace(/\\n/g, '\n') } : account;
+}
+
+function makeAbsoluteUrl(url) {
+  if (/^https:\/\//i.test(url || '')) return url;
+  const base = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+  return base ? new URL(url || '/ssr-app/home', base).toString() : undefined;
+}
+
 function initAdmin() {
   if (initialized || admin.apps.length > 0) { initialized = true; return; }
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON env var is not set');
-  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  admin.initializeApp({ credential: admin.credential.cert(parseServiceAccount(raw)) });
   initialized = true;
 }
 
@@ -33,7 +44,7 @@ export async function sendPushToTokens(tokens, { title, body }, data = {}) {
         badge: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
         requireInteraction: true,
       },
-      fcmOptions: { link: data.url || '/ssr-app/home' },
+      fcmOptions: { link: makeAbsoluteUrl(data.url) },
     },
     android: {
       priority: 'high',
