@@ -24,6 +24,23 @@ export default function NotificationTrigger() {
   const { currentUser } = useApp();
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+    const handleNotificationClick = event => {
+      const url = event.data?.type === 'ssr-notification-click' ? event.data.url : null;
+      if (!url) return;
+      try {
+        const target = new URL(url, window.location.origin);
+        if (target.origin !== window.location.origin) return;
+        window.location.assign(`${target.pathname}${target.search}${target.hash}`);
+      } catch {
+        console.warn('Notification click URL was invalid.');
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleNotificationClick);
+    return () => navigator.serviceWorker.removeEventListener('message', handleNotificationClick);
+  }, []);
+
+  useEffect(() => {
     if (!currentUser?.id || typeof window === 'undefined' || !messaging) return undefined;
     if (!vapidKey) {
       console.error('FCM is not configured: NEXT_PUBLIC_FIREBASE_VAPID_KEY is missing from the client build.');
@@ -38,19 +55,6 @@ export default function NotificationTrigger() {
     let unsubscribe = () => {};
     let messagingRegistration = null;
 
-    const handleNotificationClick = event => {
-      const url = event.data?.type === 'ssr-notification-click' ? event.data.url : null;
-      if (!url) return;
-      try {
-        const target = new URL(url, window.location.origin);
-        if (target.origin !== window.location.origin) return;
-        window.location.assign(`${target.pathname}${target.search}${target.hash}`);
-      } catch {
-        console.warn('Notification click URL was invalid.');
-      }
-    };
-    navigator.serviceWorker.addEventListener('message', handleNotificationClick);
-
     const requestPermissionAndRegisterToken = async (askForPermission = false) => {
       try {
         let permission = Notification.permission;
@@ -62,9 +66,9 @@ export default function NotificationTrigger() {
           return;
         }
 
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=2', { scope: '/firebase-cloud-messaging-push-scope' });
         messagingRegistration = registration;
-        await navigator.serviceWorker.ready;
+        await registration.update().catch(() => {});
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
         if (!token || cancelled) {
           console.error('FCM did not return a device token. Check the Firebase Web Push certificate and VAPID key.');
@@ -113,7 +117,6 @@ export default function NotificationTrigger() {
     return () => {
       cancelled = true;
       window.removeEventListener('ssr-enable-push', enablePushFromSettings);
-      navigator.serviceWorker.removeEventListener('message', handleNotificationClick);
       unsubscribe();
     };
   }, [currentUser?.id]);

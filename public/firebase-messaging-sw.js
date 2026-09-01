@@ -1,6 +1,9 @@
 importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js');
 
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
 // Initializes the background service setup using your credentials
 firebase.initializeApp({
   apiKey: "AIzaSyDAJNto-qn6OGybOi9WmGhwFcHIjUthFmA",
@@ -26,7 +29,7 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      const existingClient = windowClients.find(client => 'focus' in client);
+      const existingClient = windowClients.find(client => client.url.includes('/ssr-app/')) || windowClients.find(client => 'focus' in client);
       if (existingClient) {
         existingClient.postMessage({ type: 'ssr-notification-click', url: absoluteTargetUrl });
         return existingClient.focus();
