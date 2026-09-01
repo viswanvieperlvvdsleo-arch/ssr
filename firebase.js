@@ -2,12 +2,12 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getMessaging } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDAJNto-qn60GybOi9WmGhwFCHiJUtHFmA",
+  apiKey: "AIzaSyDAJNto-qn6OGybOi9WmGhwFcHIjUthFmA",
   authDomain: "ssrbs-d41fb.firebaseapp.com",
   projectId: "ssrbs-d41fb",
   storageBucket: "ssrbs-d41fb.firebasestorage.app",
   messagingSenderId: "263500284164",
-  appId: "1:263500284164:web:6e18f2d5792c30e927c3f3" // Fixed: Built automatically from your project numbers
+  appId: "1:263500284164:web:4aabf9f181dbcd74b0d051"
 };
 
 // Next.js fix: Prevents Firebase from initializing multiple times during hot-reloads

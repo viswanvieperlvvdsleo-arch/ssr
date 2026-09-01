@@ -3,12 +3,12 @@ importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-com
 
 // Initializes the background service setup using your credentials
 firebase.initializeApp({
-  apiKey: "AIzaSyDAJNto-qn60GybOi9WmGhwFCHiJUtHFmA",
+  apiKey: "AIzaSyDAJNto-qn6OGybOi9WmGhwFcHIjUthFmA",
   authDomain: "ssrbs-d41fb.firebaseapp.com",
   projectId: "ssrbs-d41fb",
   storageBucket: "ssrbs-d41fb.firebasestorage.app",
   messagingSenderId: "263500284164",
-  appId: "1:263500284164:web:6e18f2d5792c30e927c3f3"
+  appId: "1:263500284164:web:4aabf9f181dbcd74b0d051"
 });
 
 const messaging = firebase.messaging();
