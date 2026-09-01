@@ -986,9 +986,62 @@ function ActionBtn({ iconEl, label, active, activeColor = '#0A6ED1', onClick }) 
   );
 }
 
+function UploadProgressAvatar({ currentUser, upload, onCancel }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!upload) setDetailsOpen(false);
+  }, [upload]);
+
+  if (!upload) return null;
+
+  const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
+  const statusText = upload.status === 'publishing'
+    ? 'Publishing post...'
+    : upload.status === 'error'
+      ? 'Upload failed'
+      : upload.status === 'complete'
+        ? 'Post published'
+        : 'Uploading post...';
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setDetailsOpen(open => !open)}
+        aria-label="Show upload progress"
+        title="Show upload progress"
+        style={{ width: 40, height: 40, padding: 2, border: 'none', borderRadius: '50%', background: `conic-gradient(#0A6ED1 ${progress}%, #DCE7F3 0)`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: '50%', background: '#fff' }}>
+          <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={30} online={currentUser?.online} />
+        </span>
+      </button>
+      {detailsOpen && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 250, padding: 14, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,0.16)', zIndex: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, color: '#0F172A', fontSize: 13, fontWeight: 700 }}>{statusText}</p>
+              <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{upload.fileName}</p>
+            </div>
+            <button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close upload progress" title="Close" style={{ border: 'none', background: 'none', color: '#64748B', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 0 }}>x</button>
+          </div>
+          <div style={{ height: 6, marginTop: 12, background: '#E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ width: `${progress}%`, height: '100%', background: upload.status === 'error' ? '#DC2626' : '#0A6ED1', transition: 'width 0.2s ease' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+            <span style={{ color: upload.status === 'error' ? '#DC2626' : '#64748B', fontSize: 11 }}>{upload.error || `${progress}% complete`}</span>
+            {upload.status !== 'complete' && <button type="button" onClick={onCancel} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function CreatePostModal({ onClose, onSubmit }) {
-  const { currentUser, uploadChatMedia } = useApp();
+  const { currentUser } = useApp();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Announcements');
@@ -996,45 +1049,35 @@ function CreatePostModal({ onClose, onSubmit }) {
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaType, setMediaType] = useState(null);
   const [mediaFile, setMediaFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim() || uploading) return;
-    setUploading(true);
+    if (!title.trim() || !content.trim()) return;
     try {
-      let storedMediaUrl = mediaUrl;
-      if (mediaFile) {
-        const uploaded = await uploadChatMedia(mediaFile);
-        if (!uploaded?.url) throw new Error('Could not upload post media');
-        storedMediaUrl = uploaded.url;
-      }
       await onSubmit({
-      id: `p${Date.now()}`,
-      authorId: currentUser.id,
-      authorName: currentUser.name,
-      authorRole: currentUser.role,
-      authorInitials: currentUser.initials,
-      authorColor: currentUser.color,
-      tag: category.slice(0, -1),
-      tagColor: '#0A6ED1',
-      category,
-      title,
-      content,
-      mediaUrl: storedMediaUrl,
-      mediaType,
-      banner: null,
-      likes: 0,
-      saved: false,
-      liked: false,
-      createdAt: 'Just now',
-      comments: []
-      });
+        id: `p${Date.now()}`,
+        authorId: currentUser.id,
+        authorName: currentUser.name,
+        authorRole: currentUser.role,
+        authorInitials: currentUser.initials,
+        authorColor: currentUser.color,
+        tag: category.slice(0, -1),
+        tagColor: '#0A6ED1',
+        category,
+        title,
+        content,
+        mediaUrl: mediaFile ? null : mediaUrl,
+        mediaType,
+        banner: null,
+        likes: 0,
+        saved: false,
+        liked: false,
+        createdAt: 'Just now',
+        comments: []
+      }, mediaFile);
       onClose();
     } catch (error) {
       alert(error?.message || 'Could not publish this post.');
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -1104,10 +1147,10 @@ function CreatePostModal({ onClose, onSubmit }) {
                 }
 
                 setMediaFile(file);
+                setMediaType(isImage ? 'image' : isVideo ? 'video' : null);
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   setMediaUrl(reader.result);
-                  setMediaType(isImage ? 'image' : 'video');
                 };
                 reader.readAsDataURL(file);
               }}
@@ -1127,7 +1170,7 @@ function CreatePostModal({ onClose, onSubmit }) {
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1.5px solid #E2E8F0', borderRadius: 10, background: '#fff', color: '#64748B', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-            <button type="submit" disabled={!title.trim() || !content.trim() || uploading} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() && !uploading ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: uploading ? 'wait' : 'pointer', fontSize: 13 }}>{uploading ? 'Uploading...' : 'Publish Post'}</button>
+            <button type="submit" disabled={!title.trim() || !content.trim()} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Publish Post</button>
           </div>
         </form>
       </div>
@@ -4974,7 +5017,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, chats, currentUser, addPost, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
+  const { posts, chats, currentUser, addPost, uploadChatMedia, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -4987,6 +5030,8 @@ export default function HomePage() {
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [postUpload, setPostUpload] = useState(null);
+  const postUploadAbortRef = useRef(null);
 
   const [mounted, setMounted] = useState(false);
   const [viewRestored, setViewRestored] = useState(false);
@@ -5100,6 +5145,40 @@ export default function HomePage() {
     }
   };
 
+  const startPostUpload = async (post, file) => {
+    if (!file) return addPost(post);
+    postUploadAbortRef.current?.abort();
+    const taskId = `post-upload-${Date.now()}`;
+    const controller = new AbortController();
+    postUploadAbortRef.current = controller;
+    setPostUpload({ id: taskId, fileName: file.name, progress: 0, status: 'uploading', error: null });
+
+    try {
+      const uploaded = await uploadChatMedia(file, progress => {
+        setPostUpload(task => task?.id === taskId ? { ...task, progress } : task);
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+      setPostUpload(task => task?.id === taskId ? { ...task, progress: 100, status: 'publishing' } : task);
+      await addPost({ ...post, mediaUrl: uploaded?.url || null, mediaType: post.mediaType });
+      setPostUpload(task => task?.id === taskId ? { ...task, progress: 100, status: 'complete' } : task);
+      window.setTimeout(() => setPostUpload(task => task?.id === taskId ? null : task), 1500);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.error('Post media upload failed:', error);
+      setPostUpload(task => task?.id === taskId ? { ...task, status: 'error', error: error?.message || 'Could not upload post media' } : task);
+    } finally {
+      if (postUploadAbortRef.current === controller) postUploadAbortRef.current = null;
+    }
+  };
+
+  const cancelPostUpload = () => {
+    postUploadAbortRef.current?.abort();
+    postUploadAbortRef.current = null;
+    setPostUpload(null);
+  };
+
+  useEffect(() => () => postUploadAbortRef.current?.abort(), []);
+
   /* ── DESKTOP LAYOUT ──────────────────────────────── */
   if (!isMobile) {
     return (
@@ -5109,7 +5188,14 @@ export default function HomePage() {
         <ScheduleMeetingModal />
 
         {showCreatePost && isAdmin(currentUser) && (
-          <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post) => { addPost(post); setShowCreatePost(false); }} />
+          <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
+            setShowCreatePost(false);
+            if (file) {
+              startPostUpload(post, file);
+              return;
+            }
+            return addPost(post);
+          }} />
         )}
 
         {currentUser?.isImpersonating && (
@@ -5139,6 +5225,7 @@ export default function HomePage() {
 
           {/* Right controls */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <UploadProgressAvatar currentUser={currentUser} upload={postUpload} onCancel={cancelPostUpload} />
             {/* Notification */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setActiveNav('notifications')} style={{ width: 38, height: 38, background: activeNav === 'notifications' ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeNav === 'notifications' ? '#0A6ED1' : '#64748B', position: 'relative' }}>
@@ -5327,7 +5414,14 @@ export default function HomePage() {
       <ScheduleMeetingModal />
 
       {showCreatePost && isAdmin(currentUser) && (
-        <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post) => { addPost(post); setShowCreatePost(false); }} />
+        <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
+          setShowCreatePost(false);
+          if (file) {
+            startPostUpload(post, file);
+            return;
+          }
+          return addPost(post);
+        }} />
       )}
 
       {/* Impersonation Banner */}
@@ -5351,6 +5445,7 @@ export default function HomePage() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
+          <UploadProgressAvatar currentUser={currentUser} upload={postUpload} onCancel={cancelPostUpload} />
           <button onClick={() => setNotifOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38 }}>
             {MenuIcons.bell}
             {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}

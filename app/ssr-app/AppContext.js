@@ -717,11 +717,15 @@ export function AppProvider({ children }) {
     } catch(e) { console.error(e); }
   };
 
-  const uploadChatMedia = async (file, onProgress) => {
+  const uploadChatMedia = async (file, onProgress, signal) => {
     if (!file) return null;
     const reportProgress = (value) => onProgress?.(Math.max(0, Math.min(100, Math.round(value))));
     const chunkSize = 256 * 1024;
     const readChunk = (blob) => new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException('Upload cancelled', 'AbortError'));
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
       reader.onerror = reject;
@@ -729,30 +733,46 @@ export function AppProvider({ children }) {
     });
 
     reportProgress(0);
+    if (signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
     const initRes = await fetch('/api/ssr/media', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, chunkCount: Math.ceil(file.size / chunkSize) })
+      body: JSON.stringify({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, chunkCount: Math.ceil(file.size / chunkSize) }),
+      signal,
     });
     const init = await initRes.json();
     if (!initRes.ok || !init.id) throw new Error(init.error || 'Could not prepare file upload');
+    const mediaId = init.id;
     reportProgress(5);
 
-    for (let index = 0; index < Math.ceil(file.size / chunkSize); index += 1) {
-      const data = await readChunk(file.slice(index * chunkSize, Math.min(file.size, (index + 1) * chunkSize)));
-      const chunkRes = await fetch('/api/ssr/media', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: init.id, chunkIndex: index, data })
-      });
-      const chunkResult = await chunkRes.json();
-      if (!chunkRes.ok) throw new Error(chunkResult.error || 'Could not upload file');
-      reportProgress(5 + ((index + 1) / Math.ceil(file.size / chunkSize)) * 95);
+    try {
+      for (let index = 0; index < Math.ceil(file.size / chunkSize); index += 1) {
+        if (signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+        const data = await readChunk(file.slice(index * chunkSize, Math.min(file.size, (index + 1) * chunkSize)));
+        const chunkRes = await fetch('/api/ssr/media', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: mediaId, chunkIndex: index, data }),
+          signal,
+        });
+        const chunkResult = await chunkRes.json();
+        if (!chunkRes.ok) throw new Error(chunkResult.error || 'Could not upload file');
+        reportProgress(5 + ((index + 1) / Math.ceil(file.size / chunkSize)) * 95);
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        fetch('/api/ssr/media', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: mediaId }),
+        }).catch(() => {});
+      }
+      throw error;
     }
 
     return {
-      url: `/api/ssr/media/${init.id}`,
-      mediaId: init.id,
+      url: `/api/ssr/media/${mediaId}`,
+      mediaId,
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,

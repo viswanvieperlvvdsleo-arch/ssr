@@ -44,12 +44,12 @@ export async function POST(req) {
         data: { updatedAt: new Date(), unreadBy }
       });
 
-      notifyUsers(recipientIds, {
+      await notifyUsers(recipientIds, {
         title: chat.type === 'group' ? (chat.name || 'New group message') : (newMessage.senderName || 'New message'),
         body: newMessage.content || (newMessage.attachment ? 'Sent an attachment' : 'You have a new message'),
         url: `/ssr-app/home?chatId=${encodeURIComponent(chat.id)}&messageId=${encodeURIComponent(newMessage.id)}`,
         data: { type: 'chat', chatId: chat.id, messageId: newMessage.id },
-      }).catch(err => console.error('Push notification background error:', err));
+      });
     }
 
     return NextResponse.json(newMessage);

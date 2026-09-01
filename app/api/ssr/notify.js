@@ -147,10 +147,17 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
       if (!result.response.ok && isInvalidToken(result.response, result.result)) {
         await prisma.appPushToken.deleteMany({ where: { token } });
       }
-      return result.response.ok;
+      return { ok: result.response.ok, status: result.response.status, tokenSuffix: token.slice(-8), error: result.result?.error?.message || null };
     }));
 
-    return { sent: results.filter(Boolean).length, failed: results.filter(value => !value).length };
+    const sent = results.filter(result => result.ok).length;
+    const failed = results.length - sent;
+    if (failed) {
+      console.error('Firebase rejected push notification:', results.filter(result => !result.ok));
+    } else {
+      console.info(`Firebase accepted ${sent} push notification${sent === 1 ? '' : 's'}.`);
+    }
+    return { sent, failed };
   } catch (error) {
     console.error('Firebase push notification failed:', error);
     return { sent: 0, error: error.message };

@@ -40,3 +40,16 @@ export async function PUT(req) {
     return NextResponse.json({ error: 'Could not upload media chunk' }, { status: 500 });
   }
 }
+
+export async function DELETE(req) {
+  try {
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: 'Media ID is required' }, { status: 400 });
+    await prisma.appMediaChunk.deleteMany({ where: { mediaId: id } });
+    await prisma.appMedia.deleteMany({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Media DELETE API Error:', error);
+    return NextResponse.json({ error: 'Could not cancel media upload' }, { status: 500 });
+  }
+}
