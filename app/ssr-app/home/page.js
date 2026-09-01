@@ -5099,6 +5099,8 @@ export default function HomePage() {
     }
   }, [currentUser, setTargetChat]);
 
+  useEffect(() => () => postUploadAbortRef.current?.abort(), []);
+
   if (!mounted || !currentUser) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', color: '#64748B' }}>
@@ -5176,8 +5178,6 @@ export default function HomePage() {
     postUploadAbortRef.current = null;
     setPostUpload(null);
   };
-
-  useEffect(() => () => postUploadAbortRef.current?.abort(), []);
 
   /* ── DESKTOP LAYOUT ──────────────────────────────── */
   if (!isMobile) {
