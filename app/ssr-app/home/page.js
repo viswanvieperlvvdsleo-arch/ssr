@@ -401,6 +401,7 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
 
 /* ─── Notifications Panel ──────────────────────────── */
 function NotificationsPanel() {
+  const router = useRouter();
   const { notifications: notifs, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications } = useApp();
   const unreadCount = notifs.filter(n => !n.read).length;
 
@@ -436,7 +437,7 @@ function NotificationsPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {notifs.map((n, i) => (
             <div key={n.id} style={{ display: 'flex', gap: 14, padding: '16px 12px', borderBottom: i < notifs.length - 1 ? '1px solid #F8FAFC' : 'none', background: n.read ? '#fff' : '#F0F7FF', borderRadius: 10, marginBottom: 4, cursor: 'pointer' }}
-              onClick={() => { markNotificationRead(n.id); if (n.url) window.location.href = n.url; }}>
+              onClick={() => { markNotificationRead(n.id); if (n.url) router.push(n.url); }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: n.read ? '#F1F5F9' : '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: n.read ? '#64748B' : '#0A6ED1' }}>
                 {iconFor(n.type)}
               </div>
@@ -3027,11 +3028,23 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
   );
 }
 
-function CoursesPanel({ currentUser }) {
+function CoursesPanel({ currentUser, initialCourseId = null }) {
   const { courses, toggleCourseSave, addCourse, deleteCourse, users, viewUserProfile, getTrainerRatingSummary } = useApp();
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const [openedInitialCourseId, setOpenedInitialCourseId] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useBackHandler(Boolean(selectedCourse), () => setSelectedCourse(null));
+
+  useEffect(() => {
+    if (!initialCourseId || selectedCourse || openedInitialCourseId === initialCourseId) return;
+    const course = courses.find(item => item.id === initialCourseId);
+    if (course) {
+      setOpenedInitialCourseId(initialCourseId);
+      setSelectedCourse(course);
+    }
+  }, [courses, initialCourseId, openedInitialCourseId, selectedCourse]);
 
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
   const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
@@ -3916,7 +3929,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                       <button onClick={() => {
                         selectedMediaIds.forEach(msgId => {
                           const media = allMedia.find(m => m.msgId === msgId);
-                          if (media) deleteChatMedia(media.chatId, msgId);
+                          if (media) deleteChatMedia(media.chatId, msgId, media.mediaId, true);
                         });
                         setSelectedMediaIds(new Set());
                       }} style={{ padding: '6px 14px', background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -4915,6 +4928,12 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [viewRestored, setViewRestored] = useState(false);
   const [randomOffsets, setRandomOffsets] = useState({});
+  const [notificationCourseId, setNotificationCourseId] = useState(null);
+
+  useBackHandler(isMobile && mobilePage !== 'feed', () => {
+    setMobilePage('feed');
+    setActiveNav('feed');
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -4956,10 +4975,20 @@ export default function HomePage() {
     const params = new URLSearchParams(window.location.search);
     const chatId = params.get('chatId');
     const messageId = params.get('messageId');
-    if (!currentUser || !chatId || !messageId) return;
-    setTargetChat({ chatId, msgId: messageId });
-    setActiveNav('feed');
-    setMobilePage('chat');
+    const section = params.get('section');
+    const courseId = params.get('courseId');
+    if (!currentUser) return;
+    if (chatId) {
+      setTargetChat({ chatId, msgId: messageId });
+      setActiveNav('feed');
+      setMobilePage('chat');
+      return;
+    }
+    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
+      setActiveNav(section);
+      setMobilePage(section);
+      setNotificationCourseId(courseId);
+    }
   }, [currentUser, setTargetChat]);
 
   if (!mounted || !currentUser) return null;
@@ -5149,7 +5178,7 @@ export default function HomePage() {
 
               {activeNav === 'courses' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-                  <CoursesPanel currentUser={currentUser} />
+                  <CoursesPanel currentUser={currentUser} initialCourseId={notificationCourseId} />
                 </div>
               )}
 
@@ -5264,7 +5293,7 @@ export default function HomePage() {
             <div style={{ position: 'absolute', right: 0, top: '120%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', width: 280, zIndex: 300, padding: 14 }}>
               <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: 14 }}>Notifications</p>
               {(notifications || []).slice(0, 5).map((n, i) => (
-                <div key={n.id} onClick={() => { markNotificationRead(n.id); if (n.url) window.location.href = n.url; }} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: i < Math.min((notifications || []).length, 5) - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer' }}>
+                <div key={n.id} onClick={() => { markNotificationRead(n.id); setNotifOpen(false); if (n.url) router.push(n.url); }} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: i < Math.min((notifications || []).length, 5) - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer' }}>
                   <span style={{ color: n.read ? '#94A3B8' : '#0A6ED1', display: 'flex', alignItems: 'center' }}>{['chat', 'comment', 'like'].includes(n.type) ? MenuIcons.chat : n.type === 'service' ? MenuIcons.course : MenuIcons.announcement}</span>
                   <div>
                     <p style={{ margin: 0, fontSize: 13, color: '#0F172A', fontWeight: n.read ? 400 : 600 }}>{n.body}</p>
@@ -5346,7 +5375,7 @@ export default function HomePage() {
 
       {mobilePage === 'courses' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          <CoursesPanel currentUser={currentUser} />
+          <CoursesPanel currentUser={currentUser} initialCourseId={notificationCourseId} />
         </div>
       )}
 

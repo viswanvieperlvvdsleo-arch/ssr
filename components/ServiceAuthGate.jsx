@@ -89,6 +89,8 @@ export default function ServiceAuthGate() {
     // modal will open via the services gate effect above
   };
 
+  if (isAdmin || isApp) return null;
+
   // Register
   const handleRegister = async (e) => {
     e.preventDefault();

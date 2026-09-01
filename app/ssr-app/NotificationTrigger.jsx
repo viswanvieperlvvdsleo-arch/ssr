@@ -23,6 +23,7 @@ export default function NotificationTrigger() {
 
     let cancelled = false;
     let unsubscribe = () => {};
+    let messagingRegistration = null;
 
     const requestPermissionAndRegisterToken = async (askForPermission = false) => {
       try {
@@ -36,6 +37,7 @@ export default function NotificationTrigger() {
         }
 
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
+        messagingRegistration = registration;
         await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
         if (!token || cancelled) {
@@ -65,14 +67,18 @@ export default function NotificationTrigger() {
     window.addEventListener('ssr-enable-push', enablePushFromSettings);
     if (Notification.permission === 'granted') requestPermissionAndRegisterToken(false);
 
-    unsubscribe = onMessage(messaging, payload => {
+    unsubscribe = onMessage(messaging, async payload => {
       if (Notification.permission !== 'granted') return;
       const notification = payload.notification || {};
       if (notification.title) {
-        new Notification(notification.title, {
-          body: notification.body || '',
-          icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
-        });
+        const registration = messagingRegistration || await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
+        if (registration) {
+          await registration.showNotification(notification.title, {
+            body: notification.body || '',
+            icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
+            data: payload.data || {},
+          });
+        }
       }
     });
 

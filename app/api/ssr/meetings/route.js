@@ -25,7 +25,7 @@ export async function POST(req) {
     await notifyUsers(recipientIds.filter(id => id !== newMeeting.hostId), {
       title: 'New meeting scheduled',
       body: `${newMeeting.title} - ${newMeeting.date} ${newMeeting.time}`,
-      url: `/ssr-app/home?meetingId=${newMeeting.id}`,
+      url: `/ssr-app/home?section=meetings&meetingId=${encodeURIComponent(newMeeting.id)}`,
       data: { type: 'meeting', meetingId: newMeeting.id },
     });
     return NextResponse.json(newMeeting);

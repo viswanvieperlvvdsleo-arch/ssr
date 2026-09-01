@@ -105,19 +105,23 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
   const notificationData = Object.fromEntries(
     Object.entries({ ...data, url: url || '' }).map(([key, value]) => [key, String(value ?? '')])
   );
-  try {
-    await Promise.all(uniqueUserIds.map(userId => prisma.appNotification.create({
-      data: {
-        userId,
-        type: notificationData.type || 'general',
-        title: title || 'SSR Learning Platform',
-        body: body || 'You have a new notification.',
-        url: url || null,
-        data: notificationData,
-      },
-    })));
-  } catch (error) {
-    console.error('Mongo notification record failed:', error);
+  // Chat messages use hardware push only; the in-app bell is reserved for
+  // feed, service, meeting, like, and comment activity.
+  if (notificationData.type !== 'chat') {
+    try {
+      await Promise.all(uniqueUserIds.map(userId => prisma.appNotification.create({
+        data: {
+          userId,
+          type: notificationData.type || 'general',
+          title: title || 'SSR Learning Platform',
+          body: body || 'You have a new notification.',
+          url: url || null,
+          data: notificationData,
+        },
+      })));
+    } catch (error) {
+      console.error('Mongo notification record failed:', error);
+    }
   }
 
   const account = readServiceAccount();

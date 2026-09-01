@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../AppShell';
 import { useApp } from '../AppContext';
@@ -27,6 +27,18 @@ export default function ChatListPage() {
   const staffAccess = canUseStaffChatAccess(currentUser);
   const canManageRequests = canManageChatRequests(currentUser);
   const visibleTabs = canManageRequests ? TABS : TABS.filter(tab => tab !== 'REQUESTS');
+
+  useEffect(() => {
+    if (!currentUser?.id || typeof window === 'undefined') return undefined;
+
+    window.history.pushState({ ...(window.history.state || {}), ssrChatListEntry: true }, '', window.location.href);
+    const handlePopState = () => {
+      window.history.replaceState({ ...(window.history.state || {}), ssrChatListReturn: true }, '', window.location.href);
+      router.replace('/ssr-app/home');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentUser?.id, router]);
 
   const displayChats = useMemo(() => chats.filter(chat => !chat.deletedFor?.includes(currentUser?.id)).map(chat => {
     const lastMessage = chatMessages[chat.id]?.at(-1);

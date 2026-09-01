@@ -24,7 +24,7 @@ export async function POST(req) {
     await notifyUsers(recipients.map(user => user.id), {
       title: 'New service available',
       body: newCourse.title,
-      url: `/ssr-app/home?courseId=${newCourse.id}`,
+      url: `/ssr-app/home?section=courses&courseId=${encodeURIComponent(newCourse.id)}`,
       data: { type: 'service', courseId: newCourse.id },
     });
     return NextResponse.json(newCourse);

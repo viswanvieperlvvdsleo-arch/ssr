@@ -24,7 +24,7 @@ export async function POST(req) {
     await notifyUsers(recipients.map(user => user.id), {
       title: 'New post on SSR Learning Platform',
       body: newPost.title || newPost.content.slice(0, 100) || 'A new post is available',
-      url: `/ssr-app/home?postId=${newPost.id}`,
+      url: `/ssr-app/home?section=feed&postId=${encodeURIComponent(newPost.id)}`,
       data: { type: 'post', postId: newPost.id },
     });
     return NextResponse.json(newPost);
@@ -54,7 +54,7 @@ export async function PUT(req) {
         await notifyUsers([post.authorId], {
           title: 'New like on your post',
           body: `${actor?.name || 'Someone'} liked your post.`,
-          url: `/ssr-app/home?postId=${post.id}`,
+          url: `/ssr-app/home?section=feed&postId=${encodeURIComponent(post.id)}`,
           data: { type: 'like', postId: post.id },
         });
       }
@@ -89,7 +89,7 @@ export async function PUT(req) {
         await notifyUsers([post.authorId], {
           title: 'New comment on your post',
           body: `${comment?.authorName || 'Someone'} commented on your post.`,
-          url: `/ssr-app/home?postId=${post.id}`,
+          url: `/ssr-app/home?section=feed&postId=${encodeURIComponent(post.id)}`,
           data: { type: 'comment', postId: post.id },
         });
       }

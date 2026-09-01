@@ -47,7 +47,7 @@ export async function POST(req) {
       await notifyUsers(recipientIds, {
         title: chat.type === 'group' ? (chat.name || 'New group message') : (newMessage.senderName || 'New message'),
         body: newMessage.content || (newMessage.attachment ? 'Sent an attachment' : 'You have a new message'),
-        url: `/ssr-app/home?chatId=${chat.id}`,
+        url: `/ssr-app/home?chatId=${encodeURIComponent(chat.id)}&messageId=${encodeURIComponent(newMessage.id)}`,
         data: { type: 'chat', chatId: chat.id, messageId: newMessage.id },
       });
     }
@@ -60,7 +60,7 @@ export async function POST(req) {
 }
 export async function PUT(req) {
   try {
-    const { action, msgIds, chatId, userId, content, forEveryone } = await req.json();
+    const { action, msgIds, chatId, userId, content, forEveryone, deleteFromCloud } = await req.json();
 
     if (action === 'edit') {
       const msg = await prisma.appMessage.update({
@@ -103,11 +103,28 @@ export async function PUT(req) {
         ...attachment,
         deletedFor: deletedFor.includes(userId) ? deletedFor : [...deletedFor, userId],
         isDownloaded: false,
+        ...(deleteFromCloud ? { cloudDeleted: true } : {}),
       };
-      const updated = await prisma.appMessage.update({
-        where: { id: message.id },
-        data: { attachment: updatedAttachment }
-      });
+      const updated = await prisma.appMessage.update({ where: { id: message.id }, data: { attachment: updatedAttachment } });
+
+      if (deleteFromCloud) {
+        const mediaId = attachment.mediaId || String(attachment.url || '').match(/\/api\/ssr\/media\/([^/?#]+)/)?.[1];
+        if (mediaId) {
+          const linkedMessages = await prisma.appMessage.findMany();
+          for (const linkedMessage of linkedMessages) {
+            const linkedAttachment = linkedMessage.attachment && typeof linkedMessage.attachment === 'object' ? linkedMessage.attachment : null;
+            const linkedMediaId = linkedAttachment?.mediaId || String(linkedAttachment?.url || '').match(/\/api\/ssr\/media\/([^/?#]+)/)?.[1];
+            if (linkedMediaId === mediaId) {
+              await prisma.appMessage.update({
+                where: { id: linkedMessage.id },
+                data: { attachment: { ...linkedAttachment, cloudDeleted: true, isDownloaded: false } },
+              });
+            }
+          }
+          await prisma.appMediaChunk.deleteMany({ where: { mediaId } });
+          await prisma.appMedia.deleteMany({ where: { id: mediaId } });
+        }
+      }
       return NextResponse.json({ success: true, message: updated });
     }
 

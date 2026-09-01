@@ -655,7 +655,7 @@ export function AppProvider({ children }) {
     } catch (e) { console.error(e); }
   };
 
-  const deleteChatMedia = async (chatId, msgId, mediaId) => {
+  const deleteChatMedia = async (chatId, msgId, mediaId, deleteFromCloud = false) => {
     if (!currentUser?.id) return;
     setChatMessages(prev => {
       const msgs = prev[chatId] || [];
@@ -669,6 +669,7 @@ export function AppProvider({ children }) {
             attachment: {
               ...m.attachment,
               deletedFor: deletedFor.includes(currentUser.id) ? deletedFor : [...deletedFor, currentUser.id],
+              ...(deleteFromCloud ? { cloudDeleted: true } : {}),
               isDownloaded: false,
             }
           };
@@ -679,7 +680,7 @@ export function AppProvider({ children }) {
       await fetch('/api/ssr/messages', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteMedia', msgIds: [msgId], chatId, mediaId, userId: currentUser.id })
+        body: JSON.stringify({ action: 'deleteMedia', msgIds: [msgId], chatId, mediaId, userId: currentUser.id, deleteFromCloud })
       });
     } catch(e) { console.error(e); }
   };

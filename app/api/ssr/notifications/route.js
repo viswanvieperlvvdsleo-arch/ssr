@@ -8,7 +8,7 @@ export async function GET(req) {
     if (!userId) return NextResponse.json([]);
 
     const notifications = await prisma.appNotification.findMany({
-      where: { userId },
+      where: { userId, type: { not: 'chat' } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
