@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildUserData, hasEmployeePermission } from '../defaults';
 
-function sanitizeUserForViewer(user, viewer) {
+function sanitizeUserForViewer(user, viewer, canViewContact = false) {
   const canViewPrivate = viewer && (
     viewer.id === user.id ||
     hasEmployeePermission(viewer, 'view_users') ||
-    hasEmployeePermission(viewer, 'request_access')
+    hasEmployeePermission(viewer, 'request_access') ||
+    canViewContact
   );
   const canViewPasswords = viewer && (viewer.role === 'Admin' || viewer.role === 'Super Admin');
 
@@ -23,8 +24,14 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const viewerId = searchParams.get('viewerId');
     const viewer = viewerId ? await prisma.appUser.findUnique({ where: { id: viewerId } }) : null;
+    const sharedChatUserIds = new Set();
     if (viewerId && viewer) {
       await prisma.appUser.update({ where: { id: viewerId }, data: { online: true, lastSeen: new Date() } });
+      const sharedChats = await prisma.appChat.findMany({
+        where: { participants: { has: viewerId } },
+        select: { participants: true },
+      });
+      sharedChats.forEach(chat => (chat.participants || []).forEach(id => sharedChatUserIds.add(id)));
     }
     const users = await prisma.appUser.findMany({ orderBy: { createdAt: 'asc' } });
     const onlineCutoff = Date.now() - 45 * 1000;
@@ -32,7 +39,7 @@ export async function GET(req) {
     const usersMap = {};
     users.forEach(u => {
       const freshOnline = Boolean(u.online && u.lastSeen && new Date(u.lastSeen).getTime() >= onlineCutoff);
-      usersMap[u.id] = { ...sanitizeUserForViewer(u, viewer), online: freshOnline };
+      usersMap[u.id] = { ...sanitizeUserForViewer(u, viewer, sharedChatUserIds.has(u.id)), online: freshOnline };
     });
     return NextResponse.json(usersMap);
   } catch (error) {

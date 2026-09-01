@@ -1667,8 +1667,9 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   };
 
   useEffect(() => {
-    if (activeChat?.id && mobileView === 'convo') markChatRead(activeChat.id);
-  }, [activeChat?.id, mobileView, msgs.length]);
+    const conversationIsVisible = Boolean(activeChat?.id && (conversationOnly || !isMobile || mobileView === 'convo'));
+    if (conversationIsVisible) markChatRead(activeChat.id);
+  }, [activeChat?.id, mobileView, msgs.length, isMobile, conversationOnly]);
 
   const [showScrollDown, setShowScrollDown] = useState(false);
   const chatScrollRef = useRef(null);
@@ -2199,7 +2200,8 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   const renderDetails = () => {
     const chatMedia = msgs.filter(m => m.attachment).map(m => m.attachment);
     const isGroup = activeChat.type === 'group';
-    const targetUser = !isGroup ? Object.values(users).find(u => activeChat.name.includes(u.name)) : null;
+    const targetUserId = !isGroup ? activeChat.participants?.find(id => id !== currentUser.id) : null;
+    const targetUser = targetUserId ? users[targetUserId] : null;
     const isGroupAdmin = isGroup && activeChat.admins?.includes(currentUser.id);
     const isGroupCreator = isGroup && activeChat.createdBy === currentUser.id;
     const canEditGroup = (isGroupAdmin || isGroupCreator) && !currentUser?.isImpersonating;
@@ -2208,8 +2210,8 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
     const participants = isGroup && activeChat.participants ? activeChat.participants.map(pid => users[pid]).filter(Boolean) : [];
 
     const handleCall = () => {
-      // Open device dialer
-      if (targetUser) window.location.href = `tel:+919876543210`;
+      const phone = String(targetUser?.phone || targetUser?.mobile || '').trim();
+      if (phone) window.location.href = `tel:${phone.replace(/[^\d+]/g, '')}`;
     };
 
     return (
@@ -2315,7 +2317,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
                   </div>
                   <div>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>Phone</span>
-                    <p style={{ margin: '2px 0 0', fontSize: 14, color: '#0F172A', fontWeight: 600 }}>+91 98765 43210</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 14, color: '#0F172A', fontWeight: 600 }}>{targetUser.phone || targetUser.mobile || 'Not provided'}</p>
                   </div>
                 </>
               )}
@@ -2383,7 +2385,10 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
                         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" /></svg>
                       </button>
                       <button
-                      onClick={() => { window.location.href = `tel:+919876543210`; }}
+                        onClick={() => {
+                          const phone = String(p.phone || p.mobile || '').trim();
+                          if (phone) window.location.href = `tel:${phone.replace(/[^\d+]/g, '')}`;
+                        }}
                       style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0A6ED1' }}
                     >
                       <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
@@ -3030,6 +3035,8 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
 
 function CoursesPanel({ currentUser, initialCourseId = null }) {
   const { courses, toggleCourseSave, addCourse, deleteCourse, users, viewUserProfile, getTrainerRatingSummary } = useApp();
+  const width = useWindowWidth();
+  const isMobile = width < 900;
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [openedInitialCourseId, setOpenedInitialCourseId] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -3056,11 +3063,11 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
 
   if (selectedCourse) {
     return (
-      <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '12px' : '20px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <button onClick={() => setSelectedCourse(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0A6ED1', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20 }}>
           ← Back to Services
         </button>
-        <div style={{ background: '#fff', borderRadius: 12, padding: '32px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #E8ECF0', position: 'relative' }}>
+        <div style={{ background: '#fff', borderRadius: 12, padding: isMobile ? '16px' : '32px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #E8ECF0', position: 'relative', boxSizing: 'border-box' }}>
 
           <button onClick={() => {
             toggleCourseSave(selectedCourse.id);
@@ -3070,8 +3077,8 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
           </button>
 
           {selectedCourse.image ? (
-            <div style={{ height: 240, borderRadius: 8, overflow: 'hidden', marginBottom: 24, background: '#0F172A' }}>
-              <img src={selectedCourse.image} alt={selectedCourse.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.9 }} />
+            <div style={{ height: isMobile ? 'auto' : 240, aspectRatio: isMobile ? '16 / 10' : undefined, borderRadius: 8, overflow: 'hidden', marginBottom: 20, background: '#0F172A' }}>
+              <img src={selectedCourse.image} alt={selectedCourse.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.9, display: 'block' }} />
             </div>
           ) : (
             <div style={{ width: 80, height: 80, background: '#EFF6FF', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, flexShrink: 0, marginBottom: 20 }}>
@@ -3079,13 +3086,13 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 20, alignItems: 'stretch' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{ background: '#E0F2FE', color: '#0A6ED1', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{selectedCourse.module}</span>
-              <h1 style={{ margin: '8px 0 12px', fontSize: 24, fontWeight: 800, color: '#0F172A', paddingRight: 60 }}>{selectedCourse.title}</h1>
+              <h1 style={{ margin: '8px 0 12px', fontSize: isMobile ? 22 : 24, lineHeight: 1.2, fontWeight: 800, color: '#0F172A', overflowWrap: 'anywhere' }}>{selectedCourse.title}</h1>
               <p style={{ margin: 0, fontSize: 15, color: '#475569', lineHeight: 1.6 }}>{selectedCourse.shortDesc}</p>
             </div>
-            <button style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => { window.location.href = 'tel:+919010062578'; }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', width: isMobile ? '100%' : 'auto', flexShrink: 0, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
               Book a call to buy
             </button>
@@ -3127,13 +3134,13 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
           )}
 
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Attached Trainers</h3>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {(selectedCourse.trainers || []).map(tKey => {
               const t = users[tKey];
               if (!t) return null;
               const summary = getTrainerRatingSummary(t.id);
               return (
-                <button key={tKey} type="button" onClick={() => viewUserProfile(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#F8FAFC', padding: '16px', borderRadius: 8, border: '1px solid #E8ECF0', width: 280, textAlign: 'left', cursor: 'pointer' }}>
+                <button key={tKey} type="button" onClick={() => viewUserProfile(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8FAFC', padding: '12px', borderRadius: 8, border: '1px solid #E8ECF0', width: isMobile ? '100%' : 280, minWidth: 0, textAlign: 'left', cursor: 'pointer' }}>
                   <div style={{ width: 48, height: 48, borderRadius: '50%', background: t.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>{t.initials}</div>
                   <div style={{ minWidth: 0 }}>
                     <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{t.name}</h5>
@@ -4589,11 +4596,11 @@ function GlobalUserProfileModal() {
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: '20px'
+        zIndex: 9999, padding: isMobile ? '8px' : '20px', boxSizing: 'border-box'
       }}
     >
       <div style={{
-        background: '#fff', width: '100%', height: '100%', overflowY: 'auto', position: 'relative'
+        background: '#fff', width: '100%', maxWidth: 900, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto', position: 'relative', borderRadius: isMobile ? 10 : 16
       }}>
         <button
           onClick={closeUserProfile}
@@ -4607,19 +4614,19 @@ function GlobalUserProfileModal() {
           <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
-        <div style={{ padding: '40px', display: 'flex', gap: 40, flexWrap: 'wrap', maxWidth: 1000, margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '24px 16px' : '40px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 20 : 40, maxWidth: 1000, margin: '0 auto', boxSizing: 'border-box' }}>
           {/* Left: Profile Picture */}
           <div
             onClick={() => viewProfilePic(user)}
             style={{ position: 'relative', flexShrink: 0, margin: '0 auto', cursor: 'pointer' }}
           >
-            <Avatar initials={user.initials} color={user.color || '#0A6ED1'} src={user.avatar} size={160} online={user.online} />
+            <Avatar initials={user.initials} color={user.color || '#0A6ED1'} src={user.avatar} size={isMobile ? 112 : 160} online={user.online} />
           </div>
 
           {/* Right: Info */}
-          <div style={{ flex: 1, minWidth: 280 }}>
-            <h2 style={{ margin: '0 0 8px', fontSize: 32, fontWeight: 800, color: '#0F172A' }}>{user.name}</h2>
-            <p style={{ margin: '0 0 12px', fontSize: 18, color: '#0A6ED1', fontWeight: 600 }}>{displayTitle}</p>
+          <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: isMobile ? 26 : 32, lineHeight: 1.2, overflowWrap: 'anywhere', fontWeight: 800, color: '#0F172A' }}>{user.name}</h2>
+            <p style={{ margin: '0 0 12px', fontSize: isMobile ? 16 : 18, color: '#0A6ED1', fontWeight: 600 }}>{displayTitle}</p>
             {currentUser?.id !== user.id && !currentUser?.isImpersonating && (
               <button onClick={handleProfileChat} style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: '#0F172A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H7l-4 4V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>
@@ -4637,7 +4644,7 @@ function GlobalUserProfileModal() {
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
               {isTrainer && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -4648,29 +4655,29 @@ function GlobalUserProfileModal() {
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#CBD5E1' }} />
                 </>
               )}
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#475569' }}>
+              <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 600, color: '#475569' }}>
                 {user.experience || 'Experienced Professional'}
               </div>
             </div>
 
-            <p style={{ margin: '0 0 32px', fontSize: 16, color: '#475569', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 24px', fontSize: isMobile ? 15 : 16, color: '#475569', lineHeight: 1.6, overflowWrap: 'anywhere' }}>
               {descriptionText}
             </p>
 
             {isTrainer && (
               <>
-                <div style={{ marginBottom: 24, padding: '16px 18px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10 }}>
+                <div style={{ marginBottom: 24, padding: isMobile ? '14px' : '16px 18px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10 }}>
                   <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Rate this trainer</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                     {[1, 2, 3, 4, 5].map(value => (
                       <button key={value} type="button" disabled={currentUser?.id === user.id} onClick={() => { setDraftRating(value); setRatingError(''); }} aria-label={`Give ${value} star${value === 1 ? '' : 's'}`} style={{ border: 'none', background: 'transparent', padding: '2px 3px', color: value <= draftRating ? '#F59E0B' : '#CBD5E1', fontSize: 26, lineHeight: 1, cursor: currentUser?.id === user.id ? 'default' : 'pointer' }}>★</button>
                     ))}
-                    <span style={{ marginLeft: 8, fontSize: 13, color: '#92400E', fontWeight: 600 }}>{ratingSummary.average ? `${ratingSummary.average} average from ${ratingSummary.count} review${ratingSummary.count === 1 ? '' : 's'}` : 'No reviews yet'}</span>
+                    <span style={{ marginLeft: isMobile ? 4 : 8, fontSize: 12, color: '#92400E', fontWeight: 600 }}>{ratingSummary.average ? `${ratingSummary.average} average from ${ratingSummary.count} review${ratingSummary.count === 1 ? '' : 's'}` : 'No reviews yet'}</span>
                   </div>
                   <textarea value={draftComment} onChange={e => { setDraftComment(e.target.value); setRatingError(''); }} disabled={currentUser?.id === user.id || savingRating} placeholder="Write a review about this trainer..." maxLength={1000} rows={3} style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '10px 12px', border: '1px solid #FDE68A', borderRadius: 8, resize: 'vertical', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: '#0F172A', background: '#fff' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: 10, marginTop: 8 }}>
                     <span style={{ fontSize: 11, color: ratingError ? '#DC2626' : '#92400E' }}>{ratingError || (ratingSummary.myRating ? 'Sending again will update your existing review.' : 'Your account can leave one review per trainer.')}</span>
-                    <button type="button" disabled={currentUser?.id === user.id || savingRating} onClick={handleRatingSubmit} style={{ flexShrink: 0, border: 'none', borderRadius: 7, padding: '8px 14px', background: savingRating ? '#93C5FD' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: savingRating ? 'wait' : 'pointer' }}>{savingRating ? 'Sending...' : 'Send review'}</button>
+                    <button type="button" disabled={currentUser?.id === user.id || savingRating} onClick={handleRatingSubmit} style={{ flexShrink: 0, border: 'none', borderRadius: 7, padding: '8px 14px', background: savingRating ? '#93C5FD' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: savingRating ? 'wait' : 'pointer', width: isMobile ? '100%' : 'auto' }}>{savingRating ? 'Sending...' : 'Send review'}</button>
                   </div>
                 </div>
                 {ratingSummary.reviews?.length > 0 && (
