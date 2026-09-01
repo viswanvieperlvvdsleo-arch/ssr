@@ -4998,7 +4998,14 @@ export default function HomePage() {
     }
   }, [currentUser, setTargetChat]);
 
-  if (!mounted || !currentUser) return null;
+  if (!mounted || !currentUser) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', color: '#64748B' }}>
+        <div style={{ width: 36, height: 36, border: '3px solid #E2E8F0', borderTopColor: '#0A6ED1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }' }} />
+      </div>
+    );
+  }
 
   const filteredPosts = [...posts].filter(p => {
     if (feedTab === 'All') return true;

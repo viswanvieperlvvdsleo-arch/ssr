@@ -140,8 +140,8 @@ const setIfChanged = (setter, next) => {
 };
 
 export function AppProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [selectedRole, setSelectedRole] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => readStoredAppUser());
+  const [selectedRole, setSelectedRole] = useState(() => readStoredAppUser()?.role || null);
   const [posts, setPosts] = useState([]);
   const [courses, setCourses] = useState([]);
   const [trainerRatings, setTrainerRatings] = useState([]);
@@ -179,24 +179,21 @@ export function AppProvider({ children }) {
   useEffect(() => {
     let intervalId;
     let isLoading = false;
-    async function loadData() {
-      if (isLoading) return;
-      const requestGeneration = sessionGenerationRef.current;
-      isLoading = true;
+
+    async function loadStaticData() {
+      // Load slow-changing data only once on mount
+      const storedUser = readStoredAppUser();
+      const currId = storedUser ? storedUser.id : null;
       try {
-        const storedUser = readStoredAppUser();
-        const currId = storedUser ? storedUser.id : null;
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const [usersRes, postsRes, coursesRes, chatsRes, messagesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await Promise.all([
-          fetch(usersUrl).then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/posts').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/courses').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/chats').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/messages').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/meetings').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/chat-requests').then(res => res.json()).catch(() => ({})),
-          fetch('/api/ssr/ratings').then(res => res.json()).catch(() => ({})),
-          fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(res => res.json()).catch(() => ({}))
+        const [usersRes, postsRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await Promise.all([
+          fetch(usersUrl).then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/posts').then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/courses').then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
         ]);
 
         const normalizedUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
@@ -209,39 +206,10 @@ export function AppProvider({ children }) {
             savedBy: safeArray(course.savedBy),
           })));
         }
-        if (chatsRes && !chatsRes.error && Array.isArray(chatsRes)) setIfChanged(setMutableChats, chatsRes.map(normalizeChat));
-
-        if (messagesRes && !messagesRes.error) {
-           const grouped = {};
-           if (Array.isArray(messagesRes)) {
-             messagesRes.forEach(m => {
-               if (currId && m.deletedFor && m.deletedFor.includes(currId)) return;
-               if (!grouped[m.chatId]) grouped[m.chatId] = [];
-               grouped[m.chatId].push(normalizeMessage(m, currId));
-             });
-           }
-           Object.keys(grouped).forEach(k => {
-             grouped[k].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-           });
-           setChatMessages(prev => {
-             const next = { ...grouped };
-             Object.entries(prev).forEach(([chatId, messages]) => {
-               const pending = messages.filter(message => message.status === 'sending');
-               if (pending.length > 0) {
-                 next[chatId] = [...(next[chatId] || []), ...pending].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-               }
-             });
-             return areSnapshotsEqual(prev, next) ? prev : next;
-           });
-        }
-
         if (meetingsRes && !meetingsRes.error && Array.isArray(meetingsRes)) setIfChanged(setMeetings, meetingsRes);
         if (chatRequestsRes && !chatRequestsRes.error && Array.isArray(chatRequestsRes)) setIfChanged(setChatRequests, chatRequestsRes.map(normalizeChatRequest));
         if (ratingsRes && !ratingsRes.error && Array.isArray(ratingsRes)) setIfChanged(setTrainerRatings, ratingsRes);
         if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
-
-        // A request that started before logout must never restore that session.
-        if (requestGeneration !== sessionGenerationRef.current) return;
 
         if (storedUser) {
           const freshUser = normalizedUsers?.[currId];
@@ -255,15 +223,72 @@ export function AppProvider({ children }) {
           setSelectedRole(prev => prev || storedUser.role);
         }
       } catch (e) {
-        console.error('Failed to load initial data:', e);
+        console.error('Failed to load static data:', e);
+      }
+    }
+
+    async function loadRealtimeData() {
+      // Only poll chats + messages (the real-time stuff) — skip if tab hidden
+      if (document.visibilityState === 'hidden') return;
+      if (isLoading) return;
+      isLoading = true;
+      const requestGeneration = sessionGenerationRef.current;
+      try {
+        const storedUser = readStoredAppUser();
+        const currId = storedUser ? storedUser.id : null;
+        const [chatsRes, messagesRes] = await Promise.all([
+          fetch('/api/ssr/chats').then(r => r.json()).catch(() => ({})),
+          fetch('/api/ssr/messages').then(r => r.json()).catch(() => ({})),
+        ]);
+
+        if (requestGeneration !== sessionGenerationRef.current) return;
+
+        if (chatsRes && !chatsRes.error && Array.isArray(chatsRes)) setIfChanged(setMutableChats, chatsRes.map(normalizeChat));
+
+        if (messagesRes && !messagesRes.error) {
+          const grouped = {};
+          if (Array.isArray(messagesRes)) {
+            messagesRes.forEach(m => {
+              if (currId && m.deletedFor && m.deletedFor.includes(currId)) return;
+              if (!grouped[m.chatId]) grouped[m.chatId] = [];
+              grouped[m.chatId].push(normalizeMessage(m, currId));
+            });
+          }
+          Object.keys(grouped).forEach(k => {
+            grouped[k].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+          });
+          setChatMessages(prev => {
+            const next = { ...grouped };
+            Object.entries(prev).forEach(([chatId, messages]) => {
+              const pending = messages.filter(message => message.status === 'sending');
+              if (pending.length > 0) {
+                next[chatId] = [...(next[chatId] || []), ...pending].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+              }
+            });
+            return areSnapshotsEqual(prev, next) ? prev : next;
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load realtime data:', e);
       } finally {
         isLoading = false;
       }
     }
-    loadData();
-    intervalId = setInterval(loadData, 3000); // 3-second polling simulates WebSockets!
 
-    return () => clearInterval(intervalId);
+    // Load static data once immediately, then poll only lightweight real-time data
+    loadStaticData().then(() => loadRealtimeData());
+    intervalId = setInterval(loadRealtimeData, 5000); // 5s for chats+messages only
+
+    // Pause polling when tab/app goes to background, resume when visible
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') loadRealtimeData();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
