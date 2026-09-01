@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { prisma } from '../app/api/ssr/prisma.js';
+import { prisma } from './prisma.js';
 
 let initialized = false;
 
