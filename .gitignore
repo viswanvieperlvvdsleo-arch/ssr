@@ -4,3 +4,6 @@ out/
 .env*
 
 /app/generated/prisma
+
+.vercel
+.env*
