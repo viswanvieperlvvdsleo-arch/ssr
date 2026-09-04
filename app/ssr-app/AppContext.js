@@ -256,9 +256,10 @@ export function AppProvider({ children }) {
       try {
         const storedUser = readStoredAppUser();
         const currId = storedUser ? storedUser.id : null;
-        const [chatsRes, messagesRes] = await Promise.all([
+        const [chatsRes, messagesRes, scheduledMessagesRes] = await Promise.all([
           fetch('/api/ssr/chats').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/messages').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
         ]);
 
         if (requestGeneration !== sessionGenerationRef.current) return;
@@ -288,6 +289,7 @@ export function AppProvider({ children }) {
             return areSnapshotsEqual(prev, next) ? prev : next;
           });
         }
+        if (scheduledMessagesRes && !scheduledMessagesRes.error && Array.isArray(scheduledMessagesRes)) setIfChanged(setScheduledMessages, scheduledMessagesRes);
       } catch (e) {
         console.error('Failed to load realtime data:', e);
       } finally {
@@ -299,6 +301,15 @@ export function AppProvider({ children }) {
     loadStaticData().then(() => loadRealtimeData());
     intervalId = setInterval(loadRealtimeData, 5000); // 5s for chats+messages only
 
+    // Local development has no Vercel Cron invocation, so run the same protected
+    // processor while the app is open. Production is handled by vercel.json.
+    let localScheduleIntervalId;
+    if (process.env.NODE_ENV !== 'production') {
+      const runLocalScheduledTasks = () => fetch('/api/ssr/scheduled-tasks', { cache: 'no-store' }).catch(() => {});
+      runLocalScheduledTasks();
+      localScheduleIntervalId = setInterval(runLocalScheduledTasks, 15000);
+    }
+
     // Pause polling when tab/app goes to background, resume when visible
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') loadRealtimeData();
@@ -307,6 +318,7 @@ export function AppProvider({ children }) {
 
     return () => {
       clearInterval(intervalId);
+      if (localScheduleIntervalId) clearInterval(localScheduleIntervalId);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);

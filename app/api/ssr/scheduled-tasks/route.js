@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req) {
   const secret = process.env.CRON_SECRET;
   const authorization = req.headers.get('authorization');
-  if (!secret || authorization !== `Bearer ${secret}`) {
+  const isLocalDevelopment = process.env.NODE_ENV !== 'production';
+  if (!isLocalDevelopment && (!secret || authorization !== `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
