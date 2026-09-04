@@ -10,6 +10,11 @@ function getMediaId(attachment) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function getMediaIdFromUrl(url) {
+  const match = String(url || '').match(/\/api\/ssr\/media\/([^/?#]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function requireAdmin(adminId) {
   if (!adminId) return null;
   const admin = await prisma.appUser.findUnique({ where: { id: adminId } });
@@ -22,18 +27,30 @@ export async function GET(req) {
     const admin = await requireAdmin(searchParams.get('adminId'));
     if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
-    const [media, messages, chats] = await Promise.all([
+    const [media, messages, chats, posts] = await Promise.all([
       prisma.appMedia.findMany({ orderBy: { createdAt: 'desc' } }),
       prisma.appMessage.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 }),
       prisma.appChat.findMany({ select: { id: true, name: true, type: true } }),
+      prisma.appPost.findMany({ select: { id: true, title: true, image: true }, orderBy: { createdAt: 'desc' } }),
     ]);
     const chatNames = Object.fromEntries(chats.map(chat => [chat.id, chat.name || chat.type || 'Chat']));
     const mediaUsage = Object.fromEntries(media.map(item => [item.id, 0]));
+    const messageUsage = Object.fromEntries(media.map(item => [item.id, 0]));
+    const mediaLocations = Object.fromEntries(media.map(item => [item.id, []]));
 
     const messageRecords = messages.map(message => {
       const attachment = message.attachment && typeof message.attachment === 'object' ? message.attachment : null;
       const mediaId = getMediaId(attachment);
-      if (mediaId && mediaUsage[mediaId] !== undefined) mediaUsage[mediaId] += 1;
+      if (mediaId && mediaUsage[mediaId] !== undefined) {
+        mediaUsage[mediaId] += 1;
+        messageUsage[mediaId] += 1;
+        mediaLocations[mediaId].push({
+          kind: 'chat',
+          label: `Chat: ${chatNames[message.chatId] || 'Chat'}`,
+          chatId: message.chatId,
+          messageId: message.id,
+        });
+      }
       return {
         id: message.id,
         chatId: message.chatId,
@@ -53,6 +70,17 @@ export async function GET(req) {
       };
     });
 
+    posts.forEach(post => {
+      const mediaId = getMediaIdFromUrl(post.image);
+      if (!mediaId || mediaUsage[mediaId] === undefined) return;
+      mediaUsage[mediaId] += 1;
+      mediaLocations[mediaId].push({
+        kind: 'feed',
+        label: `Feed: ${post.title || 'Post'}`,
+        postId: post.id,
+      });
+    });
+
     return NextResponse.json({
       stats: {
         mediaCount: media.length,
@@ -67,7 +95,10 @@ export async function GET(req) {
         chunkCount: item.chunkCount,
         complete: item.complete,
         createdAt: item.createdAt,
-        messageCount: mediaUsage[item.id] || 0,
+        messageCount: messageUsage[item.id] || 0,
+        feedCount: mediaLocations[item.id]?.filter(location => location.kind === 'feed').length || 0,
+        url: `/api/ssr/media/${item.id}`,
+        locations: mediaLocations[item.id] || [],
       })),
       messages: messageRecords,
     });
@@ -79,33 +110,41 @@ export async function GET(req) {
 
 export async function DELETE(req) {
   try {
-    const { adminId, action = 'deleteMedia', mediaId, messageId } = await req.json();
+    const { adminId, action = 'deleteMedia', mediaId, mediaIds, messageId } = await req.json();
     const admin = await requireAdmin(adminId);
     if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     if (action === 'deleteMedia') {
-      if (!mediaId) return NextResponse.json({ error: 'Media ID is required' }, { status: 400 });
-      const media = await prisma.appMedia.findUnique({ where: { id: mediaId } });
-      if (!media) return NextResponse.json({ error: 'Media was already deleted' }, { status: 404 });
+      const requestedMediaIds = [...new Set((Array.isArray(mediaIds) ? mediaIds : [mediaId]).filter(Boolean))];
+      if (requestedMediaIds.length === 0) return NextResponse.json({ error: 'Media ID is required' }, { status: 400 });
+      const media = await prisma.appMedia.findMany({ where: { id: { in: requestedMediaIds } } });
+      const existingMediaIds = media.map(item => item.id);
+      if (existingMediaIds.length === 0) return NextResponse.json({ error: 'Media was already deleted' }, { status: 404 });
+      const mediaIdSet = new Set(existingMediaIds);
 
       const linkedMessages = await prisma.appMessage.findMany();
       for (const message of linkedMessages) {
-        if (getMediaId(message.attachment) !== mediaId) continue;
+        if (!mediaIdSet.has(getMediaId(message.attachment))) continue;
         const attachment = typeof message.attachment === 'object' ? message.attachment : {};
         await prisma.appMessage.update({
           where: { id: message.id },
           data: { attachment: { ...attachment, cloudDeleted: true, isDownloaded: false } },
         });
       }
+      const linkedPosts = await prisma.appPost.findMany({ select: { id: true, image: true } });
+      for (const post of linkedPosts) {
+        if (!mediaIdSet.has(getMediaIdFromUrl(post.image))) continue;
+        await prisma.appPost.update({ where: { id: post.id }, data: { image: null } });
+      }
       const scheduledMessages = await prisma.appScheduledMessage.findMany();
       for (const scheduled of scheduledMessages) {
-        if (getMediaId(scheduled.attachment) === mediaId) {
+        if (mediaIdSet.has(getMediaId(scheduled.attachment))) {
           await prisma.appScheduledMessage.update({ where: { id: scheduled.id }, data: { attachment: null } });
         }
       }
-      await prisma.appMediaChunk.deleteMany({ where: { mediaId } });
-      await prisma.appMedia.delete({ where: { id: mediaId } });
-      return NextResponse.json({ success: true, deletedMediaId: mediaId });
+      await prisma.appMediaChunk.deleteMany({ where: { mediaId: { in: existingMediaIds } } });
+      await prisma.appMedia.deleteMany({ where: { id: { in: existingMediaIds } } });
+      return NextResponse.json({ success: true, deletedMediaIds: existingMediaIds });
     }
 
     if (action === 'deleteMessage') {

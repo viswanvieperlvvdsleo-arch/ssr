@@ -283,6 +283,8 @@ model AppMeeting {
   monthlyDates String?
   chatId       String?
   participants String[] @default([])
+  timezone     String?
+  lastNotificationAt DateTime?
 
   createdAt DateTime @default(now())
 }
@@ -300,6 +302,9 @@ model AppScheduledMessage {
   time         String
   weekdays     String[] @default([])
   monthlyDates String?
+  timezone     String?
+  status       String?
+  lastSentAt   DateTime?
 
   createdAt DateTime @default(now())
 }

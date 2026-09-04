@@ -172,6 +172,7 @@ export function buildMeetingData(data = {}) {
     monthlyDates: data.monthlyDates || null,
     chatId: data.chatId || null,
     participants: Array.isArray(data.participants) ? data.participants : [],
+    timezone: data.timezone || 'Asia/Kolkata',
   };
 }
 
@@ -187,6 +188,8 @@ export function buildScheduledMessageData(data = {}) {
     time: data.time || '',
     weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
     monthlyDates: data.monthlyDates || null,
+    timezone: data.timezone || 'Asia/Kolkata',
+    status: data.status || 'scheduled',
   };
 }
 

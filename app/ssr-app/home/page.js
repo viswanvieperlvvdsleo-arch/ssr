@@ -97,7 +97,7 @@ function Avatar({ initials, color, size = 38, src, online = false, shape = 'circ
 }
 
 /* ─── Media Preview Modal ──────────────────────────── */
-export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
+export function MediaPreviewModal({ file, attachment, onClose, onSend, locations = [], onNavigateToChat, onNavigateToFeed }) {
   const [caption, setCaption] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -381,6 +381,25 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend }) {
           </div>
         )}
       </div>
+
+      {isViewOnly && locations.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 20px 16px', background: 'rgba(15,23,42,0.9)', color: '#CBD5E1' }}>
+          <span style={{ fontSize: 12, fontWeight: 700 }}>Open in:</span>
+          {locations.map((location, index) => (
+            <button
+              key={`${location.kind}-${location.chatId || location.postId}-${index}`}
+              onClick={() => {
+                onClose();
+                if (location.kind === 'chat') onNavigateToChat?.(location.chatId, location.messageId);
+                if (location.kind === 'feed') onNavigateToFeed?.(location.postId);
+              }}
+              style={{ border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, background: 'rgba(255,255,255,0.12)', color: '#fff', padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            >
+              {location.kind === 'chat' ? 'View in chat' : 'View in feed'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Caption + Send */}
       {!isViewOnly && (
@@ -845,7 +864,7 @@ function PostCard({ post, currentUser, isDesktop }) {
 
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8ECF0', borderRadius: 14, marginBottom: 14, overflow: 'hidden' }}>
+    <div id={`ssr-post-${post.id}`} style={{ background: '#fff', border: '1px solid #E8ECF0', borderRadius: 14, marginBottom: 14, overflow: 'hidden' }}>
       {!showComments ? (
         <>
           {/* Header */}
@@ -994,6 +1013,60 @@ function ActionBtn({ iconEl, label, active, activeColor = '#0A6ED1', onClick }) 
     >
       {iconEl}{label && <span>{label}</span>}
     </button>
+  );
+}
+
+function ScheduledMessageBubble({ message, onUndo }) {
+  const [showActions, setShowActions] = useState(false);
+  const pressTimer = useRef(null);
+
+  const openActions = (event) => {
+    event?.preventDefault?.();
+    setShowActions(true);
+  };
+
+  const startPress = () => {
+    pressTimer.current = window.setTimeout(() => {
+      setShowActions(true);
+      pressTimer.current = null;
+    }, 550);
+  };
+
+  const endPress = () => {
+    if (pressTimer.current) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  useEffect(() => () => endPress(), []);
+
+  return (
+    <div
+      onTouchStart={startPress}
+      onTouchEnd={endPress}
+      onTouchCancel={endPress}
+      onContextMenu={openActions}
+      style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}
+    >
+      <div style={{ maxWidth: '82%', minWidth: 180, padding: '9px 11px', borderRadius: '14px 14px 4px 14px', background: '#EAF4FF', border: '1px dashed #7DB7EC', color: '#0F172A', userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0A6ED1', fontSize: 11, fontWeight: 800, marginBottom: 5 }}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          Scheduled message
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{message.content || 'Scheduled attachment'}</div>
+        {message.attachment && <div style={{ marginTop: 6, fontSize: 11, color: '#475569' }}>Attachment: {message.attachment.name || 'media file'}</div>}
+        <div style={{ marginTop: 7, paddingTop: 6, borderTop: '1px solid #CFE4F8', color: '#46749D', fontSize: 10, fontWeight: 700 }}>
+          {message.startDate} at {message.time} ({message.timezone || 'local time'})
+        </div>
+        {showActions && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: '#64748B' }}>Undo this schedule?</span>
+            <button type="button" onClick={() => onUndo(message.id)} style={{ border: 'none', borderRadius: 6, padding: '5px 8px', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Undo</button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1312,7 +1385,6 @@ function AutoSendModal({ onClose, onSave }) {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
-            onTouchEnd={(e) => { e.stopPropagation(); onClose(); }}
             style={{ flex: 1, padding: '16px', border: 'none', background: '#F8FAFC', cursor: 'pointer', color: '#64748B', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
           >
             Cancel
@@ -1320,10 +1392,6 @@ function AutoSendModal({ onClose, onSave }) {
           <button
             type="button"
             onClick={(e) => {
-              e.stopPropagation();
-              onSave({ recurrence: interval, startDate, endDate, time: sendTime, weekdays: Array.from(selectedDaysOfWeek), monthlyDates: Array.from(selectedDaysOfMonth).join(',') });
-            }}
-            onTouchEnd={(e) => {
               e.stopPropagation();
               onSave({ recurrence: interval, startDate, endDate, time: sendTime, weekdays: Array.from(selectedDaysOfWeek), monthlyDates: Array.from(selectedDaysOfMonth).join(',') });
             }}
@@ -1423,7 +1491,7 @@ function ChatListRow({ children, onOpen, onLongPress, active, isMobile }) {
 
 export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, conversationOnly = false }) {
   const router = useRouter();
-  const { chats, chatMessages, sendChatMessage, reactToMessage, markChatRead, scheduleMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
+  const { chats, chatMessages, sendChatMessage, reactToMessage, markChatRead, scheduleMessage, scheduledMessages, cancelScheduledMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
   const [chatTab, setChatTab] = useState('Chats');
 
   const [search, setSearch] = useState('');
@@ -1708,6 +1776,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   }, [chats, currentUser?.id, users]);
 
   const msgs = chatMessages[activeChat?.id] || [];
+  const scheduledForChat = scheduledMessages.filter(message => message.chatId === activeChat?.id && (message.status || 'scheduled') === 'scheduled');
   const activeChatSnapshot = chats.find(chat => chat.id === activeChat?.id) || activeChat;
 
   const getDeliveryStatus = (message) => {
@@ -1997,7 +2066,17 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
           }}
           style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 12px' }}
         >
-          {msgs.length === 0 && <p style={{ color: '#CBD5E1', fontSize: 12, textAlign: 'center', marginTop: 20 }}>No messages yet</p>}
+          {msgs.length === 0 && scheduledForChat.length === 0 && <p style={{ color: '#CBD5E1', fontSize: 12, textAlign: 'center', marginTop: 20 }}>No messages yet</p>}
+        {scheduledForChat.map(message => (
+          <ScheduledMessageBubble
+            key={message.id}
+            message={message}
+            onUndo={async id => {
+              const result = await cancelScheduledMessage(id);
+              if (!result?.success) alert(result?.error || 'Could not undo scheduled message');
+            }}
+          />
+        ))}
         {msgs.map(msg => {
           const isTarget = targetChat?.msgId === msg.id;
           const isSelected = selectedMsgIds.has(msg.id);
@@ -2809,14 +2888,15 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
           onSave={async (scheduleData) => {
             const selMsg = msgs.find(m => m.id === Array.from(selectedMsgIds)[0]);
             if (selMsg) {
-              await scheduleMessage({
+              const result = await scheduleMessage({
                 chatId: activeChat.id,
                 senderId: currentUser.id,
                 content: selMsg.text || selMsg.content,
                 attachment: selMsg.attachment || null,
                 ...scheduleData
               });
-              alert('Message scheduled for auto-send!');
+              if (!result?.success) alert(result?.error || 'Could not schedule message');
+              else alert('Message scheduled for auto-send!');
             }
             setShowAutoSendModal(false);
             setSelectedMsgIds(new Set());
@@ -4070,11 +4150,16 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
   );
 }
 
-function DataManagementPanel({ currentUser }) {
+function DataManagementPanel({ currentUser, onNavigateToChat, onNavigateToFeed }) {
   const [records, setRecords] = useState({ stats: {}, media: [], messages: [] });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
+  const [previewMedia, setPreviewMedia] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMediaIds, setSelectedMediaIds] = useState(() => new Set());
+  const longPressRef = useRef(null);
+  const longPressTriggeredRef = useRef(false);
 
   const loadRecords = async () => {
     if (!isAdmin(currentUser)) return;
@@ -4085,6 +4170,12 @@ function DataManagementPanel({ currentUser }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load data');
       setRecords(data);
+      setSelectedMediaIds(current => new Set([...current].filter(id => data.media.some(item => item.id === id))));
+      setPreviewMedia(current => {
+        if (!current) return current;
+        const refreshed = data.media.find(item => item.id === current.mediaId);
+        return refreshed ? { ...current, ...refreshed } : null;
+      });
     } catch (err) {
       setError(err.message || 'Could not load data management records');
     } finally {
@@ -4094,23 +4185,74 @@ function DataManagementPanel({ currentUser }) {
 
   useEffect(() => { loadRecords(); }, [currentUser?.id]);
 
-  const removeMedia = async (mediaId) => {
-    if (!confirm('Permanently delete this file from cloud storage? Chat users will not be able to download it again.')) return;
-    setBusyId(mediaId);
+  const removeMedia = async (mediaIdOrIds) => {
+    const ids = Array.isArray(mediaIdOrIds) ? mediaIdOrIds : [mediaIdOrIds];
+    if (!ids.length || !confirm(`Permanently delete ${ids.length === 1 ? 'this file' : `${ids.length} files`} from cloud storage?`)) return;
+    const busyKey = ids.length === 1 ? ids[0] : 'bulk';
+    setBusyId(busyKey);
     try {
       const res = await fetch('/api/ssr/data-management', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: currentUser.id, action: 'deleteMedia', mediaId }),
+        body: JSON.stringify({ adminId: currentUser.id, action: 'deleteMedia', mediaIds: ids }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not delete media');
+      setPreviewMedia(current => current && ids.includes(current.mediaId) ? null : current);
+      setSelectedMediaIds(new Set());
+      setSelectionMode(false);
       await loadRecords();
     } catch (err) {
       setError(err.message || 'Could not delete media');
     } finally {
       setBusyId(null);
     }
+  };
+
+  const clearLongPress = () => {
+    if (longPressRef.current) window.clearTimeout(longPressRef.current);
+    longPressRef.current = null;
+  };
+
+  const toggleMediaSelection = (mediaId) => {
+    setSelectionMode(true);
+    setSelectedMediaIds(current => {
+      const next = new Set(current);
+      if (next.has(mediaId)) next.delete(mediaId);
+      else next.add(mediaId);
+      return next;
+    });
+  };
+
+  const selectMedia = (mediaId) => {
+    setSelectionMode(true);
+    setSelectedMediaIds(current => {
+      if (current.has(mediaId)) return current;
+      return new Set([...current, mediaId]);
+    });
+  };
+
+  const startMediaLongPress = (mediaId, event) => {
+    if (event.target.closest('button')) return;
+    clearLongPress();
+    longPressTriggeredRef.current = false;
+    longPressRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      selectMedia(mediaId);
+    }, 500);
+  };
+
+  const finishMediaLongPress = () => clearLongPress();
+
+  useEffect(() => () => clearLongPress(), []);
+
+  const handleMediaRowClick = (mediaId, event) => {
+    if (!selectionMode || event.target.closest('button')) return;
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+    toggleMediaSelection(mediaId);
   };
 
   const removeMessage = async (messageId) => {
@@ -4135,6 +4277,14 @@ function DataManagementPanel({ currentUser }) {
   if (!isAdmin(currentUser)) return null;
   const formatSize = (bytes = 0) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(0, Math.round(bytes / 1024))} KB`;
   const formatDate = (value) => value ? new Date(value).toLocaleString() : 'Unknown date';
+  const openMedia = (item) => setPreviewMedia({
+    ...item,
+    mediaId: item.id,
+    type: item.mimeType,
+    isImage: item.mimeType?.startsWith('image/'),
+    isVideo: item.mimeType?.startsWith('video/'),
+    isAudio: item.mimeType?.startsWith('audio/'),
+  });
 
   return (
     <div style={{ padding: '24px 28px 48px', maxWidth: 1100, margin: '0 auto' }}>
@@ -4162,20 +4312,47 @@ function DataManagementPanel({ currentUser }) {
       </div>
 
       <section style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
-        <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0' }}><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Stored media</h3></div>
+        <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Stored media</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {selectionMode && <span style={{ fontSize: 12, color: '#64748B', fontWeight: 700 }}>{selectedMediaIds.size} selected</span>}
+            <button onClick={() => { setSelectionMode(true); setSelectedMediaIds(new Set(records.media.map(item => item.id))); }} disabled={loading || records.media.length === 0} style={{ padding: '7px 10px', background: '#EFF6FF', color: '#0A6ED1', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: loading || records.media.length === 0 ? 'default' : 'pointer' }}>Select all</button>
+            {selectionMode && <>
+              <button onClick={() => removeMedia([...selectedMediaIds])} disabled={selectedMediaIds.size === 0 || busyId === 'bulk'} style={{ padding: '7px 10px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: selectedMediaIds.size === 0 || busyId === 'bulk' ? 'default' : 'pointer' }}>{busyId === 'bulk' ? 'Deleting...' : 'Delete selected'}</button>
+              <button onClick={() => { setSelectionMode(false); setSelectedMediaIds(new Set()); }} style={{ padding: '7px 10px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+            </>}
+          </div>
+        </div>
         {loading ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>Loading records...</p> : records.media.length === 0 ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>No stored media.</p> : (
           <div style={{ overflowX: 'auto' }}>
             {records.media.map(item => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px', borderBottom: '1px solid #F1F5F9', minWidth: 650 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 8, background: '#EFF6FF', color: '#0A6ED1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {item.mimeType?.startsWith('image/') ? 'IMG' : item.mimeType?.startsWith('video/') ? 'VID' : 'FILE'}
-                </div>
+              <div
+                key={item.id}
+                onTouchStart={event => startMediaLongPress(item.id, event)}
+                onTouchEnd={finishMediaLongPress}
+                onTouchCancel={finishMediaLongPress}
+                onMouseDown={event => startMediaLongPress(item.id, event)}
+                onMouseUp={finishMediaLongPress}
+                onMouseLeave={finishMediaLongPress}
+                onDoubleClick={event => { if (!event.target.closest('button')) selectMedia(item.id); }}
+                onClick={event => handleMediaRowClick(item.id, event)}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px', borderBottom: '1px solid #F1F5F9', minWidth: 650, background: selectedMediaIds.has(item.id) ? '#F8FBFF' : '#fff', outline: selectedMediaIds.has(item.id) ? '2px solid #0A6ED1' : 'none', outlineOffset: -2, userSelect: 'none' }}
+              >
+                {selectionMode && <button onClick={() => toggleMediaSelection(item.id)} aria-label={selectedMediaIds.has(item.id) ? 'Deselect media' : 'Select media'} style={{ width: 22, height: 22, borderRadius: 5, border: `2px solid ${selectedMediaIds.has(item.id) ? '#0A6ED1' : '#CBD5E1'}`, background: selectedMediaIds.has(item.id) ? '#0A6ED1' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0, fontSize: 14, fontWeight: 800 }}>{selectedMediaIds.has(item.id) ? '✓' : ''}</button>}
+                <button onClick={() => selectionMode ? toggleMediaSelection(item.id) : openMedia(item)} title={selectionMode ? 'Select media' : 'Open media'} style={{ width: 42, height: 42, borderRadius: 8, background: '#EFF6FF', color: '#0A6ED1', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', overflow: 'hidden', padding: 0 }}>
+                  {item.mimeType?.startsWith('image/') ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.mimeType?.startsWith('video/') ? 'VID' : 'FILE'}
+                </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>{item.mimeType} · {formatSize(item.size)} · {item.messageCount} message{item.messageCount === 1 ? '' : 's'}</div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>{item.mimeType} · {formatSize(item.size)} · {item.messageCount} message{item.messageCount === 1 ? '' : 's'} · {item.feedCount || 0} feed post{item.feedCount === 1 ? '' : 's'}</div>
+                  {item.locations?.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                    {item.locations.slice(0, 4).map((location, index) => <button key={`${location.kind}-${location.chatId || location.postId}-${index}`} title={location.label} onClick={() => { if (selectionMode) { toggleMediaSelection(item.id); return; } if (location.kind === 'chat') onNavigateToChat?.(location.chatId, location.messageId); if (location.kind === 'feed') onNavigateToFeed?.(location.postId); }} style={{ border: 'none', background: '#EFF6FF', color: '#0A6ED1', borderRadius: 6, padding: '4px 7px', fontSize: 10, fontWeight: 700, cursor: selectionMode ? 'pointer' : 'pointer' }}>{location.kind === 'chat' ? 'View in chat' : 'View in feed'}</button>)}
+                    {item.locations.length > 4 && <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>+{item.locations.length - 4} more</span>}
+                  </div>}
                 </div>
                 <div style={{ fontSize: 11, color: item.complete ? '#15803D' : '#B45309' }}>{item.complete ? 'Complete' : 'Incomplete'}</div>
-                <button onClick={() => removeMedia(item.id)} disabled={busyId === item.id} style={{ padding: '7px 10px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: busyId === item.id ? 'wait' : 'pointer' }}>{busyId === item.id ? 'Deleting...' : 'Delete cloud file'}</button>
+                <button onClick={() => selectionMode ? toggleMediaSelection(item.id) : openMedia(item)} style={{ padding: '7px 10px', background: '#EFF6FF', color: '#0A6ED1', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open</button>
+                <button onClick={() => selectionMode ? toggleMediaSelection(item.id) : removeMedia(item.id)} disabled={busyId === item.id || busyId === 'bulk'} style={{ padding: '7px 10px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: busyId === item.id || busyId === 'bulk' ? 'wait' : 'pointer' }}>{busyId === item.id ? 'Deleting...' : 'Delete cloud file'}</button>
               </div>
             ))}
           </div>
@@ -4199,6 +4376,13 @@ function DataManagementPanel({ currentUser }) {
           </div>
         )}
       </section>
+      {previewMedia && <MediaPreviewModal
+        attachment={previewMedia}
+        onClose={() => setPreviewMedia(null)}
+        locations={previewMedia.locations || []}
+        onNavigateToChat={onNavigateToChat}
+        onNavigateToFeed={onNavigateToFeed}
+      />}
     </div>
   );
 }
@@ -5391,7 +5575,11 @@ export default function HomePage() {
 
               {activeNav === 'data-management' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-                  <DataManagementPanel currentUser={currentUser} />
+                  <DataManagementPanel
+                    currentUser={currentUser}
+                    onNavigateToChat={(chatId, msgId) => { setTargetChat({ chatId, msgId }); setActiveNav('feed'); }}
+                    onNavigateToFeed={(postId) => { setActiveNav('feed'); window.setTimeout(() => document.getElementById(`ssr-post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }}
+                  />
                 </div>
               )}
 
@@ -5587,7 +5775,11 @@ export default function HomePage() {
 
       {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.isImpersonating && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          <DataManagementPanel currentUser={currentUser} />
+          <DataManagementPanel
+            currentUser={currentUser}
+            onNavigateToChat={(chatId, msgId) => { setTargetChat({ chatId, msgId }); setMobilePage('chat'); }}
+            onNavigateToFeed={(postId) => { setMobilePage('feed'); window.setTimeout(() => document.getElementById(`ssr-post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }}
+          />
         </div>
       )}
 

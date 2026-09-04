@@ -14,6 +14,15 @@ export const MOCK_MEETINGS = [];
 
 const safeArray = (value) => Array.isArray(value) ? value : [];
 
+const getBrowserTimeZone = () => {
+  if (typeof Intl === 'undefined') return 'Asia/Kolkata';
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+  } catch {
+    return 'Asia/Kolkata';
+  }
+};
+
 const readStoredAppUser = () => {
   if (typeof window === 'undefined') return null;
   try {
@@ -147,6 +156,7 @@ export function AppProvider({ children }) {
   const [courses, setCourses] = useState([]);
   const [trainerRatings, setTrainerRatings] = useState([]);
   const [meetings, setMeetings] = useState([]);
+  const [scheduledMessages, setScheduledMessages] = useState([]);
   const [chatMessages, setChatMessages] = useState({});
   const [users, setUsers] = useState({});
   const [mutableChats, setMutableChats] = useState([]);
@@ -196,13 +206,14 @@ export function AppProvider({ children }) {
           fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
         ]);
 
         const postsRes = await postsPromise;
         if (postsRes && !postsRes.error && Array.isArray(postsRes)) setIfChanged(setPosts, postsRes.map(normalizePost));
         setInitialDataLoading(false);
 
-        const [usersRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes] = await otherDataPromise;
+        const [usersRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes, scheduledMessagesRes] = await otherDataPromise;
         const normalizedUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
         if (normalizedUsers) setIfChanged(setUsers, normalizedUsers);
         if (coursesRes && !coursesRes.error && Array.isArray(coursesRes)) {
@@ -216,6 +227,7 @@ export function AppProvider({ children }) {
         if (chatRequestsRes && !chatRequestsRes.error && Array.isArray(chatRequestsRes)) setIfChanged(setChatRequests, chatRequestsRes.map(normalizeChatRequest));
         if (ratingsRes && !ratingsRes.error && Array.isArray(ratingsRes)) setIfChanged(setTrainerRatings, ratingsRes);
         if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
+        if (scheduledMessagesRes && !scheduledMessagesRes.error && Array.isArray(scheduledMessagesRes)) setIfChanged(setScheduledMessages, scheduledMessagesRes);
 
         if (storedUser) {
           const freshUser = normalizedUsers?.[currId];
@@ -1232,11 +1244,13 @@ export function AppProvider({ children }) {
       const res = await fetch('/api/ssr/meetings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({...meeting, id: undefined})
+        body: JSON.stringify({ ...meeting, id: undefined, timezone: meeting.timezone || getBrowserTimeZone() })
       });
       const data = await res.json();
-      if(data.id) setMeetings(prev => [data, ...prev]);
-    } catch(e) { console.error(e); }
+      if (!res.ok || !data.id) return { success: false, error: data.error || 'Could not schedule meeting' };
+      setMeetings(prev => [data, ...prev]);
+      return { success: true, meeting: data };
+    } catch(e) { console.error(e); return { success: false, error: e.message || 'Could not schedule meeting' }; }
   };
 
   const markNotificationRead = async (id) => {
@@ -1281,12 +1295,31 @@ export function AppProvider({ children }) {
 
   const scheduleMessage = async (msgData) => {
     try {
-      await fetch('/api/ssr/scheduled-messages', {
+      const res = await fetch('/api/ssr/scheduled-messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(msgData)
+        body: JSON.stringify({ ...msgData, timezone: msgData.timezone || getBrowserTimeZone() })
       });
-    } catch(e) { console.error(e); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.id) return { success: false, error: data.error || 'Could not schedule message' };
+      setScheduledMessages(prev => [data, ...prev]);
+      return { success: true, scheduledMessage: data };
+    } catch(e) { console.error(e); return { success: false, error: e.message || 'Could not schedule message' }; }
+  };
+
+  const cancelScheduledMessage = async (id) => {
+    if (!currentUser?.id || !id) return { success: false, error: 'Invalid scheduled message' };
+    const cancelledMessage = scheduledMessages.find(message => message.id === id);
+    setScheduledMessages(prev => prev.filter(message => message.id !== id));
+    try {
+      const res = await fetch(`/api/ssr/scheduled-messages?id=${encodeURIComponent(id)}&senderId=${encodeURIComponent(currentUser.id)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not undo scheduled message');
+      return { success: true };
+    } catch (error) {
+      if (cancelledMessage) setScheduledMessages(prev => prev.some(message => message.id === id) ? prev : [cancelledMessage, ...prev]);
+      return { success: false, error: error.message || 'Could not undo scheduled message' };
+    }
   };
 
   return (
@@ -1309,6 +1342,7 @@ export function AppProvider({ children }) {
       courses, toggleCourseSave, addCourse, deleteCourse,
       trainerRatings, getTrainerRatingSummary, rateTrainer,
       meetings, addMeeting,
+      scheduledMessages, cancelScheduledMessage,
       users,
       deleteUser, restrictUser, addEmployee, updateUserPermissions, updateEmployeeProfile,
       chatRequests, requestChatAccess, decideChatRequest, startDirectChat, canDirectChatWith,
