@@ -16,7 +16,8 @@ export async function GET(req) {
     const params = new URL(req.url).searchParams;
     const courseId = params.get('courseId');
     const userId = params.get('userId');
-    if (userId) {
+    const managerId = params.get('managerId');
+    if (userId && !managerId) {
       const bookings = await prisma.appServerBooking.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
@@ -31,6 +32,18 @@ export async function GET(req) {
     });
     const availableCount = await prisma.appServerCredential.count({ where: { courseId, status: 'available' } });
     await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount } }).catch(() => null);
+    if (managerId) {
+      const manager = await findManager(managerId);
+      if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+        return NextResponse.json({ error: 'You do not have permission to manage server credentials' }, { status: 403 });
+      }
+      const credentials = await prisma.appServerCredential.findMany({
+        where: { courseId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, status: true, createdAt: true, assignedAt: true },
+      });
+      return NextResponse.json({ availableCount, credentials });
+    }
     return NextResponse.json({ availableCount });
   } catch (error) {
     console.error('Server credentials GET API Error:', error);
@@ -45,8 +58,8 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Server credential encryption is not configured' }, { status: 503 });
     }
     const manager = await findManager(userId);
-    if (!manager || !hasEmployeePermission(manager, 'post_services') || !['Admin', 'Super Admin'].includes(manager.role)) {
-      return NextResponse.json({ error: 'Only an administrator can add server credentials' }, { status: 403 });
+    if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+      return NextResponse.json({ error: 'You do not have permission to add server credentials' }, { status: 403 });
     }
     const course = courseId ? await prisma.appCourse.findUnique({ where: { id: courseId }, select: { id: true, serviceType: true } }) : null;
     if (!course || course.serviceType !== 'server') return NextResponse.json({ error: 'Server service not found' }, { status: 404 });
@@ -66,4 +79,29 @@ export async function POST(req) {
 
 export async function PUT() {
   return NextResponse.json({ error: 'Payment verification is required before server access can be assigned' }, { status: 402 });
+}
+
+export async function DELETE(req) {
+  try {
+    const { courseId, userId, credentialId } = await req.json();
+    if (!courseId || !credentialId) return NextResponse.json({ error: 'Invalid credential details' }, { status: 400 });
+    const manager = await findManager(userId);
+    if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+      return NextResponse.json({ error: 'You do not have permission to delete server credentials' }, { status: 403 });
+    }
+
+    const deleted = await prisma.appServerCredential.deleteMany({
+      where: { id: credentialId, courseId, status: 'available' },
+    });
+    if (deleted.count !== 1) {
+      return NextResponse.json({ error: 'Only an unused server login can be deleted' }, { status: 409 });
+    }
+
+    const availableCount = await prisma.appServerCredential.count({ where: { courseId, status: 'available' } });
+    await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount } });
+    return NextResponse.json({ success: true, availableCount });
+  } catch (error) {
+    console.error('Server credentials DELETE API Error:', error);
+    return NextResponse.json({ error: 'Could not delete server credential' }, { status: 500 });
+  }
 }

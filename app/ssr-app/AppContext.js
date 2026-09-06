@@ -172,8 +172,8 @@ export function AppProvider({ children }) {
   const [mediaComposer, setMediaComposer] = useState(null);
   const [uploadTask, setUploadTask] = useState(null);
   const uploadControllerRef = useRef(null);
+  const uploadPauseControlRef = useRef(null);
   const uploadPreviewUrlRef = useRef(null);
-  const uploadCompletionTimerRef = useRef(null);
   const backHandlersRef = useRef([]);
   const sessionGenerationRef = useRef(0);
 
@@ -285,7 +285,7 @@ export function AppProvider({ children }) {
           setChatMessages(prev => {
             const next = { ...grouped };
             Object.entries(prev).forEach(([chatId, messages]) => {
-              const pending = messages.filter(message => message.status === 'sending');
+              const pending = messages.filter(message => ['sending', 'unsent'].includes(message.status));
               if (pending.length > 0) {
                 next[chatId] = [...(next[chatId] || []), ...pending].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
               }
@@ -383,15 +383,25 @@ export function AppProvider({ children }) {
     }
   };
 
-  const startBackgroundUpload = ({ file = null, fileName, kind = 'file', execute }) => {
+  const releasePausedUpload = (control) => {
+    if (!control) return;
+    control.paused = false;
+    if (control.expiryTimer) window.clearTimeout(control.expiryTimer);
+    control.expiryTimer = null;
+    control.waiters.splice(0).forEach(resolve => resolve());
+  };
+
+  const startBackgroundUpload = ({ file = null, fileName, kind = 'file', metadata = {}, execute }) => {
     uploadControllerRef.current?.abort();
-    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
+    releasePausedUpload(uploadPauseControlRef.current);
     releaseUploadPreview();
     const controller = new AbortController();
     const taskId = `upload-${Date.now()}`;
     const previewUrl = file ? URL.createObjectURL(file) : null;
+    const pauseControl = { taskId, paused: false, waiters: [], expiryTimer: null };
     uploadPreviewUrlRef.current = previewUrl;
     uploadControllerRef.current = controller;
+    uploadPauseControlRef.current = pauseControl;
     setUploadTask({
       id: taskId,
       fileName: fileName || file?.name || 'file',
@@ -401,39 +411,71 @@ export function AppProvider({ children }) {
       error: null,
       previewUrl,
       mimeType: file?.type || '',
+      ...metadata,
     });
 
     const updateProgress = value => setUploadTask(task => task?.id === taskId ? { ...task, progress: Math.max(0, Math.min(100, Math.round(value))) } : task);
-    const work = Promise.resolve().then(() => execute({ signal: controller.signal, onProgress: updateProgress, taskId }));
+    const waitIfPaused = async () => {
+      if (controller.signal.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+      if (!pauseControl.paused) return;
+      await new Promise(resolve => pauseControl.waiters.push(resolve));
+      if (controller.signal.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+    };
+    const work = Promise.resolve().then(() => execute({ signal: controller.signal, onProgress: updateProgress, waitIfPaused, taskId }));
     work.then(() => {
+      releasePausedUpload(pauseControl);
+      if (uploadPauseControlRef.current === pauseControl) uploadPauseControlRef.current = null;
       setUploadTask(task => task?.id === taskId ? { ...task, progress: 100, status: 'complete' } : task);
-      uploadCompletionTimerRef.current = window.setTimeout(() => {
-        setUploadTask(task => task?.id === taskId ? null : task);
-        if (uploadPreviewUrlRef.current === previewUrl) releaseUploadPreview();
-        uploadCompletionTimerRef.current = null;
-      }, 1800);
     }).catch(error => {
-      if (error?.name === 'AbortError') return;
+      if (controller.signal.aborted) return;
       console.error('Background upload failed:', error);
       setUploadTask(task => task?.id === taskId ? { ...task, status: 'error', error: error.message || 'Upload failed' } : task);
     }).finally(() => {
       if (uploadControllerRef.current === controller) uploadControllerRef.current = null;
+      if (uploadPauseControlRef.current === pauseControl && !pauseControl.paused) uploadPauseControlRef.current = null;
     });
     return { taskId, promise: work };
+  };
+
+  const pauseBackgroundUpload = () => {
+    const control = uploadPauseControlRef.current;
+    if (!control || control.paused || uploadControllerRef.current?.signal.aborted) return;
+    control.paused = true;
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    setUploadTask(task => task?.id === control.taskId && task.status === 'uploading'
+      ? { ...task, status: 'paused', pausedAt: new Date().toISOString(), expiresAt: new Date(expiresAt).toISOString() }
+      : task);
+    control.expiryTimer = window.setTimeout(() => {
+      if (uploadPauseControlRef.current !== control || !control.paused) return;
+      setUploadTask(task => task?.id === control.taskId ? { ...task, status: 'unsent', error: 'Unsent after being paused for 15 minutes' } : task);
+      uploadControllerRef.current?.abort('pause-expired');
+      releasePausedUpload(control);
+      uploadPauseControlRef.current = null;
+      uploadControllerRef.current = null;
+    }, 15 * 60 * 1000);
+  };
+
+  const resumeBackgroundUpload = () => {
+    const control = uploadPauseControlRef.current;
+    if (!control?.paused) return;
+    setUploadTask(task => task?.id === control.taskId && task.status === 'paused'
+      ? { ...task, status: 'uploading', pausedAt: null, expiresAt: null }
+      : task);
+    releasePausedUpload(control);
   };
 
   const cancelBackgroundUpload = () => {
     uploadControllerRef.current?.abort();
     uploadControllerRef.current = null;
-    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
-    uploadCompletionTimerRef.current = null;
+    releasePausedUpload(uploadPauseControlRef.current);
+    uploadPauseControlRef.current = null;
     releaseUploadPreview();
     setUploadTask(null);
   };
 
   useEffect(() => () => {
     uploadControllerRef.current?.abort();
-    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
+    releasePausedUpload(uploadPauseControlRef.current);
     releaseUploadPreview();
   }, []);
 
@@ -835,7 +877,7 @@ export function AppProvider({ children }) {
     } catch(e) { console.error(e); }
   };
 
-  const uploadChatMedia = async (file, onProgress, signal) => {
+  const uploadChatMedia = async (file, onProgress, signal, waitIfPaused = async () => {}) => {
     if (!file) return null;
     const reportProgress = (value) => onProgress?.(Math.max(0, Math.min(100, Math.round(value))));
     const chunkSize = 256 * 1024;
@@ -851,6 +893,7 @@ export function AppProvider({ children }) {
     });
 
     reportProgress(0);
+    await waitIfPaused();
     if (signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
     const initRes = await fetch('/api/ssr/media', {
       method: 'POST',
@@ -865,6 +908,7 @@ export function AppProvider({ children }) {
 
     try {
       for (let index = 0; index < Math.ceil(file.size / chunkSize); index += 1) {
+        await waitIfPaused();
         if (signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
         const data = await readChunk(file.slice(index * chunkSize, Math.min(file.size, (index + 1) * chunkSize)));
         const chunkRes = await fetch('/api/ssr/media', {
@@ -878,7 +922,7 @@ export function AppProvider({ children }) {
         reportProgress(5 + ((index + 1) / Math.ceil(file.size / chunkSize)) * 95);
       }
     } catch (error) {
-      if (error?.name === 'AbortError') {
+      if (signal?.aborted) {
         fetch('/api/ssr/media', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -901,7 +945,7 @@ export function AppProvider({ children }) {
     };
   };
 
-  const sendChatMediaInBackground = ({ chatId, file, caption = '', replyTo = null }) => {
+  const sendChatMediaInBackground = ({ chatId, file, caption = '', replyTo = null, attachmentMeta = {} }) => {
     if (!currentUser || !chatId || !file) return null;
     const tempId = `uploading-${currentUser.id}-${Date.now()}`;
     const previewUrl = URL.createObjectURL(file);
@@ -915,6 +959,7 @@ export function AppProvider({ children }) {
       previewUrl,
       uploading: true,
       uploadProgress: 0,
+      ...attachmentMeta,
     };
     setChatMessages(prev => ({
       ...prev,
@@ -939,13 +984,15 @@ export function AppProvider({ children }) {
       file,
       fileName: file.name,
       kind: 'chat',
-      execute: async ({ onProgress, signal }) => {
+      metadata: { chatId, tempMessageId: tempId },
+      execute: async ({ onProgress, signal, waitIfPaused }) => {
         const report = value => {
           onProgress(value);
           setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? { ...message, attachment: { ...message.attachment, uploadProgress: Math.round(value) } } : message) }));
         };
         try {
-          const attachment = await uploadChatMedia(file, report, signal);
+          const attachment = { ...(await uploadChatMedia(file, report, signal, waitIfPaused)), ...attachmentMeta };
+          await waitIfPaused();
           const msg = { chatId, senderId: currentUser.id, senderName: currentUser.name, senderInitials: currentUser.initials, senderColor: currentUser.color, senderAvatar: currentUser.avatar || null, content: caption.trim(), replyTo, attachment, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isSystem: false };
           const response = await fetch('/api/ssr/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg), signal });
           const data = await response.json();
@@ -956,8 +1003,10 @@ export function AppProvider({ children }) {
           URL.revokeObjectURL(previewUrl);
           setChatMessages(prev => ({
             ...prev,
-            [chatId]: error?.name === 'AbortError'
-              ? (prev[chatId] || []).filter(message => message.id !== tempId)
+            [chatId]: signal.aborted && signal.reason === 'pause-expired'
+              ? (prev[chatId] || []).map(message => message.id === tempId ? { ...message, status: 'unsent', attachment: { ...message.attachment, uploading: false, unsent: true, previewUrl: null, uploadError: null } } : message)
+              : signal.aborted
+                ? (prev[chatId] || []).filter(message => message.id !== tempId)
               : (prev[chatId] || []).map(message => message.id === tempId ? { ...message, status: 'error', attachment: { ...message.attachment, uploading: true, uploadError: error.message || 'Upload failed' } } : message),
           }));
           throw error;
@@ -1532,7 +1581,7 @@ export function AppProvider({ children }) {
       targetChat, setTargetChat,
       uploadChatMedia, sendChatMediaInBackground, markChatRead,
       mediaComposer, openMediaComposer, closeMediaComposer,
-      uploadTask, startBackgroundUpload, cancelBackgroundUpload,
+      uploadTask, startBackgroundUpload, pauseBackgroundUpload, resumeBackgroundUpload, cancelBackgroundUpload,
       registerBackHandler, runBackHandler,
       userProfileToView,
       viewUserProfile,

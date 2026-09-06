@@ -46,7 +46,7 @@ export async function POST(req) {
 
       await notifyUsers(recipientIds, {
         title: chat.type === 'group' ? (chat.name || 'New group message') : (newMessage.senderName || 'New message'),
-        body: newMessage.content || (newMessage.attachment ? 'Sent an attachment' : 'You have a new message'),
+        body: newMessage.content || (newMessage.attachment?.voiceMessage ? 'Sent a voice message' : newMessage.attachment ? 'Sent an attachment' : 'You have a new message'),
         url: `/ssr-app/home?chatId=${encodeURIComponent(chat.id)}&messageId=${encodeURIComponent(newMessage.id)}`,
         data: { type: 'chat', chatId: chat.id, messageId: newMessage.id },
       });

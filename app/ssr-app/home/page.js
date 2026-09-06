@@ -426,9 +426,10 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend, locations
 }
 
 /* ─── Notifications Panel ──────────────────────────── */
-function NotificationsPanel() {
+function NotificationsPanel({ onOpenNotification = null }) {
   const router = useRouter();
   const { notifications: notifs, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications } = useApp();
+  const isMobile = useWindowWidth() < 900;
   const unreadCount = notifs.filter(n => !n.read).length;
 
   const iconFor = (type) => {
@@ -438,17 +439,17 @@ function NotificationsPanel() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: 640, margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottom: '1.5px solid #F1F5F9' }}>
+    <div style={{ padding: isMobile ? '14px 12px' : '20px', maxWidth: 640, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: 12, marginBottom: 14, paddingBottom: 14, borderBottom: '1.5px solid #E2E8F0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Notifications</h2>
           <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 14 }}>{unreadCount} unread</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={markAllNotificationsRead} style={{ padding: '8px 14px', border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, color: '#0A6ED1', cursor: 'pointer' }}>
+        <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+          <button onClick={markAllNotificationsRead} style={{ flex: isMobile ? 1 : 'none', padding: '8px 12px', border: '1px solid #BFDBFE', borderRadius: 8, background: '#EFF6FF', fontSize: 12, fontWeight: 700, color: '#0A6ED1', cursor: 'pointer' }}>
             Mark all read
           </button>
-          <button onClick={deleteAllNotifications} style={{ padding: '8px 14px', border: '1px solid #FEE2E2', borderRadius: 8, background: '#FFF5F5', fontSize: 13, fontWeight: 600, color: '#DC2626', cursor: 'pointer' }}>
+          <button onClick={deleteAllNotifications} style={{ flex: isMobile ? 1 : 'none', padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 8, background: '#FEF2F2', fontSize: 12, fontWeight: 700, color: '#DC2626', cursor: 'pointer' }}>
             Delete all
           </button>
         </div>
@@ -462,8 +463,8 @@ function NotificationsPanel() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {notifs.map((n, i) => (
-            <div key={n.id} style={{ display: 'flex', gap: 14, padding: '16px 12px', borderBottom: i < notifs.length - 1 ? '1px solid #F8FAFC' : 'none', background: n.read ? '#fff' : '#F0F7FF', borderRadius: 10, marginBottom: 4, cursor: 'pointer' }}
-              onClick={() => { markNotificationRead(n.id); if (n.url) router.push(n.url); }}>
+            <div key={n.id} style={{ display: 'flex', gap: isMobile ? 10 : 14, padding: isMobile ? '14px 10px' : '16px 12px', border: `1px solid ${n.read ? '#E8ECF0' : '#BFDBFE'}`, background: n.read ? '#fff' : '#F0F7FF', borderRadius: 8, marginBottom: 8, cursor: n.url ? 'pointer' : 'default', minWidth: 0 }}
+              onClick={() => { markNotificationRead(n.id); if (onOpenNotification) onOpenNotification(n); else if (n.url) router.push(n.url); }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: n.read ? '#F1F5F9' : '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: n.read ? '#64748B' : '#0A6ED1' }}>
                 {iconFor(n.type)}
               </div>
@@ -483,7 +484,8 @@ function NotificationsPanel() {
 }
 
 function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedia, onReact, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
-  const { autoDownloadMedia, currentUser } = useApp();
+  const { autoDownloadMedia, currentUser, uploadTask, pauseBackgroundUpload, resumeBackgroundUpload } = useApp();
+  const activeMessageUpload = uploadTask?.tempMessageId === msg.id ? uploadTask : null;
   const mediaRemovedForUser = Boolean(msg.attachment?.deletedFor?.includes(currentUser?.id));
   const mediaDeletedFromCloud = Boolean(msg.attachment?.cloudDeleted);
   const [isDownloaded, setIsDownloaded] = useState(() => {
@@ -668,11 +670,17 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
             {/* Attachment */}
             {msg.attachment && (
               <div style={{ marginBottom: msg.text ? 8 : 0, borderRadius: 8, overflow: 'hidden', minWidth: msg.attachment.isImage || msg.attachment.isVideo ? 180 : 0 }}>
-                {msg.attachment.uploading ? (
+                {msg.attachment.unsent ? (
+                  <div style={{ minHeight: 82, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6, padding: 14, background: msg.isMe ? 'rgba(255,255,255,0.14)' : '#F1F5F9', border: `1px dashed ${msg.isMe ? 'rgba(255,255,255,0.5)' : '#CBD5E1'}`, borderRadius: 8, color: msg.isMe ? '#fff' : '#64748B', textAlign: 'center' }}>
+                    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                    <span style={{ fontSize: 12, fontWeight: 800 }}>Unsent</span>
+                    <span style={{ fontSize: 10, opacity: 0.8 }}>Upload was paused for more than 15 minutes</span>
+                  </div>
+                ) : msg.attachment.uploading ? (
                   <div style={{ position: 'relative', minHeight: msg.attachment.isImage || msg.attachment.isVideo ? 150 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.isMe ? 'rgba(255,255,255,0.15)' : '#E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
                     {msg.attachment.isImage && msg.attachment.previewUrl && <img src={msg.attachment.previewUrl} alt="Uploading attachment" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', opacity: 0.5 }} />}
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, padding: 12, background: 'rgba(15,23,42,0.38)', color: '#fff', textAlign: 'center' }}>
-                      {msg.attachment.uploadError ? <span style={{ fontSize: 12, fontWeight: 700, color: '#FECACA' }}>{msg.attachment.uploadError}</span> : <><div style={{ width: 34, height: 34, border: '3px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ssrUploadSpin 0.9s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes ssrUploadSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }' }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Uploading {msg.attachment.uploadProgress || 0}%</span></>}
+                      {msg.attachment.uploadError ? <span style={{ fontSize: 12, fontWeight: 700, color: '#FECACA' }}>{msg.attachment.uploadError}</span> : <><button type="button" onMouseDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); activeMessageUpload?.status === 'paused' ? resumeBackgroundUpload() : pauseBackgroundUpload(); }} disabled={!activeMessageUpload || !['uploading', 'paused'].includes(activeMessageUpload.status)} aria-label={activeMessageUpload?.status === 'paused' ? 'Resume upload' : 'Pause upload'} title={activeMessageUpload?.status === 'paused' ? 'Resume upload' : 'Pause upload'} style={{ width: 38, height: 38, border: '3px solid rgba(255,255,255,0.45)', borderRadius: '50%', background: 'rgba(15,23,42,0.35)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: activeMessageUpload ? 'pointer' : 'default' }}>{activeMessageUpload?.status === 'paused' ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>}</button><span style={{ fontSize: 12, fontWeight: 700 }}>{activeMessageUpload?.status === 'paused' ? `Paused ${msg.attachment.uploadProgress || 0}%` : `Uploading ${msg.attachment.uploadProgress || 0}%`}</span>{activeMessageUpload?.status === 'paused' && <span style={{ fontSize: 10, opacity: 0.85 }}>Resume within 15 minutes</span>}</>}
                     </div>
                   </div>
                 ) : !isDownloaded ? (
@@ -1089,7 +1097,7 @@ function ProfileAvatarWithUpload({ currentUser, upload, size = 30 }) {
     return <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={size} online={currentUser?.online} />;
   }
   const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
-  const color = upload.status === 'error' ? '#DC2626' : upload.status === 'complete' ? '#16A34A' : '#0A6ED1';
+  const color = ['error', 'unsent'].includes(upload.status) ? '#DC2626' : upload.status === 'complete' ? '#16A34A' : upload.status === 'paused' ? '#D97706' : '#0A6ED1';
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex', width: size + 6, height: size + 6, padding: 3, borderRadius: '50%', background: `conic-gradient(${color} ${progress}%, #DCE7F3 0)`, boxSizing: 'border-box', flexShrink: 0 }}>
@@ -1101,21 +1109,22 @@ function ProfileAvatarWithUpload({ currentUser, upload, size = 30 }) {
   );
 }
 
-function UploadMenuActions({ upload, onView, onCancel }) {
+function UploadMenuActions({ upload, onView, onPause, onResume, onCancel }) {
   if (!upload) return null;
   const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
-  const label = upload.status === 'error' ? 'Upload failed' : upload.status === 'complete' ? 'Upload complete' : `Uploading ${progress}%`;
-  const canCancel = upload.status === 'uploading' && progress < 100;
+  const label = upload.status === 'error' ? 'Upload failed' : upload.status === 'unsent' ? 'Upload unsent' : upload.status === 'complete' ? 'Upload complete' : upload.status === 'paused' ? `Paused ${progress}%` : `Uploading ${progress}%`;
+  const isActive = ['uploading', 'paused'].includes(upload.status) && progress < 100;
   return (
     <div style={{ padding: '8px 8px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
       <p style={{ margin: '0 6px 7px', maxWidth: 220, color: upload.status === 'error' ? '#B91C1C' : '#475569', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}: {upload.fileName}</p>
-      <button type="button" onClick={onView} style={{ width: '100%', padding: '9px 8px', background: '#EFF6FF', border: 'none', borderRadius: 6, color: '#0A6ED1', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>View uploading file</button>
-      {(canCancel || upload.status === 'error') && <button type="button" onClick={onCancel} style={{ width: '100%', marginTop: 4, padding: '9px 8px', background: 'transparent', border: 'none', borderRadius: 6, color: '#B91C1C', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>{canCancel ? 'Cancel upload' : 'Dismiss'}</button>}
+      <button type="button" onClick={onView} style={{ width: '100%', padding: '9px 8px', background: '#EFF6FF', border: 'none', borderRadius: 6, color: '#0A6ED1', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>{upload.status === 'complete' ? 'View uploaded file' : 'View upload file'}</button>
+      {isActive && <button type="button" onClick={upload.status === 'paused' ? onResume : onPause} style={{ width: '100%', marginTop: 4, padding: '9px 8px', background: '#FFF7ED', border: 'none', borderRadius: 6, color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>{upload.status === 'paused' ? 'Resume upload' : 'Pause upload'}</button>}
+      <button type="button" onClick={onCancel} style={{ width: '100%', marginTop: 4, padding: '9px 8px', background: 'transparent', border: 'none', borderRadius: 6, color: '#B91C1C', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>{isActive ? 'Cancel upload' : 'Dismiss'}</button>
     </div>
   );
 }
 
-function UploadPreviewModal({ upload, onClose, onCancel }) {
+function UploadPreviewModal({ upload, onClose, onPause, onResume, onCancel }) {
   useBackHandler(Boolean(upload), onClose);
   if (!upload) return null;
 
@@ -1123,7 +1132,7 @@ function UploadPreviewModal({ upload, onClose, onCancel }) {
   const isImage = upload.mimeType?.startsWith('image/');
   const isVideo = upload.mimeType?.startsWith('video/');
   const isAudio = upload.mimeType?.startsWith('audio/');
-  const canCancel = upload.status === 'uploading' && progress < 100;
+  const isActive = ['uploading', 'paused'].includes(upload.status) && progress < 100;
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Uploading file preview" onClick={event => { if (event.target === event.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 11000, background: 'rgba(15,23,42,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
@@ -1131,7 +1140,7 @@ function UploadPreviewModal({ upload, onClose, onCancel }) {
         <div style={{ minHeight: 54, padding: '10px 14px 10px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{upload.fileName}</p>
-            <p style={{ margin: '3px 0 0', fontSize: 11, color: upload.status === 'error' ? '#DC2626' : '#64748B' }}>{upload.error || `${progress}% uploaded`}</p>
+            <p style={{ margin: '3px 0 0', fontSize: 11, color: ['error', 'unsent'].includes(upload.status) ? '#DC2626' : '#64748B' }}>{upload.error || (upload.status === 'complete' ? 'Upload complete' : upload.status === 'paused' ? `${progress}% uploaded, resume within 15 minutes` : `${progress}% uploaded`)}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close file preview" title="Close" style={{ width: 34, height: 34, border: 'none', borderRadius: '50%', background: '#F1F5F9', color: '#334155', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>x</button>
         </div>
@@ -1149,7 +1158,8 @@ function UploadPreviewModal({ upload, onClose, onCancel }) {
         </div>
         <div style={{ padding: 14, borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, height: 7, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}><div style={{ width: `${progress}%`, height: '100%', background: upload.status === 'error' ? '#DC2626' : '#0A6ED1', transition: 'width 0.2s ease' }} /></div>
-          {(canCancel || upload.status === 'error') && <button type="button" onClick={onCancel} style={{ border: 'none', borderRadius: 6, padding: '9px 13px', background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>{canCancel ? 'Cancel upload' : 'Dismiss'}</button>}
+          {isActive && <button type="button" onClick={upload.status === 'paused' ? onResume : onPause} style={{ border: 'none', borderRadius: 6, padding: '9px 13px', background: '#FFF7ED', color: '#9A3412', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>{upload.status === 'paused' ? 'Resume' : 'Pause'}</button>}
+          <button type="button" onClick={onCancel} style={{ border: 'none', borderRadius: 6, padding: '9px 13px', background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>{isActive ? 'Cancel upload' : 'Dismiss'}</button>
         </div>
       </div>
     </div>
@@ -1524,7 +1534,7 @@ function ChatListRow({ children, onOpen, onLongPress, active, isMobile }) {
 
 export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, conversationOnly = false }) {
   const router = useRouter();
-  const { chats, chatMessages, sendChatMessage, reactToMessage, markChatRead, scheduleMessage, scheduledMessages, cancelScheduledMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
+  const { chats, chatMessages, sendChatMessage, sendChatMediaInBackground, reactToMessage, markChatRead, scheduleMessage, scheduledMessages, cancelScheduledMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
   const [chatTab, setChatTab] = useState('Chats');
 
   const [search, setSearch] = useState('');
@@ -1565,7 +1575,19 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
 
   const [showChatEmojis, setShowChatEmojis] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingPreview, setRecordingPreview] = useState(false);
+  const [recordingPreview, setRecordingPreview] = useState(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingError, setRecordingError] = useState('');
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const recordingStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingTimerRef = useRef(null);
+  const recordingPreviewUrlRef = useRef(null);
+  const discardRecordingRef = useRef(false);
+  const recordingChatIdRef = useRef(null);
+  const recordingReplyRef = useRef(null);
   const [highlightMsgId, setHighlightMsgId] = useState(null);
   const highlightTimerRef = useRef(null);
   const lastChatId = useRef(activeChat?.id);
@@ -1670,6 +1692,11 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       setShowDetails(false);
       setShowAllMedia(false);
 
+      if (!targetChat.msgId) {
+        setTargetChat(null);
+        return;
+      }
+
       // Give it a tiny delay to allow React to render the chat messages before scrolling
       const scrollTimer = setTimeout(() => {
         const el = document.getElementById(`msg-${targetChat.msgId}`);
@@ -1697,6 +1724,140 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
 
   useEffect(() => () => {
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+  }, []);
+
+  const formatRecordingDuration = (seconds) => {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  };
+
+  const releaseRecordingStream = () => {
+    recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+    recordingStreamRef.current = null;
+    if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+  };
+
+  const clearRecordingPreview = () => {
+    if (recordingPreviewUrlRef.current) {
+      URL.revokeObjectURL(recordingPreviewUrlRef.current);
+      recordingPreviewUrlRef.current = null;
+    }
+    setRecordingPreview(null);
+    setSendingVoice(false);
+  };
+
+  const startVoiceRecording = async () => {
+    if (!activeChat?.id || isRecording || currentUser?.isImpersonating) return;
+    setRecordingError('');
+    clearRecordingPreview();
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setRecordingError('Voice recording is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const supportedType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'].find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = supportedType ? new MediaRecorder(stream, { mimeType: supportedType }) : new MediaRecorder(stream);
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      recordingChatIdRef.current = activeChat.id;
+      recordingReplyRef.current = replyingTo;
+      discardRecordingRef.current = false;
+      setRecordingSeconds(0);
+
+      recorder.ondataavailable = event => {
+        if (event.data?.size) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        discardRecordingRef.current = true;
+        setRecordingError('The recording stopped unexpectedly. Please try again.');
+        setIsRecording(false);
+        releaseRecordingStream();
+      };
+      recorder.onstop = () => {
+        const duration = Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000));
+        const mimeType = recorder.mimeType || recordingChunksRef.current[0]?.type || 'audio/webm';
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        const shouldDiscard = discardRecordingRef.current;
+        releaseRecordingStream();
+        mediaRecorderRef.current = null;
+        recordingChunksRef.current = [];
+        if (shouldDiscard) return;
+        if (!blob.size) {
+          setRecordingError('No audio was captured. Please check microphone permission and try again.');
+          return;
+        }
+        if (blob.size > 15 * 1024 * 1024) {
+          setRecordingError('Voice message exceeds the 15MB upload limit. Record a shorter message.');
+          return;
+        }
+        const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+        const file = new File([blob], `voice-message-${Date.now()}.${extension}`, { type: mimeType });
+        const previewUrl = URL.createObjectURL(blob);
+        recordingPreviewUrlRef.current = previewUrl;
+        setRecordingPreview({ file, url: previewUrl, duration, chatId: recordingChatIdRef.current, replyTo: recordingReplyRef.current });
+      };
+
+      recorder.start(500);
+      setIsRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000));
+      }, 250);
+    } catch (error) {
+      releaseRecordingStream();
+      setIsRecording(false);
+      setRecordingError(error?.name === 'NotAllowedError' ? 'Microphone permission was denied. Allow microphone access and try again.' : 'Could not start the microphone. Please try again.');
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    setIsRecording(false);
+    recorder.stop();
+  };
+
+  const cancelVoiceRecording = () => {
+    discardRecordingRef.current = true;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    else releaseRecordingStream();
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    clearRecordingPreview();
+  };
+
+  const sendVoiceRecording = () => {
+    if (!recordingPreview?.file || !recordingPreview.chatId || sendingVoice) return;
+    setSendingVoice(true);
+    const task = sendChatMediaInBackground({
+      chatId: recordingPreview.chatId,
+      file: recordingPreview.file,
+      caption: '',
+      replyTo: recordingPreview.replyTo,
+      attachmentMeta: { voiceMessage: true, duration: recordingPreview.duration },
+    });
+    if (!task) {
+      setSendingVoice(false);
+      setRecordingError('Could not start the voice-message upload.');
+      return;
+    }
+    clearRecordingPreview();
+    setRecordingSeconds(0);
+    setReplyingTo(null);
+  };
+
+  useEffect(() => () => {
+    discardRecordingRef.current = true;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    releaseRecordingStream();
+    if (recordingPreviewUrlRef.current) URL.revokeObjectURL(recordingPreviewUrlRef.current);
+    recordingPreviewUrlRef.current = null;
   }, []);
 
   const mappedChats = chats.filter(c => !c.deletedFor?.includes(currentUser.id)).map(c => {
@@ -2297,19 +2458,25 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
           </div>
         )}
 
+        {recordingError && (
+          <div role="alert" style={{ padding: '8px 16px', background: '#FEF2F2', borderTop: '1px solid #FECACA', color: '#B91C1C', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span>{recordingError}</span>
+            <button type="button" onClick={() => setRecordingError('')} aria-label="Dismiss recording error" title="Dismiss" style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>x</button>
+          </div>
+        )}
+
         {currentUser?.isImpersonating ? (
           <div style={{ padding: '16px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', textAlign: 'center', fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>
             Chat is disabled in View-Only mode.
           </div>
         ) : recordingPreview ? (
           <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fff', borderTop: '1px solid #F1F5F9', alignItems: 'center', flexShrink: 0 }}>
-            <button type="button" onClick={() => { setRecordingPreview(false); setIsRecording(false); }} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '8px 4px' }}>Cancel</button>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, background: '#F1F5F9', padding: '8px 16px', borderRadius: 20 }}>
-              <span style={{ fontSize: 18 }}>▶️</span>
-              <div style={{ height: 4, flex: 1, background: '#CBD5E1', borderRadius: 2 }}><div style={{ height: '100%', width: '40%', background: '#0A6ED1' }}/></div>
-              <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>0:04</span>
+            <button type="button" onClick={cancelVoiceRecording} disabled={sendingVoice} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: sendingVoice ? 'default' : 'pointer', fontWeight: 700, padding: '8px 4px' }}>Cancel</button>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: '#F1F5F9', padding: '6px 12px', borderRadius: 8 }}>
+              <audio src={recordingPreview.url} controls preload="metadata" style={{ width: '100%', minWidth: 0, height: 36 }} />
+              <span style={{ fontSize: 12, color: '#64748B', fontWeight: 700, flexShrink: 0 }}>{formatRecordingDuration(recordingPreview.duration)}</span>
             </div>
-            <button type="button" onClick={() => { sendChatMessage(activeChat.id, '🎤 Voice message (0:04)'); setRecordingPreview(false); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <button type="button" onClick={sendVoiceRecording} disabled={sendingVoice} aria-label="Send voice message" title="Send voice message" style={{ background: sendingVoice ? '#94A3B8' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: sendingVoice ? 'wait' : 'pointer', flexShrink: 0 }}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
@@ -2362,6 +2529,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
                 rows={1}
                 style={{ flex: 1, padding: '12px 0', border: 'none', background: 'transparent', color: '#0F172A', fontSize: 14, outline: 'none', resize: 'none', minHeight: 20, maxHeight: 120, overflowY: 'auto', fontFamily: 'inherit', lineHeight: 1.4 }}
               />
+              {isRecording && <span aria-live="polite" style={{ marginLeft: 8, color: '#DC2626', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>Recording {formatRecordingDuration(recordingSeconds)}</span>}
             </div>
 
             {msgText.trim() ? (
@@ -2373,14 +2541,9 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  if (isRecording) {
-                    setIsRecording(false);
-                    setRecordingPreview(true);
-                  } else {
-                    setIsRecording(true);
-                  }
-                }}
+                onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
+                aria-label={isRecording ? 'Stop recording' : 'Record voice message'}
+                title={isRecording ? 'Stop recording' : 'Record voice message'}
                 style={{ background: isRecording ? '#DC2626' : 'none', border: 'none', cursor: 'pointer', color: isRecording ? '#fff' : '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', padding: 0, marginBottom: 2, transition: 'background 0.2s' }}
               >
                 {isRecording ? (
@@ -3013,7 +3176,7 @@ function ConfirmModal({ title, message, confirmLabel = 'Delete', confirmColor = 
 }
 
 /* ─── Service Upload Modal ─────────────────── */
-function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, courses = [], initialCourse = null, currentUser }) {
+function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, onDeleteCredential, users, courses = [], initialCourse = null, currentUser }) {
   const { uploadChatMedia, startBackgroundUpload } = useApp();
   const MODULES = ['Finance', 'Supply Chain', 'Sales', 'HR', 'Manufacturing', 'Quality', 'Maintenance', 'Technology'];
   const initialServiceType = initialCourse?.serviceType === 'server' ? 'server' : 'module';
@@ -3041,6 +3204,8 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
   const [credentialText, setCredentialText] = useState('');
   const [pendingCredentials, setPendingCredentials] = useState([]);
   const [credentialCount, setCredentialCount] = useState(Number(initialCourse?.credentialCount || 0));
+  const [credentialInventory, setCredentialInventory] = useState([]);
+  const [credentialInventoryLoading, setCredentialInventoryLoading] = useState(false);
   const [addingCredential, setAddingCredential] = useState(false);
   const [credentialNotice, setCredentialNotice] = useState('');
   const [benefitInput, setBenefitInput] = useState('');
@@ -3069,6 +3234,26 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
     }
   };
 
+  const loadCredentialInventory = async () => {
+    if (!initialCourse?.id || initialServiceType !== 'server' || !hasEmployeePermission(currentUser, 'post_services')) return;
+    setCredentialInventoryLoading(true);
+    try {
+      const response = await fetch(`/api/ssr/server-credentials?courseId=${encodeURIComponent(initialCourse.id)}&managerId=${encodeURIComponent(currentUser.id)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not load server logins');
+      setCredentialInventory(Array.isArray(data.credentials) ? data.credentials : []);
+      setCredentialCount(Number(data.availableCount || 0));
+    } catch (error) {
+      setCredentialNotice(error.message || 'Could not load server logins.');
+    } finally {
+      setCredentialInventoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCredentialInventory();
+  }, [initialCourse?.id, currentUser?.id]);
+
   const handleAddCredential = async () => {
     const credential = credentialText.trim();
     if (!credential || addingCredential) return;
@@ -3085,10 +3270,23 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
       setCredentialCount(availableCount);
       setCredentialText('');
       setCredentialNotice('Login added securely. You can enter another one now.');
+      await loadCredentialInventory();
     } catch (error) {
       setCredentialNotice(error.message || 'Could not add this server login.');
     } finally {
       setAddingCredential(false);
+    }
+  };
+  const handleDeleteCredential = async (credentialId) => {
+    if (!initialCourse?.id || !credentialId) return;
+    setCredentialNotice('');
+    try {
+      const availableCount = await onDeleteCredential(initialCourse.id, credentialId);
+      setCredentialCount(availableCount);
+      setCredentialInventory(current => current.filter(item => item.id !== credentialId));
+      setCredentialNotice('Unused login deleted securely.');
+    } catch (error) {
+      setCredentialNotice(error.message || 'Could not delete this server login.');
     }
   };
   const removeTag = (list, setList, item) => setList(list.filter(i => i !== item));
@@ -3167,8 +3365,9 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
         file: imageFile,
         fileName: imageFile.name,
         kind: 'service',
-        execute: async ({ onProgress, signal }) => {
-          const uploaded = await uploadChatMedia(imageFile, onProgress, signal);
+        execute: async ({ onProgress, signal, waitIfPaused }) => {
+          const uploaded = await uploadChatMedia(imageFile, onProgress, signal, waitIfPaused);
+          await waitIfPaused();
           await onSubmit({ ...serviceData, image: uploaded?.url || '', imageUrl: uploaded?.url || '' });
         },
       });
@@ -3269,7 +3468,7 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
             </div>
           )}
 
-          {form.serviceType === 'server' && isAdmin(currentUser) && (
+          {form.serviceType === 'server' && hasEmployeePermission(currentUser, 'post_services') && (
             <div style={{ marginBottom: 20, padding: 16, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10 }}>
               <label style={labelStyle}>Add server credentials</label>
               <p style={{ margin: '0 0 10px', fontSize: 12, color: '#991B1B' }}>Admin only. Everything in the box is one login, in any text format. Click Add login, then enter the next login separately.</p>
@@ -3282,7 +3481,7 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
                   {addingCredential ? 'Adding...' : '+ Add login'}
                 </button>
               </div>
-              {credentialNotice && <p style={{ margin: '9px 0 0', fontSize: 12, color: credentialNotice.startsWith('Login added') ? '#047857' : '#B91C1C', fontWeight: 700 }}>{credentialNotice}</p>}
+              {credentialNotice && <p style={{ margin: '9px 0 0', fontSize: 12, color: /added|deleted/i.test(credentialNotice) ? '#047857' : '#B91C1C', fontWeight: 700 }}>{credentialNotice}</p>}
               {!initialCourse && pendingCredentials.length > 0 && (
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {pendingCredentials.map((credential, index) => (
@@ -3291,6 +3490,24 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, course
                       <button type="button" aria-label={`Remove login ${index + 1}`} onClick={() => setPendingCredentials(current => current.filter((_, itemIndex) => itemIndex !== index))} style={{ width: 28, height: 28, border: 'none', borderRadius: 6, background: '#FEE2E2', color: '#DC2626', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>×</button>
                     </div>
                   ))}
+                </div>
+              )}
+              {initialCourse && (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {credentialInventoryLoading && <span style={{ padding: '8px 0', color: '#64748B', fontSize: 12 }}>Loading login inventory...</span>}
+                  {!credentialInventoryLoading && credentialInventory.length === 0 && <span style={{ padding: '8px 0', color: '#64748B', fontSize: 12 }}>No server logins have been added.</span>}
+                  {credentialInventory.map((credential, index) => {
+                    const canDelete = credential.status === 'available';
+                    return (
+                      <div key={credential.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', background: '#fff', border: '1px solid #FECACA', borderRadius: 7 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: '#475569', fontWeight: 700 }}>Login {index + 1}</span>
+                          <span style={{ display: 'block', marginTop: 2, fontSize: 10, color: canDelete ? '#047857' : '#64748B', textTransform: 'capitalize' }}>{credential.status}</span>
+                        </div>
+                        <button type="button" disabled={!canDelete} aria-label={`Delete login ${index + 1}`} title={canDelete ? 'Delete unused login' : 'Reserved or sold logins cannot be deleted'} onClick={() => handleDeleteCredential(credential.id)} style={{ width: 30, height: 30, border: 'none', borderRadius: 6, background: canDelete ? '#FEE2E2' : '#F1F5F9', color: canDelete ? '#DC2626' : '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canDelete ? 'pointer' : 'not-allowed' }}><svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -3463,6 +3680,21 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) throw new Error(data.error || 'Could not add server credentials');
+    const availableCount = Number(data.availableCount || 0);
+    updateCourseAvailability(courseId, availableCount);
+    setSelectedCourse(previous => previous?.id === courseId ? { ...previous, credentialCount: availableCount } : previous);
+    setEditTarget(previous => previous?.id === courseId ? { ...previous, credentialCount: availableCount } : previous);
+    return availableCount;
+  };
+
+  const deleteServerCredential = async (courseId, credentialId) => {
+    const response = await fetch('/api/ssr/server-credentials', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, credentialId, userId: currentUser?.id }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Could not delete server credential');
     const availableCount = Number(data.availableCount || 0);
     updateCourseAvailability(courseId, availableCount);
     setSelectedCourse(previous => previous?.id === courseId ? { ...previous, credentialCount: availableCount } : previous);
@@ -3672,7 +3904,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
 
   return (
     <div style={{ padding: '20px', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
-      {showUpload && <ServiceUploadModal users={users} courses={courses} currentUser={currentUser} initialCourse={editTarget} onClose={() => { setShowUpload(false); setEditTarget(null); }} onSubmit={handleUpload} onAddCredentials={addServerCredentials} />}
+      {showUpload && <ServiceUploadModal users={users} courses={courses} currentUser={currentUser} initialCourse={editTarget} onClose={() => { setShowUpload(false); setEditTarget(null); }} onSubmit={handleUpload} onAddCredentials={addServerCredentials} onDeleteCredential={deleteServerCredential} />}
       {deleteTarget && (
         <ConfirmModal
           title="Delete Service?"
@@ -3702,17 +3934,13 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
                onClick={() => setSelectedCourse(course)}>
 
-            {/* Bookmark */}
-            <button onClick={e => { e.stopPropagation(); toggleCourseSave(course.id); }} style={{ position: 'absolute', top: 12, right: isAdminUser ? 44 : 12, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: (course.savedBy?.includes(currentUser?.id) || course.saved) ? '#0A6ED1' : '#64748B', zIndex: 10 }}>
-              <svg width="16" height="16" fill={(course.savedBy?.includes(currentUser?.id) || course.saved) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
-            </button>
-
-            {/* Admin Delete */}
-            {canManageServices && isAdminUser && (
-              <button onClick={e => { e.stopPropagation(); setDeleteTarget(course); }} title="Delete service" style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#DC2626', zIndex: 10 }}>
-                <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, display: 'flex', gap: 6 }}>
+              <button onClick={e => { e.stopPropagation(); toggleCourseSave(course.id); }} title="Save service" aria-label="Save service" style={{ background: 'rgba(255,255,255,0.94)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: (course.savedBy?.includes(currentUser?.id) || course.saved) ? '#0A6ED1' : '#64748B' }}>
+                <svg width="16" height="16" fill={(course.savedBy?.includes(currentUser?.id) || course.saved) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
               </button>
-            )}
+              {canManageServices && <button onClick={e => { e.stopPropagation(); setEditTarget(course); setShowUpload(true); }} title="Edit service" aria-label="Edit service" style={{ background: 'rgba(255,255,255,0.94)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0A6ED1' }}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L8 18l-4 1 1-4z"/></svg></button>}
+              {canManageServices && isAdminUser && <button onClick={e => { e.stopPropagation(); setDeleteTarget(course); }} title="Delete service" aria-label="Delete service" style={{ background: 'rgba(255,255,255,0.94)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#DC2626' }}><svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>}
+            </div>
 
             <div style={{ height: 160, background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
               {course.image ? (
@@ -3741,8 +3969,6 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
                 const lowestPlan = [...course.pricePlans].sort((a, b) => Number(a.discountPrice || 0) - Number(b.discountPrice || 0))[0];
                 return <div style={{ marginBottom: 14 }}><span style={{ color: '#DC2626', textDecoration: 'line-through', fontSize: 12 }}>₹{Number(lowestPlan.originalPrice || 0).toLocaleString('en-IN')}</span> <strong style={{ color: '#166534', fontSize: 16 }}>₹{Number(lowestPlan.discountPrice || 0).toLocaleString('en-IN')}</strong> <span style={{ color: '#166534', fontSize: 11, fontWeight: 700 }}>Save {Number(lowestPlan.discountPercent || 0)}%</span><span style={{ display: 'block', marginTop: 5, color: course.credentialCount > 0 ? '#059669' : '#DC2626', fontSize: 11, fontWeight: 700 }}>{course.credentialCount > 0 ? `${course.credentialCount} credentials available` : 'Out of stock'}</span></div>;
               })()}
-
-              {canManageServices && <button type="button" onClick={e => { e.stopPropagation(); setEditTarget(course); setShowUpload(true); }} style={{ alignSelf: 'flex-start', marginBottom: 12, border: 'none', background: 'transparent', color: '#0A6ED1', padding: 0, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Edit service</button>}
 
               <button style={{ width: '100%', padding: '10px', background: '#fff', border: '1.5px solid #0A6ED1', color: '#0A6ED1', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = '#0A6ED1'; e.currentTarget.style.color = '#fff'; }}
@@ -3884,9 +4110,10 @@ function TrainersPanel() {
 
 function MeetingsPanel({ currentUser }) {
   const { meetings, users } = useApp();
+  const isMobile = useWindowWidth() < 900;
 
   return (
-    <div style={{ padding: '20px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+    <div style={{ padding: isMobile ? '14px 12px' : '20px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Meetings</h2>
       </div>
@@ -3900,20 +4127,24 @@ function MeetingsPanel({ currentUser }) {
           return false;
         }).map(m => {
           const host = users[m.hostId];
+          const parsedDate = new Date(`${m.date}T00:00:00`);
+          const hasValidDate = !Number.isNaN(parsedDate.getTime());
+          const dateDay = hasValidDate ? parsedDate.toLocaleDateString(undefined, { day: '2-digit' }) : String(m.date || '').split(' ')[0];
+          const dateMonth = hasValidDate ? parsedDate.toLocaleDateString(undefined, { month: 'short' }) : String(m.date || '').split(' ')[1] || '';
           return (
-            <div key={m.id} style={{ background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0', display: 'flex', gap: 20, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+            <div key={m.id} style={{ background: '#fff', borderRadius: 8, padding: isMobile ? 14 : 20, border: '1px solid #E8ECF0', display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '64px minmax(0, 1fr)' : undefined, gap: isMobile ? 12 : 20, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', minWidth: 0, overflow: 'hidden', boxSizing: 'border-box' }}>
 
-              <div style={{ width: 80, height: 80, background: '#F8FAFC', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{m.date.split(' ')[1]}</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: '#0A6ED1', lineHeight: 1 }}>{m.date.split(' ')[0]}</span>
+              <div style={{ width: isMobile ? 64 : 80, height: isMobile ? 64 : 80, background: '#F8FAFC', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{dateMonth}</span>
+                <span style={{ fontSize: isMobile ? 22 : 24, fontWeight: 800, color: '#0A6ED1', lineHeight: 1 }}>{dateDay}</span>
               </div>
 
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0F172A' }}>{m.title}</h3>
-                  <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{m.module}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0F172A', overflowWrap: 'anywhere', minWidth: 0 }}>{m.title}</h3>
+                  {m.module && <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, maxWidth: '100%', overflowWrap: 'anywhere' }}>{m.module}</span>}
                 </div>
-                <p style={{ margin: '0 0 10px', fontSize: 13, color: '#64748B' }}>
+                <p style={{ margin: '0 0 10px', fontSize: 13, color: '#64748B', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
                   🕒 {m.time} ({m.duration}) · Hosted by {host?.name || 'Instructor'}
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -3922,8 +4153,8 @@ function MeetingsPanel({ currentUser }) {
                 </div>
               </div>
 
-              <div style={{ flexShrink: 0 }}>
-                <a href={m.link} target="_blank" rel="noreferrer" style={{ display: 'inline-block', textDecoration: 'none', background: '#0F172A', color: '#fff', padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 700, transition: 'background 0.15s' }}>
+              <div style={{ flexShrink: 0, gridColumn: isMobile ? '1 / -1' : undefined, width: isMobile ? '100%' : 'auto' }}>
+                <a href={m.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box', textDecoration: 'none', background: '#0F172A', color: '#fff', padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 700, transition: 'background 0.15s', whiteSpace: 'nowrap' }}>
                   Join / Start
                 </a>
               </div>
@@ -4305,8 +4536,9 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                   file: selectedFile,
                   fileName: selectedFile.name,
                   kind: 'profile',
-                  execute: async ({ onProgress, signal }) => {
-                    const uploaded = await uploadChatMedia(selectedFile, onProgress, signal);
+                  execute: async ({ onProgress, signal, waitIfPaused }) => {
+                    const uploaded = await uploadChatMedia(selectedFile, onProgress, signal, waitIfPaused);
+                    await waitIfPaused();
                     if (!uploaded?.url) throw new Error('Could not upload profile picture.');
                     const result = await updateUserProfile(currentUser.id, { ...updates, avatar: uploaded.url });
                     if (!result?.success) throw new Error(result?.error || 'Could not save profile.');
@@ -5592,7 +5824,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, chats, currentUser, addPost, likePost, uploadChatMedia, uploadTask, startBackgroundUpload, cancelBackgroundUpload, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
+  const { posts, chats, currentUser, addPost, likePost, uploadChatMedia, uploadTask, startBackgroundUpload, pauseBackgroundUpload, resumeBackgroundUpload, cancelBackgroundUpload, setTargetChat, endImpersonation, login, logout, notifications, initialDataLoading } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -5600,10 +5832,10 @@ export default function HomePage() {
 
   const [activeNav, setActiveNav] = useState('feed');
   const [feedTab, setFeedTab] = useState('All');
-  const [mobilePage, setMobilePage] = useState('feed'); // 'feed' | 'chat'
+  const [mobileHistory, setMobileHistory] = useState(['feed']);
+  const mobilePage = mobileHistory[mobileHistory.length - 1] || 'feed';
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [uploadPreviewOpen, setUploadPreviewOpen] = useState(false);
 
@@ -5612,10 +5844,21 @@ export default function HomePage() {
   const [randomOffsets, setRandomOffsets] = useState({});
   const [notificationCourseId, setNotificationCourseId] = useState(null);
 
-  useBackHandler(isMobile && mobilePage !== 'feed', () => {
-    setMobilePage('feed');
-    setActiveNav('feed');
+  const navigateMobile = useCallback((page, { replace = false } = {}) => {
+    if (!page) return;
+    setMobileHistory(previous => {
+      if (replace) return [...previous.slice(0, -1), page];
+      if (previous[previous.length - 1] === page) return previous;
+      return [...previous, page];
+    });
+    window.dispatchEvent(new Event('ssr:app-navigation'));
+  }, []);
+
+  useBackHandler(isMobile && mobileHistory.length > 1, () => {
+    setMobileHistory(previous => previous.length > 1 ? previous.slice(0, -1) : previous);
   });
+  useBackHandler(userMenuOpen, () => setUserMenuOpen(false));
+  useBackHandler(showCreatePost, () => setShowCreatePost(false));
 
   useEffect(() => {
     if (!uploadTask) setUploadPreviewOpen(false);
@@ -5635,12 +5878,12 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!currentUser?.id) return;
+    setMobileHistory(['feed']);
     try {
       const savedView = sessionStorage.getItem(`ssr_home_view_${currentUser.id}`);
       if (savedView) {
         const parsed = JSON.parse(savedView);
         if (parsed.activeNav) setActiveNav(parsed.activeNav);
-        if (parsed.mobilePage) setMobilePage(parsed.mobilePage);
       }
     } catch {
       // Ignore malformed or unavailable view state.
@@ -5651,11 +5894,11 @@ export default function HomePage() {
   useEffect(() => {
     if (!currentUser?.id || !viewRestored) return;
     try {
-      sessionStorage.setItem(`ssr_home_view_${currentUser.id}`, JSON.stringify({ activeNav, mobilePage }));
+      sessionStorage.setItem(`ssr_home_view_${currentUser.id}`, JSON.stringify({ activeNav }));
     } catch {
       // Storage may be unavailable in a privacy-restricted browser.
     }
-  }, [currentUser?.id, activeNav, mobilePage, viewRestored]);
+  }, [currentUser?.id, activeNav, viewRestored]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -5668,10 +5911,10 @@ export default function HomePage() {
     if (chatId) {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
-      setMobilePage('chat');
+      navigateMobile('chat');
     } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
       setActiveNav(section);
-      setMobilePage(section);
+      navigateMobile(section);
       setNotificationCourseId(courseId);
       if (notificationAction === 'like' && section === 'feed' && params.get('postId')) {
         likePost(params.get('postId'));
@@ -5679,9 +5922,9 @@ export default function HomePage() {
     }
     if (notificationAction) {
       params.delete('notificationAction');
-      window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
+      window.history.replaceState({ ...(window.history.state || {}) }, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
     }
-  }, [currentUser, likePost, setTargetChat]);
+  }, [currentUser, likePost, navigateMobile, setTargetChat]);
 
   if (!mounted || !currentUser) {
     return (
@@ -5714,6 +5957,34 @@ export default function HomePage() {
     }
   };
 
+  const handleMobileNotificationOpen = (notification) => {
+    if (!notification?.url) return;
+    const destination = new URL(notification.url, window.location.origin);
+    if (destination.pathname !== '/ssr-app/home') {
+      router.push(notification.url);
+      return;
+    }
+
+    const chatId = destination.searchParams.get('chatId');
+    const messageId = destination.searchParams.get('messageId');
+    const notificationAction = destination.searchParams.get('notificationAction');
+    const section = destination.searchParams.get('section');
+    if (chatId) {
+      setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
+      navigateMobile('chat');
+      return;
+    }
+    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
+      setNotificationCourseId(destination.searchParams.get('courseId'));
+      if (notificationAction === 'like' && section === 'feed' && destination.searchParams.get('postId')) {
+        likePost(destination.searchParams.get('postId'));
+      }
+      navigateMobile(section);
+      return;
+    }
+    router.push(notification.url);
+  };
+
   const handleLogout = () => {
     logout();
     setUserMenuOpen(false);
@@ -5725,7 +5996,7 @@ export default function HomePage() {
     const result = await login('', null, employee.id);
     if (result) {
       setActiveNav('feed');
-      setMobilePage('chat');
+      navigateMobile('chat');
     }
   };
 
@@ -5735,8 +6006,9 @@ export default function HomePage() {
       file,
       fileName: file.name,
       kind: 'post',
-      execute: async ({ onProgress, signal }) => {
-        const uploaded = await uploadChatMedia(file, onProgress, signal);
+      execute: async ({ onProgress, signal, waitIfPaused }) => {
+        const uploaded = await uploadChatMedia(file, onProgress, signal, waitIfPaused);
+        await waitIfPaused();
         if (signal.aborted) throw new DOMException('Upload cancelled', 'AbortError');
         await addPost({ ...post, mediaUrl: uploaded?.url || null, mediaType: post.mediaType });
       },
@@ -5756,7 +6028,7 @@ export default function HomePage() {
         <GlobalUserProfileModal />
         <ProfilePicViewerModal />
         <ScheduleMeetingModal />
-        {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onCancel={cancelActiveUpload} />}
+        {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
         {showCreatePost && isAdmin(currentUser) && (
           <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
@@ -5816,7 +6088,7 @@ export default function HomePage() {
               </button>
               {userMenuOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: 180, zIndex: 300, overflow: 'hidden' }}>
-                  <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onCancel={cancelActiveUpload} />
+                  <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />
                   <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -5987,7 +6259,7 @@ export default function HomePage() {
       <GlobalUserProfileModal />
       <ProfilePicViewerModal />
       <ScheduleMeetingModal />
-      {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onCancel={cancelActiveUpload} />}
+      {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
       {showCreatePost && isAdmin(currentUser) && (
         <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
@@ -6006,7 +6278,7 @@ export default function HomePage() {
           <span style={{ fontSize: 12, fontWeight: 600, color: '#DC2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             👁️ Viewing as <strong>{currentUser.name}</strong>
           </span>
-          <button onClick={() => { endImpersonation(); setActiveNav('accounts'); }} style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={() => { endImpersonation(); navigateMobile('accounts'); }} style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
             Exit View Mode
           </button>
         </div>
@@ -6017,11 +6289,11 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {mobilePage === 'feed' ? 'Home Feed' : mobilePage === 'meetings' ? 'Live Meetings' : mobilePage === 'trainers' ? 'Trainers / Users' : mobilePage === 'requests' ? 'Requests' : mobilePage === 'data-management' ? 'Data Management' : mobilePage}
+            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
-          <button onClick={() => setNotifOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38 }}>
+          <button type="button" onClick={() => { setUserMenuOpen(false); navigateMobile('notifications'); }} aria-label="Open notifications" title="Notifications" style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', color: mobilePage === 'notifications' ? '#0A6ED1' : '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38 }}>
             {MenuIcons.bell}
             {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}
           </button>
@@ -6030,50 +6302,33 @@ export default function HomePage() {
             <ProfileAvatarWithUpload currentUser={currentUser} upload={uploadTask} />
           </button>
 
-          {/* Mobile Notifications Dropdown */}
-          {notifOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '120%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', width: 280, zIndex: 300, padding: 14 }}>
-              <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: 14 }}>Notifications</p>
-              {(notifications || []).slice(0, 5).map((n, i) => (
-                <div key={n.id} onClick={() => { markNotificationRead(n.id); setNotifOpen(false); if (n.url) router.push(n.url); }} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: i < Math.min((notifications || []).length, 5) - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer' }}>
-                  <span style={{ color: n.read ? '#94A3B8' : '#0A6ED1', display: 'flex', alignItems: 'center' }}>{['chat', 'comment', 'like'].includes(n.type) ? MenuIcons.chat : n.type === 'service' ? MenuIcons.course : MenuIcons.announcement}</span>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 13, color: '#0F172A', fontWeight: n.read ? 400 : 600 }}>{n.body}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
-                  </div>
-                </div>
-              ))}
-              {(!notifications || notifications.length === 0) && <p style={{ margin: 0, padding: '12px 0', color: '#94A3B8', fontSize: 13 }}>No notifications yet.</p>}
-            </div>
-          )}
-
           {/* Mobile User Menu Dropdown */}
           {userMenuOpen && (
             <div style={{ position: 'absolute', right: 0, top: '120%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: 180, zIndex: 300, overflow: 'hidden' }}>
-              <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onCancel={cancelActiveUpload} />
-              <button onClick={() => { setMobilePage('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+              <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />
+              <button onClick={() => { navigateMobile('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}>{MenuIcons.profile}</span>View Profile
               </button>
-              <button onClick={() => { setMobilePage('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+              <button onClick={() => { navigateMobile('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}>{MenuIcons.settings}</span>Settings
               </button>
 
               {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') && (
-                <button onClick={() => { setMobilePage('accounts'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                <button onClick={() => { navigateMobile('accounts'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{MenuIcons.accounts}</span>Account Mgmt
                 </button>
               )}
               {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') && !currentUser.isImpersonating && (
-                <button onClick={() => { setMobilePage('data-management'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                <button onClick={() => { navigateMobile('data-management'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{NavIcons.data}</span>Data Management
                 </button>
               )}
               {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
-                <button onClick={() => { setMobilePage('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                <button onClick={() => { navigateMobile('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests
                 </button>
               )}
-              <button onClick={() => { setMobilePage('bookmarks'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+              <button onClick={() => { navigateMobile('bookmarks'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}>{MenuIcons.bookmark}</span>Bookmarks
               </button>
               <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 4, paddingTop: 4 }}>
@@ -6139,8 +6394,8 @@ export default function HomePage() {
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <DataManagementPanel
             currentUser={currentUser}
-            onNavigateToChat={(chatId, msgId) => { setTargetChat({ chatId, msgId }); setMobilePage('chat'); }}
-            onNavigateToFeed={(postId) => { setMobilePage('feed'); window.setTimeout(() => document.getElementById(`ssr-post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }}
+            onNavigateToChat={(chatId, msgId) => { setTargetChat({ chatId, msgId }); navigateMobile('chat'); }}
+            onNavigateToFeed={(postId) => { navigateMobile('feed'); window.setTimeout(() => document.getElementById(`ssr-post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }}
           />
         </div>
       )}
@@ -6151,11 +6406,17 @@ export default function HomePage() {
         </div>
       )}
 
+      {mobilePage === 'notifications' && (
+        <div style={{ height: 'calc(100dvh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <NotificationsPanel onOpenNotification={handleMobileNotificationOpen} />
+        </div>
+      )}
+
       {mobilePage === 'settings' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <SettingsPanel currentUser={currentUser} onNavigateToChat={(chatId, msgId) => {
             setTargetChat({ chatId, msgId });
-            setMobilePage('chat');
+            navigateMobile('chat');
           }} />
         </div>
       )}
@@ -6184,7 +6445,8 @@ export default function HomePage() {
           const active = mobilePage === item.id;
           return (
             <button key={item.id} onClick={() => {
-              setMobilePage(item.id);
+              setUserMenuOpen(false);
+              navigateMobile(item.id);
             }} style={{ flex: 1, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>
               <span style={{ position: 'relative', fontSize: 20, filter: active ? 'none' : 'grayscale(1) opacity(0.5)' }}>
                 {item.icon}

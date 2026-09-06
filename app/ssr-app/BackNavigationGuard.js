@@ -1,23 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useApp } from './AppContext';
 
 export default function BackNavigationGuard() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { currentUser, logout, runBackHandler } = useApp();
+  const { currentUser, runBackHandler } = useApp();
   const [exitArmed, setExitArmed] = useState(false);
   const exitArmedRef = useRef(false);
-  const logoutRef = useRef(logout);
-
-  useEffect(() => {
-    logoutRef.current = logout;
-  }, [logout]);
+  const exitTimerRef = useRef(null);
+  const exitingRef = useRef(false);
 
   useEffect(() => {
     exitArmedRef.current = false;
+    exitingRef.current = false;
     setExitArmed(false);
   }, [pathname, currentUser?.id]);
 
@@ -26,31 +23,45 @@ export default function BackNavigationGuard() {
 
     window.history.pushState({ ...(window.history.state || {}), ssrHomeEntry: true }, '', window.location.href);
 
+    const clearExitPrompt = () => {
+      exitArmedRef.current = false;
+      setExitArmed(false);
+      if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    };
+
     const handlePopState = () => {
+      if (exitingRef.current) return;
       if (runBackHandler()) {
+        clearExitPrompt();
         window.history.pushState({ ...(window.history.state || {}), ssrLayerRestored: true }, '', window.location.href);
         return;
       }
 
       if (exitArmedRef.current) {
-        exitArmedRef.current = false;
-        logoutRef.current();
-        router.replace('/ssr-app');
+        exitingRef.current = true;
+        clearExitPrompt();
+        window.history.back();
+        window.setTimeout(() => {
+          exitingRef.current = false;
+        }, 1000);
         return;
       }
 
       exitArmedRef.current = true;
       setExitArmed(true);
       window.history.pushState({ ...(window.history.state || {}), ssrExitArmed: true }, '', window.location.href);
-      window.setTimeout(() => {
-        exitArmedRef.current = false;
-        setExitArmed(false);
-      }, 2500);
+      exitTimerRef.current = window.setTimeout(clearExitPrompt, 3000);
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [currentUser?.id, pathname, router, runBackHandler]);
+    window.addEventListener('ssr:app-navigation', clearExitPrompt);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('ssr:app-navigation', clearExitPrompt);
+      if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
+    };
+  }, [currentUser?.id, pathname, runBackHandler]);
 
   if (!exitArmed) return null;
   return (
