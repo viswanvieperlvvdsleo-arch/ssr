@@ -170,6 +170,10 @@ export function AppProvider({ children }) {
   const [autoDownloadMedia, setAutoDownloadMedia] = useState(false);
   const [targetChat, setTargetChat] = useState(null);
   const [mediaComposer, setMediaComposer] = useState(null);
+  const [uploadTask, setUploadTask] = useState(null);
+  const uploadControllerRef = useRef(null);
+  const uploadPreviewUrlRef = useRef(null);
+  const uploadCompletionTimerRef = useRef(null);
   const backHandlersRef = useRef([]);
   const sessionGenerationRef = useRef(0);
 
@@ -372,7 +376,76 @@ export function AppProvider({ children }) {
   };
   const closeMediaComposer = () => setMediaComposer(null);
 
-  const login = async (email, password, asImpersonateId = null) => {
+  const releaseUploadPreview = () => {
+    if (uploadPreviewUrlRef.current) {
+      URL.revokeObjectURL(uploadPreviewUrlRef.current);
+      uploadPreviewUrlRef.current = null;
+    }
+  };
+
+  const startBackgroundUpload = ({ file = null, fileName, kind = 'file', execute }) => {
+    uploadControllerRef.current?.abort();
+    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
+    releaseUploadPreview();
+    const controller = new AbortController();
+    const taskId = `upload-${Date.now()}`;
+    const previewUrl = file ? URL.createObjectURL(file) : null;
+    uploadPreviewUrlRef.current = previewUrl;
+    uploadControllerRef.current = controller;
+    setUploadTask({
+      id: taskId,
+      fileName: fileName || file?.name || 'file',
+      kind,
+      progress: 0,
+      status: 'uploading',
+      error: null,
+      previewUrl,
+      mimeType: file?.type || '',
+    });
+
+    const updateProgress = value => setUploadTask(task => task?.id === taskId ? { ...task, progress: Math.max(0, Math.min(100, Math.round(value))) } : task);
+    const work = Promise.resolve().then(() => execute({ signal: controller.signal, onProgress: updateProgress, taskId }));
+    work.then(() => {
+      setUploadTask(task => task?.id === taskId ? { ...task, progress: 100, status: 'complete' } : task);
+      uploadCompletionTimerRef.current = window.setTimeout(() => {
+        setUploadTask(task => task?.id === taskId ? null : task);
+        if (uploadPreviewUrlRef.current === previewUrl) releaseUploadPreview();
+        uploadCompletionTimerRef.current = null;
+      }, 1800);
+    }).catch(error => {
+      if (error?.name === 'AbortError') return;
+      console.error('Background upload failed:', error);
+      setUploadTask(task => task?.id === taskId ? { ...task, status: 'error', error: error.message || 'Upload failed' } : task);
+    }).finally(() => {
+      if (uploadControllerRef.current === controller) uploadControllerRef.current = null;
+    });
+    return { taskId, promise: work };
+  };
+
+  const cancelBackgroundUpload = () => {
+    uploadControllerRef.current?.abort();
+    uploadControllerRef.current = null;
+    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
+    uploadCompletionTimerRef.current = null;
+    releaseUploadPreview();
+    setUploadTask(null);
+  };
+
+  useEffect(() => () => {
+    uploadControllerRef.current?.abort();
+    if (uploadCompletionTimerRef.current) window.clearTimeout(uploadCompletionTimerRef.current);
+    releaseUploadPreview();
+  }, []);
+
+  const login = async (email, password, categoryOrImpersonateId = null, impersonateId = null) => {
+    // Keep the old three-argument impersonation calls working while allowing
+    // normal login to send the role selected on the entry form.
+    const legacyImpersonateId = !impersonateId && categoryOrImpersonateId && Object.values(users).some(user => user.id === categoryOrImpersonateId)
+      ? categoryOrImpersonateId
+      : null;
+    const asImpersonateId = impersonateId || legacyImpersonateId;
+    const category = asImpersonateId ? null : categoryOrImpersonateId;
+
     if (asImpersonateId) {
       const userToLogin = Object.values(users).find(u => u.id === asImpersonateId);
       if (userToLogin) {
@@ -386,7 +459,7 @@ export function AppProvider({ children }) {
       const res = await fetch('/api/ssr/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', email, password })
+        body: JSON.stringify({ action: 'login', email, password, category })
       });
       const data = await res.json();
       if (data.user) {
@@ -828,12 +901,83 @@ export function AppProvider({ children }) {
     };
   };
 
+  const sendChatMediaInBackground = ({ chatId, file, caption = '', replyTo = null }) => {
+    if (!currentUser || !chatId || !file) return null;
+    const tempId = `uploading-${currentUser.id}-${Date.now()}`;
+    const previewUrl = URL.createObjectURL(file);
+    const pendingAttachment = {
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      isImage: file.type?.startsWith('image/'),
+      isVideo: file.type?.startsWith('video/'),
+      isAudio: file.type?.startsWith('audio/'),
+      previewUrl,
+      uploading: true,
+      uploadProgress: 0,
+    };
+    setChatMessages(prev => ({
+      ...prev,
+      [chatId]: [...(prev[chatId] || []), normalizeMessage({
+        id: tempId,
+        chatId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        senderInitials: currentUser.initials,
+        senderColor: currentUser.color || '#000',
+        senderAvatar: currentUser.avatar || null,
+        content: caption.trim(),
+        replyTo,
+        attachment: pendingAttachment,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      }, currentUser.id)]
+    }));
+
+    const task = startBackgroundUpload({
+      file,
+      fileName: file.name,
+      kind: 'chat',
+      execute: async ({ onProgress, signal }) => {
+        const report = value => {
+          onProgress(value);
+          setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? { ...message, attachment: { ...message.attachment, uploadProgress: Math.round(value) } } : message) }));
+        };
+        try {
+          const attachment = await uploadChatMedia(file, report, signal);
+          const msg = { chatId, senderId: currentUser.id, senderName: currentUser.name, senderInitials: currentUser.initials, senderColor: currentUser.color, senderAvatar: currentUser.avatar || null, content: caption.trim(), replyTo, attachment, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isSystem: false };
+          const response = await fetch('/api/ssr/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg), signal });
+          const data = await response.json();
+          if (!response.ok || !data.id) throw new Error(data.error || 'Could not send the uploaded file');
+          setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? normalizeMessage({ ...data, status: 'delivered' }, currentUser.id) : message) }));
+          URL.revokeObjectURL(previewUrl);
+        } catch (error) {
+          URL.revokeObjectURL(previewUrl);
+          setChatMessages(prev => ({
+            ...prev,
+            [chatId]: error?.name === 'AbortError'
+              ? (prev[chatId] || []).filter(message => message.id !== tempId)
+              : (prev[chatId] || []).map(message => message.id === tempId ? { ...message, status: 'error', attachment: { ...message.attachment, uploading: true, uploadError: error.message || 'Upload failed' } } : message),
+          }));
+          throw error;
+        }
+      },
+    });
+    return task;
+  };
+
   const markChatRead = async (chatId) => {
     if (!currentUser || !chatId) return;
-    setMutableChats(prev => prev.map(chat => {
-      if (chat.id !== chatId) return chat;
-      return { ...chat, unreadBy: { ...(chat.unreadBy || {}), [currentUser.id]: 0 }, unread: 0 };
-    }));
+    setMutableChats(prev => {
+      let changed = false;
+      const next = prev.map(chat => {
+        if (chat.id !== chatId || (Number(chat.unreadBy?.[currentUser.id] || 0) === 0 && Number(chat.unread || 0) === 0)) return chat;
+        changed = true;
+        return { ...chat, unreadBy: { ...(chat.unreadBy || {}), [currentUser.id]: 0 }, unread: 0 };
+      });
+      return changed ? next : prev;
+    });
     try {
       await fetch('/api/ssr/chats', {
         method: 'PUT',
@@ -956,8 +1100,31 @@ export function AppProvider({ children }) {
         body: JSON.stringify(newCourse)
       });
       const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not create service');
       if (data.id) setCourses(prev => [data, ...prev]);
-    } catch(e) { console.error(e); }
+      return data;
+    } catch(e) { console.error(e); throw e; }
+  };
+
+  const updateCourse = async (courseId, course) => {
+    try {
+      const res = await fetch('/api/ssr/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', id: courseId, userId: currentUser?.id, ...course }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not update service');
+      setCourses(prev => prev.map(item => item.id === courseId ? data : item));
+      return data;
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  };
+
+  const updateCourseAvailability = (courseId, credentialCount) => {
+    setCourses(prev => prev.map(item => item.id === courseId ? { ...item, credentialCount } : item));
   };
 
   const getTrainerRatingSummary = (trainerId) => {
@@ -1351,7 +1518,7 @@ export function AppProvider({ children }) {
       editMessage,
       forwardMessages,
       deleteChatMedia,
-      courses, toggleCourseSave, addCourse, deleteCourse,
+      courses, toggleCourseSave, addCourse, updateCourse, updateCourseAvailability, deleteCourse,
       trainerRatings, getTrainerRatingSummary, rateTrainer,
       meetings, addMeeting,
       scheduledMessages, cancelScheduledMessage,
@@ -1363,8 +1530,9 @@ export function AppProvider({ children }) {
       initialDataLoading,
       autoDownloadMedia, setAutoDownloadMedia,
       targetChat, setTargetChat,
-      uploadChatMedia, markChatRead,
+      uploadChatMedia, sendChatMediaInBackground, markChatRead,
       mediaComposer, openMediaComposer, closeMediaComposer,
+      uploadTask, startBackgroundUpload, cancelBackgroundUpload,
       registerBackHandler, runBackHandler,
       userProfileToView,
       viewUserProfile,

@@ -1,136 +1,98 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../AppShell';
-import { useApp, MOCK_SERVERS } from '../AppContext';
+import { useApp } from '../AppContext';
+import { checkoutServerAccess } from '../razorpayCheckout';
 
-const STATUS_STYLE = {
-  online: { bg: '#F0FDF4', color: '#059669', border: '#BBF7D0', dot: '#22C55E', label: 'Online' },
-  busy: { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA', dot: '#EF4444', label: 'Full' },
-  offline: { bg: '#F8FAFC', color: '#94A3B8', border: '#E2E8F0', dot: '#94A3B8', label: 'Offline' },
-};
-
-const DURATIONS = ['1 Hour', '2 Hours', '4 Hours', 'Full Day'];
+const money = value => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
 
 export default function BookingsPage() {
-  const { currentUser } = useApp();
+  const { currentUser, courses, updateCourseAvailability, setTargetChat } = useApp();
+  const servers = useMemo(() => courses.filter(course => course.serviceType === 'server' && course.publishToWebsite !== false), [courses]);
   const [selectedServer, setSelectedServer] = useState(null);
-  const [duration, setDuration] = useState('2 Hours');
-  const [quota, setQuota] = useState(1);
-  const [booked, setBooked] = useState([]);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let cancelled = false;
+    setLoadingBookings(true);
+    fetch(`/api/ssr/server-credentials?userId=${encodeURIComponent(currentUser.id)}`)
+      .then(response => response.json())
+      .then(data => { if (!cancelled && Array.isArray(data)) setBookings(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingBookings(false); });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  const openServer = server => {
+    setSelectedServer(server);
+    setSelectedPlan(Array.isArray(server.pricePlans) ? server.pricePlans[0] : null);
+    setMessage('');
+  };
 
   const handleBook = async () => {
-    if (!selectedServer) return;
-    if (selectedServer.status === 'busy') { alert('This server is fully booked.'); return; }
+    if (!selectedServer || !selectedPlan || !currentUser?.id || loading) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setBooked(prev => [...prev, { server: selectedServer, duration, quota, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-    setSuccess(`Successfully booked ${selectedServer.name} for ${duration}!`);
-    setSelectedServer(null);
-    setLoading(false);
-    setTimeout(() => setSuccess(''), 4000);
+    setMessage('');
+    try {
+      const data = await checkoutServerAccess({
+        courseId: selectedServer.id,
+        user: currentUser,
+        plan: selectedPlan,
+        onAvailability: count => updateCourseAvailability(selectedServer.id, count),
+      });
+      updateCourseAvailability(selectedServer.id, data.availableCount);
+      setBookings(previous => [{ id: data.bookingId, courseId: selectedServer.id, months: selectedPlan.months, originalPrice: selectedPlan.originalPrice, discountPrice: selectedPlan.discountPrice, discountPercent: selectedPlan.discountPercent, paymentStatus: 'paid', status: 'confirmed', chatId: data.chatId, createdAt: new Date().toISOString() }, ...previous]);
+      setMessage('Payment confirmed. Your server login was sent to the admin chat.');
+      if (data.chatId) setTargetChat({ chatId: data.chatId });
+      setSelectedServer(null);
+    } catch (error) {
+      setMessage(error.message || 'Could not complete the booking');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '16px' }}>
-        {/* Header */}
-        <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0F172A' }}>SAP Server Access</h2>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748B' }}>Select a server to request access for your training session.</p>
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: 16 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#0F172A' }}>SAP Server Access</h2>
+        <p style={{ margin: '0 0 18px', fontSize: 13, color: '#64748B' }}>Choose a server and duration. Your login is delivered after secure payment confirmation.</p>
 
-        {success && (
-          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', color: '#059669', fontWeight: 600, fontSize: 14, marginBottom: 16 }}>✅ {success}</div>
-        )}
+        {message && <div style={{ background: message.includes('confirmed') ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${message.includes('confirmed') ? '#BBF7D0' : '#FECACA'}`, borderRadius: 10, padding: '12px 14px', color: message.includes('confirmed') ? '#047857' : '#B91C1C', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>{message}</div>}
 
-        {/* Server Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-          {MOCK_SERVERS.map(server => {
-            const s = STATUS_STYLE[server.status];
-            const pct = Math.round((server.used / server.capacity) * 100);
-            return (
-              <div
-                key={server.id}
-                onClick={() => server.status !== 'offline' && setSelectedServer(server)}
-                style={{ background: '#fff', border: `2px solid ${selectedServer?.id === server.id ? '#0A6ED1' : '#E2E8F0'}`, borderRadius: 16, padding: '16px', cursor: server.status === 'offline' ? 'not-allowed' : 'pointer', transition: 'all 0.2s', boxShadow: selectedServer?.id === server.id ? '0 0 0 3px rgba(10,110,209,0.15)' : 'none', opacity: server.status === 'offline' ? 0.6 : 1 }}
-                onMouseEnter={e => { if (server.status !== 'offline') e.currentTarget.style.borderColor = '#0A6ED1'; }}
-                onMouseLeave={e => { if (selectedServer?.id !== server.id) e.currentTarget.style.borderColor = '#E2E8F0'; }}
-              >
-                {/* Status badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div style={{ width: 40, height: 40, background: '#EFF6FF', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🖥️</div>
-                  <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: '0.04em' }}>
-                    <span style={{ display: 'inline-block', width: 6, height: 6, background: s.dot, borderRadius: '50%', marginRight: 4, verticalAlign: 'middle' }} />
-                    {s.label}
-                  </span>
-                </div>
-                <h3 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#0F172A', lineHeight: 1.3 }}>{server.name}</h3>
-                <p style={{ margin: '0 0 10px', fontSize: 11, color: '#94A3B8' }}>{server.version}</p>
-                {/* Capacity bar */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 10, color: '#64748B' }}>Capacity</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: pct >= 100 ? '#DC2626' : '#059669' }}>{server.used}/{server.capacity}</span>
-                  </div>
-                  <div style={{ height: 4, background: '#F1F5F9', borderRadius: 4 }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#DC2626' : pct > 70 ? '#F59E0B' : '#059669', borderRadius: 4, transition: 'width 0.3s' }} />
-                  </div>
-                </div>
-              </div>
-            );
+        {servers.length === 0 && <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 24, color: '#64748B' }}>No server access is published yet.</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+          {servers.map(server => {
+            const available = Number(server.credentialCount || 0);
+            const plans = Array.isArray(server.pricePlans) ? server.pricePlans : [];
+            return <button key={server.id} type="button" onClick={() => available > 0 && openServer(server)} disabled={available < 1} style={{ textAlign: 'left', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, cursor: available > 0 ? 'pointer' : 'not-allowed', opacity: available > 0 ? 1 : 0.65 }}>
+              {server.image && <img src={server.image} alt="" style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, marginBottom: 10 }} />}
+              <strong style={{ display: 'block', color: '#0F172A', fontSize: 14 }}>{server.title}</strong>
+              <span style={{ display: 'block', color: '#64748B', fontSize: 12, margin: '5px 0 10px' }}>{server.shortDesc || server.module}</span>
+              <span style={{ color: available > 0 ? '#047857' : '#B91C1C', fontSize: 12, fontWeight: 700 }}>{available > 0 ? `${available} credential${available === 1 ? '' : 's'} available` : 'Out of stock'}</span>
+              {plans[0] && <span style={{ display: 'block', marginTop: 7, color: '#0A6ED1', fontWeight: 700, fontSize: 13 }}>{money(plans[0].discountPrice)} / {plans[0].months} month{Number(plans[0].months) === 1 ? '' : 's'}</span>}
+            </button>;
           })}
         </div>
 
-        {/* Booking Modal */}
-        {selectedServer && (
-          <div style={{ background: '#fff', border: '2px solid #BFDBFE', borderRadius: 20, padding: '20px', marginBottom: 24, boxShadow: '0 4px 20px rgba(10,110,209,0.12)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#0F172A' }}>{selectedServer.name}</h3>
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748B' }}>{selectedServer.description}</p>
-              </div>
-              <button onClick={() => setSelectedServer(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: 20 }}>✕</button>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Duration</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {DURATIONS.map(d => (
-                  <button key={d} onClick={() => setDuration(d)} style={{ padding: '6px 14px', border: `1.5px solid ${duration === d ? '#0A6ED1' : '#E2E8F0'}`, background: duration === d ? '#EFF6FF' : '#fff', color: duration === d ? '#0A6ED1' : '#64748B', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.15s' }}>
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>System User Quota: <span style={{ color: '#0A6ED1' }}>{quota}</span></label>
-              <input type="range" min={1} max={5} value={quota} onChange={e => setQuota(Number(e.target.value))} style={{ width: '100%', accentColor: '#0A6ED1' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94A3B8' }}><span>1 User</span><span>5 Users</span></div>
-            </div>
-
-            <button onClick={handleBook} disabled={loading} style={{ width: '100%', padding: '13px', background: loading ? '#94A3B8' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
-              {loading ? 'Booking...' : `Request Access · ${duration}`}
-            </button>
+        {selectedServer && <div style={{ marginTop: 18, background: '#fff', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+            <div><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>{selectedServer.title}</h3><p style={{ margin: '4px 0 14px', fontSize: 12, color: '#64748B' }}>Select your access duration.</p></div>
+            <button type="button" onClick={() => setSelectedServer(null)} aria-label="Close" style={{ border: 0, background: 'transparent', fontSize: 20, color: '#64748B', cursor: 'pointer' }}>x</button>
           </div>
-        )}
-
-        {/* My Bookings */}
-        {booked.length > 0 && (
-          <div>
-            <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700, color: '#0F172A' }}>My Active Bookings</h3>
-            {booked.map((b, i) => (
-              <div key={i} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 14px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{b.server.name}</p>
-                  <p style={{ margin: 0, fontSize: 12, color: '#059669' }}>{b.duration} · {b.quota} user{b.quota > 1 ? 's' : ''} · Booked at {b.time}</p>
-                </div>
-                <span style={{ fontSize: 20 }}>✅</span>
-              </div>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+            {(selectedServer.pricePlans || []).map(plan => <button key={plan.months} type="button" onClick={() => setSelectedPlan(plan)} style={{ border: `1px solid ${selectedPlan?.months === plan.months ? '#0A6ED1' : '#E2E8F0'}`, background: selectedPlan?.months === plan.months ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, textAlign: 'left', cursor: 'pointer' }}><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>{plan.months} month{Number(plan.months) === 1 ? '' : 's'}</strong><span style={{ color: '#0A6ED1', fontWeight: 700, fontSize: 13 }}>{money(plan.discountPrice)}</span><span style={{ display: 'block', color: '#94A3B8', textDecoration: 'line-through', fontSize: 11 }}>{money(plan.originalPrice)}</span></button>)}
           </div>
-        )}
+          <button type="button" onClick={handleBook} disabled={loading || !selectedPlan} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, background: loading ? '#94A3B8' : '#0A6ED1', color: '#fff', fontWeight: 700, cursor: loading ? 'wait' : 'pointer' }}>{loading ? 'Opening payment...' : `Pay ${money(selectedPlan?.discountPrice)} securely`}</button>
+        </div>}
+
+        <div style={{ marginTop: 28 }}><h3 style={{ margin: '0 0 10px', fontSize: 16, color: '#0F172A' }}>My bookings</h3>{loadingBookings ? <p style={{ color: '#64748B', fontSize: 13 }}>Loading bookings...</p> : bookings.length === 0 ? <p style={{ color: '#64748B', fontSize: 13 }}>No bookings yet.</p> : bookings.map(booking => { const server = courses.find(course => course.id === booking.courseId); return <div key={booking.id} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '11px 13px', marginBottom: 8 }}><strong style={{ color: '#0F172A', fontSize: 13 }}>{server?.title || 'Server access'}</strong><div style={{ color: '#047857', fontSize: 12, marginTop: 3 }}>{booking.months} month{Number(booking.months) === 1 ? '' : 's'} · {money(booking.discountPrice)} · {booking.status || 'confirmed'}</div></div>; })}</div>
       </div>
     </AppShell>
   );

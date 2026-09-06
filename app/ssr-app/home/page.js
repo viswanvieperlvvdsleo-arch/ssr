@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp, MOCK_CHATS } from '../AppContext';
 import { useBackHandler } from '../useBackHandler';
+import { checkoutServerAccess } from '../razorpayCheckout';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -106,6 +107,7 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend, locations
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, initialBox: null, handle: null });
   const [drawColor, setDrawColor] = useState('#DC2626');
   const [texts, setTexts] = useState([]); // { text, x, y, color }
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const canvasRef = useRef(null);
   const drawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
@@ -310,7 +312,7 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend, locations
                     <button onClick={() => setMode(mode === 'draw' ? 'preview' : 'draw')} title="Draw" style={{ background: 'none', border: 'none', color: mode === 'draw' ? '#10B981' : '#fff', cursor: 'pointer', padding: 4 }}>
                       <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     </button>
-                    <button onClick={() => alert('Emoji overlay coming soon!')} title="Emoji" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}>
+                    <button onClick={() => setEmojiPickerOpen(open => !open)} title="Emoji" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}>
                       <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                     </button>
                   </>
@@ -322,6 +324,11 @@ export function MediaPreviewModal({ file, attachment, onClose, onSend, locations
             )
           )}
         </div>
+        {emojiPickerOpen && (
+          <div style={{ position: 'absolute', top: 62, right: 24, zIndex: 20, width: 220, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, background: '#fff', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+            {['😀', '😂', '😍', '😎', '😢', '😡', '👍', '❤️', '🔥', '🎉', '✅', '⭐'].map(emoji => <button key={emoji} type="button" onClick={() => { setMode('text'); setEmojiPickerOpen(false); setTextInput({ visible: true, x: 50, y: 50, text: emoji }); }} style={{ border: 0, background: 'transparent', fontSize: 22, cursor: 'pointer', padding: 4 }}>{emoji}</button>)}
+          </div>
+        )}
       </div>
 
       {/* Preview Area */}
@@ -628,8 +635,8 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
 
       <div
         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={(e) => { handleMouseUp(e); setIsHovered(false); }}
-        onMouseEnter={() => setIsHovered(true)}
+        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={(e) => { handleMouseUp(e); if (!isMobile) setIsHovered(false); }}
+        onMouseEnter={() => { if (!isMobile && !isHovered) setIsHovered(true); }}
         style={{ display: 'flex', flexDirection: 'column', alignItems: msg.isMe ? 'flex-end' : 'flex-start', transform: `translateX(${swipeOffset}px)`, transition: isSwiping ? 'none' : 'transform 0.2s ease-out' }}
       >
         {!msg.isMe && <span style={{ fontSize: 10, color: msg.senderColor, fontWeight: 600, marginLeft: 34, marginBottom: 2 }}>{msg.senderName}</span>}
@@ -661,7 +668,14 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
             {/* Attachment */}
             {msg.attachment && (
               <div style={{ marginBottom: msg.text ? 8 : 0, borderRadius: 8, overflow: 'hidden', minWidth: msg.attachment.isImage || msg.attachment.isVideo ? 180 : 0 }}>
-                {!isDownloaded ? (
+                {msg.attachment.uploading ? (
+                  <div style={{ position: 'relative', minHeight: msg.attachment.isImage || msg.attachment.isVideo ? 150 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.isMe ? 'rgba(255,255,255,0.15)' : '#E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+                    {msg.attachment.isImage && msg.attachment.previewUrl && <img src={msg.attachment.previewUrl} alt="Uploading attachment" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', opacity: 0.5 }} />}
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, padding: 12, background: 'rgba(15,23,42,0.38)', color: '#fff', textAlign: 'center' }}>
+                      {msg.attachment.uploadError ? <span style={{ fontSize: 12, fontWeight: 700, color: '#FECACA' }}>{msg.attachment.uploadError}</span> : <><div style={{ width: 34, height: 34, border: '3px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ssrUploadSpin 0.9s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes ssrUploadSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }' }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Uploading {msg.attachment.uploadProgress || 0}%</span></>}
+                    </div>
+                  </div>
+                ) : !isDownloaded ? (
                   <div style={{ position: 'relative', minHeight: msg.attachment.isImage || msg.attachment.isVideo ? 150 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.isMe ? 'rgba(255,255,255,0.15)' : '#E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
                     {msg.attachment.isImage && !mediaDeletedFromCloud && <img src={msg.attachment.url} alt="Attached image" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', filter: 'blur(14px)', opacity: 0.75, transform: 'scale(1.08)' }} />}
                     {msg.attachment.isVideo && !mediaDeletedFromCloud && <video src={msg.attachment.url} muted style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block', filter: 'blur(14px)', opacity: 0.75, transform: 'scale(1.08)' }} />}
@@ -748,16 +762,16 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
           </div>
 
           {/* Sibling emoji button on hover */}
-          {isHovered && (
-            <div
-              onClick={(e) => { e.stopPropagation(); setShowReactions(true); }}
-              style={{ cursor: 'pointer', color: '#94A3B8', padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', opacity: 0.7 }}
-            >
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 100-16 8 8 0 000 16zm-3.5-9a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm7 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm-3.5 5.5c-2.03 0-3.8-1.11-4.75-2.75a.5.5 0 11.86-.5c.76 1.3 2.14 2.25 3.89 2.25s3.13-.95 3.89-2.25a.5.5 0 11.86.5c-.95 1.64-2.72 2.75-4.75 2.75z"/>
-              </svg>
-            </div>
-          )}
+          <button
+            type="button"
+            aria-label="React to message"
+            onClick={(e) => { e.stopPropagation(); setShowReactions(true); }}
+            style={{ width: 30, height: 30, flex: '0 0 30px', border: 'none', background: 'transparent', cursor: isHovered ? 'pointer' : 'default', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', opacity: isHovered ? 0.7 : 0, visibility: isHovered ? 'visible' : 'hidden', pointerEvents: isHovered ? 'auto' : 'none' }}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 100-16 8 8 0 000 16zm-3.5-9a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm7 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm-3.5 5.5c-2.03 0-3.8-1.11-4.75-2.75a.5.5 0 11.86-.5c.76 1.3 2.14 2.25 3.89 2.25s3.13-.95 3.89-2.25a.5.5 0 11.86.5c-.95 1.64-2.72 2.75-4.75 2.75z"/>
+            </svg>
+          </button>
 
           {/* Reaction Overlay */}
           {(showReactions || showAllEmojis) && (
@@ -1070,55 +1084,74 @@ function ScheduledMessageBubble({ message, onUndo }) {
   );
 }
 
-function UploadProgressAvatar({ currentUser, upload, onCancel }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+function ProfileAvatarWithUpload({ currentUser, upload, size = 30 }) {
+  if (!upload) {
+    return <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={size} online={currentUser?.online} />;
+  }
+  const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
+  const color = upload.status === 'error' ? '#DC2626' : upload.status === 'complete' ? '#16A34A' : '#0A6ED1';
 
-  useEffect(() => {
-    if (!upload) setDetailsOpen(false);
-  }, [upload]);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', width: size + 6, height: size + 6, padding: 3, borderRadius: '50%', background: `conic-gradient(${color} ${progress}%, #DCE7F3 0)`, boxSizing: 'border-box', flexShrink: 0 }}>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: size, height: size, borderRadius: '50%', background: '#fff' }}>
+        <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={size - 2} online={currentUser?.online} />
+      </span>
+      <span style={{ position: 'absolute', right: -5, bottom: -4, minWidth: 22, height: 14, padding: '0 3px', borderRadius: 7, background: color, color: '#fff', border: '1px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{progress}%</span>
+    </span>
+  );
+}
 
+function UploadMenuActions({ upload, onView, onCancel }) {
+  if (!upload) return null;
+  const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
+  const label = upload.status === 'error' ? 'Upload failed' : upload.status === 'complete' ? 'Upload complete' : `Uploading ${progress}%`;
+  const canCancel = upload.status === 'uploading' && progress < 100;
+  return (
+    <div style={{ padding: '8px 8px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+      <p style={{ margin: '0 6px 7px', maxWidth: 220, color: upload.status === 'error' ? '#B91C1C' : '#475569', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}: {upload.fileName}</p>
+      <button type="button" onClick={onView} style={{ width: '100%', padding: '9px 8px', background: '#EFF6FF', border: 'none', borderRadius: 6, color: '#0A6ED1', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>View uploading file</button>
+      {(canCancel || upload.status === 'error') && <button type="button" onClick={onCancel} style={{ width: '100%', marginTop: 4, padding: '9px 8px', background: 'transparent', border: 'none', borderRadius: 6, color: '#B91C1C', cursor: 'pointer', fontSize: 13, fontWeight: 800, textAlign: 'left' }}>{canCancel ? 'Cancel upload' : 'Dismiss'}</button>}
+    </div>
+  );
+}
+
+function UploadPreviewModal({ upload, onClose, onCancel }) {
+  useBackHandler(Boolean(upload), onClose);
   if (!upload) return null;
 
   const progress = Math.max(0, Math.min(100, Number(upload.progress) || 0));
-  const statusText = upload.status === 'publishing'
-    ? 'Publishing post...'
-    : upload.status === 'error'
-      ? 'Upload failed'
-      : upload.status === 'complete'
-        ? 'Post published'
-        : 'Uploading post...';
+  const isImage = upload.mimeType?.startsWith('image/');
+  const isVideo = upload.mimeType?.startsWith('video/');
+  const isAudio = upload.mimeType?.startsWith('audio/');
+  const canCancel = upload.status === 'uploading' && progress < 100;
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        type="button"
-        onClick={() => setDetailsOpen(open => !open)}
-        aria-label="Show upload progress"
-        title="Show upload progress"
-        style={{ width: 40, height: 40, padding: 2, border: 'none', borderRadius: '50%', background: `conic-gradient(#0A6ED1 ${progress}%, #DCE7F3 0)`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: '50%', background: '#fff' }}>
-          <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={30} online={currentUser?.online} />
-        </span>
-      </button>
-      {detailsOpen && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 250, padding: 14, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,0.16)', zIndex: 600 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, color: '#0F172A', fontSize: 13, fontWeight: 700 }}>{statusText}</p>
-              <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{upload.fileName}</p>
-            </div>
-            <button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close upload progress" title="Close" style={{ border: 'none', background: 'none', color: '#64748B', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 0 }}>x</button>
+    <div role="dialog" aria-modal="true" aria-label="Uploading file preview" onClick={event => { if (event.target === event.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 11000, background: 'rgba(15,23,42,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ width: 'min(760px, 100%)', maxHeight: '92vh', background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ minHeight: 54, padding: '10px 14px 10px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{upload.fileName}</p>
+            <p style={{ margin: '3px 0 0', fontSize: 11, color: upload.status === 'error' ? '#DC2626' : '#64748B' }}>{upload.error || `${progress}% uploaded`}</p>
           </div>
-          <div style={{ height: 6, marginTop: 12, background: '#E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ width: `${progress}%`, height: '100%', background: upload.status === 'error' ? '#DC2626' : '#0A6ED1', transition: 'width 0.2s ease' }} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-            <span style={{ color: upload.status === 'error' ? '#DC2626' : '#64748B', fontSize: 11 }}>{upload.error || `${progress}% complete`}</span>
-            {upload.status !== 'complete' && <button type="button" onClick={onCancel} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>}
-          </div>
+          <button type="button" onClick={onClose} aria-label="Close file preview" title="Close" style={{ width: 34, height: 34, border: 'none', borderRadius: '50%', background: '#F1F5F9', color: '#334155', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>x</button>
         </div>
-      )}
+        <div style={{ minHeight: 240, flex: 1, overflow: 'auto', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+          {upload.previewUrl && isImage && <img src={upload.previewUrl} alt={upload.fileName || 'Uploading file'} style={{ display: 'block', maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain' }} />}
+          {upload.previewUrl && isVideo && <video src={upload.previewUrl} controls style={{ display: 'block', maxWidth: '100%', maxHeight: '68vh' }} />}
+          {upload.previewUrl && isAudio && <audio src={upload.previewUrl} controls style={{ width: 'min(520px, 100%)' }} />}
+          {(!upload.previewUrl || (!isImage && !isVideo && !isAudio)) && (
+            <div style={{ textAlign: 'center', color: '#64748B' }}>
+              <div style={{ fontSize: 48, marginBottom: 10 }}>FILE</div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#334155', wordBreak: 'break-word' }}>{upload.fileName}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 12 }}>Preview is not available for this file type.</p>
+            </div>
+          )}
+        </div>
+        <div style={{ padding: 14, borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 7, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}><div style={{ width: `${progress}%`, height: '100%', background: upload.status === 'error' ? '#DC2626' : '#0A6ED1', transition: 'width 0.2s ease' }} /></div>
+          {(canCancel || upload.status === 'error') && <button type="button" onClick={onCancel} style={{ border: 'none', borderRadius: 6, padding: '9px 13px', background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>{canCancel ? 'Cancel upload' : 'Dismiss'}</button>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1778,6 +1811,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   const msgs = chatMessages[activeChat?.id] || [];
   const scheduledForChat = scheduledMessages.filter(message => message.chatId === activeChat?.id && (message.status || 'scheduled') === 'scheduled');
   const activeChatSnapshot = chats.find(chat => chat.id === activeChat?.id) || activeChat;
+  const lastMarkedReadRef = useRef('');
 
   const getDeliveryStatus = (message) => {
     if (!message.isMe) return null;
@@ -1816,8 +1850,16 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
 
   useEffect(() => {
     const conversationIsVisible = Boolean(activeChat?.id && (conversationOnly || !isMobile || mobileView === 'convo'));
-    if (conversationIsVisible) markChatRead(activeChat.id);
-  }, [activeChat?.id, mobileView, msgs.length, isMobile, conversationOnly]);
+    if (!conversationIsVisible) {
+      lastMarkedReadRef.current = '';
+      return;
+    }
+    const latestMessageId = msgs[msgs.length - 1]?.id || 'empty';
+    const readSignature = `${activeChat.id}:${latestMessageId}:${msgs.length}`;
+    if (lastMarkedReadRef.current === readSignature) return;
+    lastMarkedReadRef.current = readSignature;
+    markChatRead(activeChat.id);
+  }, [activeChat?.id, mobileView, msgs.length, msgs[msgs.length - 1]?.id, isMobile, conversationOnly]);
 
   const [showScrollDown, setShowScrollDown] = useState(false);
   const chatScrollRef = useRef(null);
@@ -2971,23 +3013,49 @@ function ConfirmModal({ title, message, confirmLabel = 'Delete', confirmColor = 
 }
 
 /* ─── Service Upload Modal ─────────────────── */
-function ServiceUploadModal({ onClose, onSubmit, users }) {
-  const { uploadChatMedia } = useApp();
-  const [form, setForm] = useState({ title: '', module: 'Finance', shortDesc: '', fullDesc: '', imageUrl: '' });
-  const [benefits, setBenefits] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [servers, setServers] = useState([]);
-  const [attachedSkills, setAttachedSkills] = useState([]);
+function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, users, courses = [], initialCourse = null, currentUser }) {
+  const { uploadChatMedia, startBackgroundUpload } = useApp();
+  const MODULES = ['Finance', 'Supply Chain', 'Sales', 'HR', 'Manufacturing', 'Quality', 'Maintenance', 'Technology'];
+  const initialServiceType = initialCourse?.serviceType === 'server' ? 'server' : 'module';
+  const [form, setForm] = useState({
+    title: initialCourse?.title || '',
+    module: initialCourse?.module || 'Finance',
+    moduleType: initialCourse?.moduleType || 'Functional',
+    serviceType: initialServiceType,
+    shortDesc: initialCourse?.shortDesc || '',
+    fullDesc: initialCourse?.fullDesc || '',
+    imageUrl: initialCourse?.image || '',
+    publishToWebsite: initialCourse?.publishToWebsite !== false,
+  });
+  const [benefits, setBenefits] = useState(Array.isArray(initialCourse?.benefits) ? initialCourse.benefits : []);
+  const [jobs, setJobs] = useState(Array.isArray(initialCourse?.jobs) ? initialCourse.jobs : []);
+  const [servers, setServers] = useState(Array.isArray(initialCourse?.servers) ? initialCourse.servers : []);
+  const [attachedSkills, setAttachedSkills] = useState(Array.isArray(initialCourse?.attachedSkills) ? initialCourse.attachedSkills : []);
+  const [serverModules, setServerModules] = useState(Array.isArray(initialCourse?.serverModules) && initialCourse.serverModules.length > 0 ? initialCourse.serverModules : (initialServiceType === 'server' && initialCourse?.module ? [initialCourse.module] : []));
+  const [pricePlans, setPricePlans] = useState(() => {
+    const existing = Array.isArray(initialCourse?.pricePlans) ? initialCourse.pricePlans : [];
+    return existing.length > 0
+      ? existing.map(plan => ({ months: String(plan.months || 1), originalPrice: String(plan.originalPrice || ''), discountPercent: String(plan.discountPercent || 0), discountPrice: String(plan.discountPrice || '') }))
+      : [{ months: '1', originalPrice: '', discountPercent: '0', discountPrice: '' }];
+  });
+  const [credentialText, setCredentialText] = useState('');
+  const [pendingCredentials, setPendingCredentials] = useState([]);
+  const [credentialCount, setCredentialCount] = useState(Number(initialCourse?.credentialCount || 0));
+  const [addingCredential, setAddingCredential] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState('');
   const [benefitInput, setBenefitInput] = useState('');
   const [jobInput, setJobInput] = useState('');
   const [serverInput, setServerInput] = useState('');
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreview, setImagePreview] = useState(initialCourse?.image || null);
   const [imageFile, setImageFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
-  const MODULES = ['Finance', 'Supply Chain', 'Sales', 'HR', 'Manufacturing', 'Quality', 'Maintenance', 'Technology'];
+  const moduleOptions = [...new Set([
+    ...MODULES,
+    ...courses.filter(course => course.serviceType !== 'server').map(course => course.module),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const availableSkills = [...new Set(Object.values(users || {})
     .filter(user => user.role === 'Trainer')
     .flatMap(user => Array.isArray(user.profession) ? user.profession : [])
@@ -3000,7 +3068,45 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
       setInput('');
     }
   };
+
+  const handleAddCredential = async () => {
+    const credential = credentialText.trim();
+    if (!credential || addingCredential) return;
+    setCredentialNotice('');
+    if (!initialCourse?.id) {
+      setPendingCredentials(current => [...current, credential]);
+      setCredentialText('');
+      return;
+    }
+
+    setAddingCredential(true);
+    try {
+      const availableCount = await onAddCredentials(initialCourse.id, [credential]);
+      setCredentialCount(availableCount);
+      setCredentialText('');
+      setCredentialNotice('Login added securely. You can enter another one now.');
+    } catch (error) {
+      setCredentialNotice(error.message || 'Could not add this server login.');
+    } finally {
+      setAddingCredential(false);
+    }
+  };
   const removeTag = (list, setList, item) => setList(list.filter(i => i !== item));
+
+  const updatePricePlan = (index, key, value) => {
+    setPricePlans(prev => prev.map((plan, planIndex) => {
+      if (planIndex !== index) return plan;
+      const next = { ...plan, [key]: value };
+      const original = Number(next.originalPrice);
+      if (key === 'discountPrice' && original > 0 && Number(value) >= 0) {
+        next.discountPercent = String(Math.max(0, Math.min(100, Math.round((1 - Number(value) / original) * 100))));
+      } else if ((key === 'originalPrice' || key === 'discountPercent') && original > 0) {
+        const percent = Math.max(0, Math.min(100, Number(next.discountPercent) || 0));
+        next.discountPrice = String(Math.round(original * (1 - percent / 100)));
+      }
+      return next;
+    }));
+  };
 
   const handleImageFile = (e) => {
     const file = e.target.files?.[0];
@@ -3023,21 +3129,56 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return alert('Title is required');
+    if (form.serviceType === 'server' && serverModules.length === 0) return alert('Choose at least one module for this server.');
+    const normalizedPricePlans = form.serviceType === 'server' ? pricePlans.map(plan => ({
+      months: Number(plan.months),
+      originalPrice: Number(plan.originalPrice),
+      discountPrice: Number(plan.discountPrice),
+      discountPercent: Number(plan.discountPercent),
+    })) : [];
+    if (form.serviceType === 'server' && normalizedPricePlans.some(plan => !Number.isInteger(plan.months) || plan.months < 1 || !Number.isFinite(plan.originalPrice) || plan.originalPrice <= 0 || !Number.isFinite(plan.discountPrice) || plan.discountPrice <= 0 || plan.discountPrice >= plan.originalPrice)) {
+      return alert('Each server plan needs a valid discounted price lower than the original price.');
+    }
     const selectedSkillKeys = new Set(attachedSkills.map(skill => skill.toLowerCase()));
     const trainers = Object.values(users || {})
       .filter(user => user.role === 'Trainer' && (user.profession || []).some(skill => selectedSkillKeys.has(String(skill).trim().toLowerCase())))
       .map(user => user.id);
+    const serviceData = {
+      ...form,
+      image: form.imageUrl || '',
+      imageUrl: form.imageUrl || '',
+      module: form.serviceType === 'server' ? (serverModules[0] || form.module) : form.module,
+      serverModules: form.serviceType === 'server' ? serverModules : [],
+      pricePlans: normalizedPricePlans,
+      orderEnabled: false,
+      credentialEntries: [
+        ...pendingCredentials,
+        ...(credentialText.trim() ? [credentialText.trim()] : []),
+      ],
+      benefits,
+      jobs,
+      servers,
+      attachedSkills,
+      trainers,
+    };
+    if (imageFile) {
+      onClose();
+      startBackgroundUpload({
+        file: imageFile,
+        fileName: imageFile.name,
+        kind: 'service',
+        execute: async ({ onProgress, signal }) => {
+          const uploaded = await uploadChatMedia(imageFile, onProgress, signal);
+          await onSubmit({ ...serviceData, image: uploaded?.url || '', imageUrl: uploaded?.url || '' });
+        },
+      });
+      return;
+    }
     setUploading(true);
-    setUploadProgress(imageFile ? 0 : 100);
     try {
-      let image = form.imageUrl || '';
-      if (imageFile) {
-        const uploaded = await uploadChatMedia(imageFile, setUploadProgress);
-        image = uploaded?.url || '';
-      }
-      await onSubmit({ ...form, image, imageUrl: image, benefits, jobs, servers, attachedSkills, trainers });
+      await onSubmit(serviceData);
     } catch (error) {
-      alert(error.message || 'Could not upload the service image.');
+      alert(error.message || 'Could not save the service.');
     } finally {
       setUploading(false);
     }
@@ -3051,12 +3192,25 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
       <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.2)' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 10, borderRadius: '16px 16px 0 0' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Upload New Service</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{initialCourse ? 'Edit Service' : 'Upload New Service'}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', display: 'flex' }}>
             <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
+          <div style={{ marginBottom: 20, padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+            <label style={labelStyle}>What are you adding?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+              {[['module', 'Module / Training', 'Users call to enquire'], ['server', 'Server Access', 'Show duration pricing']].map(([value, label, description]) => {
+                const selected = form.serviceType === value;
+                return <button key={value} type="button" onClick={() => { setForm(current => ({ ...current, serviceType: value })); if (value === 'server' && serverModules.length === 0) setServerModules([form.module]); }} style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 8, border: `1.5px solid ${selected ? '#0A6ED1' : '#CBD5E1'}`, background: selected ? '#EFF6FF' : '#fff', color: selected ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>
+                  <strong style={{ display: 'block', fontSize: 13 }}>{label}</strong>
+                  <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: selected ? '#3B82F6' : '#64748B' }}>{description}</span>
+                </button>;
+              })}
+            </div>
+          </div>
+
           {/* Image Upload */}
           <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Service Image</label>
@@ -3086,9 +3240,9 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
           {/* Module Category */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Category / Module</label>
+              <label style={labelStyle}>{form.serviceType === 'server' ? 'Primary Module' : 'Category / Module'}</label>
               <select value={form.module} onChange={e => setForm(f => ({ ...f, module: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
-                {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+                {moduleOptions.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div style={{ flex: 1 }}>
@@ -3101,6 +3255,46 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
               </select>
             </div>
           </div>
+
+          {form.serviceType === 'server' && (
+            <div style={{ marginBottom: 20, padding: 16, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10 }}>
+              <label style={labelStyle}>Modules this server supports</label>
+              <p style={{ margin: '0 0 12px', fontSize: 12, color: '#166534' }}>Select the training modules that can use this server.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {moduleOptions.map(moduleName => {
+                  const selected = serverModules.includes(moduleName);
+                  return <button key={moduleName} type="button" onClick={() => setServerModules(prev => selected ? prev.filter(item => item !== moduleName) : [...prev, moduleName])} style={{ padding: '7px 12px', borderRadius: 20, border: `1px solid ${selected ? '#16A34A' : '#BBF7D0'}`, background: selected ? '#DCFCE7' : '#fff', color: selected ? '#166534' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{selected ? '✓ ' : ''}{moduleName}</button>;
+                })}
+              </div>
+            </div>
+          )}
+
+          {form.serviceType === 'server' && isAdmin(currentUser) && (
+            <div style={{ marginBottom: 20, padding: 16, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10 }}>
+              <label style={labelStyle}>Add server credentials</label>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#991B1B' }}>Admin only. Everything in the box is one login, in any text format. Click Add login, then enter the next login separately.</p>
+              <textarea value={credentialText} onChange={e => setCredentialText(e.target.value)} rows={5} placeholder={'Paste one complete server login here.\n\nYou may include links, usernames, passwords, notes, or setup instructions in any format.'} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#B91C1C', fontWeight: 700 }}>
+                  {initialCourse ? `${credentialCount} server login${credentialCount === 1 ? '' : 's'} currently available` : `${pendingCredentials.length} login${pendingCredentials.length === 1 ? '' : 's'} ready to publish`}
+                </span>
+                <button type="button" onClick={handleAddCredential} disabled={!credentialText.trim() || addingCredential} style={{ padding: '9px 14px', border: 'none', borderRadius: 7, background: !credentialText.trim() || addingCredential ? '#CBD5E1' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: !credentialText.trim() || addingCredential ? 'not-allowed' : 'pointer' }}>
+                  {addingCredential ? 'Adding...' : '+ Add login'}
+                </button>
+              </div>
+              {credentialNotice && <p style={{ margin: '9px 0 0', fontSize: 12, color: credentialNotice.startsWith('Login added') ? '#047857' : '#B91C1C', fontWeight: 700 }}>{credentialNotice}</p>}
+              {!initialCourse && pendingCredentials.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pendingCredentials.map((credential, index) => (
+                    <div key={`${index}-${credential.length}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', background: '#fff', border: '1px solid #FECACA', borderRadius: 7 }}>
+                      <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>Login {index + 1} ready</span>
+                      <button type="button" aria-label={`Remove login ${index + 1}`} onClick={() => setPendingCredentials(current => current.filter((_, itemIndex) => itemIndex !== index))} style={{ width: 28, height: 28, border: 'none', borderRadius: 6, background: '#FEE2E2', color: '#DC2626', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Short Description */}
           <div style={{ marginBottom: 16 }}>
@@ -3156,6 +3350,23 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
             {attachedSkills.length > 0 && <p style={{ margin: '12px 0 0', fontSize: 12, color: '#0A6ED1', fontWeight: 700 }}>{Object.values(users || {}).filter(user => user.role === 'Trainer' && (user.profession || []).some(skill => attachedSkills.some(selected => selected.toLowerCase() === String(skill).toLowerCase()))).length} trainers will be attached</p>}
           </div>
 
+          {form.serviceType === 'server' && (
+            <div style={{ marginBottom: 20, padding: 16, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10 }}>
+              <label style={labelStyle}>Server access pricing</label>
+              <p style={{ margin: '0 0 12px', fontSize: 12, color: '#9A3412' }}>Add one or more durations. The discounted price must be lower than the original price.</p>
+              {pricePlans.map((plan, index) => (
+                <div key={`${index}-${plan.months}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, alignItems: 'end', marginBottom: 10 }}>
+                  <div><label style={{ ...labelStyle, fontSize: 11 }}>Months</label><select value={plan.months} onChange={e => updatePricePlan(index, 'months', e.target.value)} style={inputStyle}><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select></div>
+                  <div><label style={{ ...labelStyle, fontSize: 11 }}>Original price</label><input type="number" min="1" value={plan.originalPrice} onChange={e => updatePricePlan(index, 'originalPrice', e.target.value)} style={inputStyle} placeholder="₹ 0" /></div>
+                  <div><label style={{ ...labelStyle, fontSize: 11 }}>Discount %</label><input type="number" min="0" max="100" value={plan.discountPercent} onChange={e => updatePricePlan(index, 'discountPercent', e.target.value)} style={inputStyle} /></div>
+                  <div><label style={{ ...labelStyle, fontSize: 11 }}>Customer price</label><input type="number" min="1" value={plan.discountPrice} onChange={e => updatePricePlan(index, 'discountPrice', e.target.value)} style={inputStyle} placeholder="₹ 0" /></div>
+                  <button type="button" onClick={() => setPricePlans(prev => prev.length === 1 ? prev : prev.filter((_, planIndex) => planIndex !== index))} title="Remove pricing plan" style={{ width: 34, height: 38, border: '1px solid #FED7AA', background: '#fff', color: '#DC2626', borderRadius: 8, cursor: 'pointer', fontSize: 18 }}>×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setPricePlans(prev => [...prev, { months: '3', originalPrice: '', discountPercent: '0', discountPrice: '' }])} style={{ padding: '8px 12px', background: '#fff', border: '1px solid #FDBA74', color: '#C2410C', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ Add duration</button>
+            </div>
+          )}
+
           {/* Visibility Toggle */}
           <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', gap: 12, background: '#EFF6FF', padding: 16, borderRadius: 8, border: '1px solid #BFDBFE' }}>
             <input
@@ -3184,7 +3395,7 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
             <button type="button" disabled={uploading} onClick={onClose} style={{ padding: '12px 24px', background: '#F1F5F9', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#475569', cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>Cancel</button>
             <button type="submit" disabled={uploading} style={{ padding: '12px 28px', background: uploading ? '#93C5FD' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: uploading ? 'wait' : 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {uploading ? 'Uploading...' : 'Upload & Publish'}
+              {uploading ? 'Uploading...' : initialCourse ? 'Save Changes' : 'Upload & Publish'}
             </button>
           </div>
         </form>
@@ -3194,13 +3405,18 @@ function ServiceUploadModal({ onClose, onSubmit, users }) {
 }
 
 function CoursesPanel({ currentUser, initialCourseId = null }) {
-  const { courses, toggleCourseSave, addCourse, deleteCourse, users, viewUserProfile, getTrainerRatingSummary } = useApp();
+  const { courses, toggleCourseSave, addCourse, updateCourse, updateCourseAvailability, deleteCourse, users, viewUserProfile, getTrainerRatingSummary, setTargetChat } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [openedInitialCourseId, setOpenedInitialCourseId] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [bookingBusy, setBookingBusy] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState('');
+  const [availableCredentialCount, setAvailableCredentialCount] = useState(0);
+  const serverPlansRef = useRef(null);
 
   useBackHandler(Boolean(selectedCourse), () => setSelectedCourse(null));
 
@@ -3213,12 +3429,94 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
     }
   }, [courses, initialCourseId, openedInitialCourseId, selectedCourse]);
 
+  useEffect(() => {
+    setAvailableCredentialCount(selectedCourse?.serviceType === 'server' ? Number(selectedCourse.credentialCount || 0) : 0);
+    setBookingMessage('');
+  }, [selectedCourse?.id, selectedCourse?.serviceType, selectedCourse?.credentialCount]);
+
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
   const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
 
+  const relatedTrainerIds = useMemo(() => {
+    if (!selectedCourse) return [];
+    const explicitIds = Array.isArray(selectedCourse.trainers) ? selectedCourse.trainers : [];
+    const skillTerms = [
+      selectedCourse.module,
+      selectedCourse.title,
+      ...(selectedCourse.attachedSkills || []),
+    ].filter(Boolean).map(value => String(value).toLowerCase());
+    const matchingIds = Object.values(users || {})
+      .filter(user => user.role === 'Trainer')
+      .filter(user => (user.profession || []).some(profession => {
+        const value = String(profession).toLowerCase();
+        return skillTerms.some(term => term.includes(value) || value.includes(term));
+      }))
+      .map(user => user.id);
+    return [...new Set([...explicitIds, ...matchingIds])];
+  }, [selectedCourse, users]);
+
+  const addServerCredentials = async (courseId, credentials) => {
+    const response = await fetch('/api/ssr/server-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, userId: currentUser?.id, credentials }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Could not add server credentials');
+    const availableCount = Number(data.availableCount || 0);
+    updateCourseAvailability(courseId, availableCount);
+    setSelectedCourse(previous => previous?.id === courseId ? { ...previous, credentialCount: availableCount } : previous);
+    setEditTarget(previous => previous?.id === courseId ? { ...previous, credentialCount: availableCount } : previous);
+    return availableCount;
+  };
+
   const handleUpload = (courseData) => {
-    addCourse({ ...courseData, creatorId: currentUser?.id });
-    setShowUpload(false);
+    const { credentialEntries = [], ...serviceData } = courseData;
+    const save = editTarget
+      ? updateCourse(editTarget.id, serviceData)
+      : addCourse({ ...serviceData, creatorId: currentUser?.id });
+    return Promise.resolve(save).then(async savedCourse => {
+      if (credentialEntries.length > 0 && savedCourse?.id) await addServerCredentials(savedCourse.id, credentialEntries);
+      setShowUpload(false);
+      setEditTarget(null);
+    });
+  };
+
+  const handleServerBooking = async (plan) => {
+    if (bookingBusy || availableCredentialCount < 1 || !currentUser?.id) return;
+    setBookingBusy(true);
+    setBookingMessage('');
+    try {
+      const data = await checkoutServerAccess({
+        courseId: selectedCourse.id,
+        user: currentUser,
+        plan,
+        onAvailability: count => {
+          setAvailableCredentialCount(count);
+          updateCourseAvailability(selectedCourse.id, count);
+          setSelectedCourse(previous => previous ? { ...previous, credentialCount: count } : previous);
+        },
+      });
+      setBookingMessage('Payment confirmed. Your server login was sent to the admin-assistant chat.');
+      if (data.chatId) setTargetChat({ chatId: data.chatId });
+    } catch (error) {
+      setBookingMessage(error.message || 'Could not complete server access request');
+    } finally {
+      setBookingBusy(false);
+    }
+  };
+
+  const relatedServerCourses = useMemo(() => {
+    if (!selectedCourse || selectedCourse.serviceType === 'server') return [];
+    const moduleName = String(selectedCourse.module || '').toLowerCase();
+    return courses.filter(course => course.serviceType === 'server' && (course.serverModules || []).some(module => String(module).toLowerCase() === moduleName));
+  }, [courses, selectedCourse]);
+
+  const showServerPlans = () => {
+    if (availableCredentialCount < 1) {
+      setBookingMessage('This server is currently out of stock. Please call for availability.');
+    }
+    serverPlansRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   if (selectedCourse) {
@@ -3252,13 +3550,43 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
               <h1 style={{ margin: '8px 0 12px', fontSize: isMobile ? 22 : 24, lineHeight: 1.2, fontWeight: 800, color: '#0F172A', overflowWrap: 'anywhere' }}>{selectedCourse.title}</h1>
               <p style={{ margin: 0, fontSize: 15, color: '#475569', lineHeight: 1.6 }}>{selectedCourse.shortDesc}</p>
             </div>
-            <button onClick={() => { window.location.href = 'tel:+919010062578'; }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.3)', width: isMobile ? '100%' : 'auto', flexShrink: 0, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
-              Book a call to buy
-            </button>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, width: isMobile ? '100%' : 'auto', flexShrink: 0 }}>
+              {selectedCourse.serviceType === 'server' && (
+                <button type="button" onClick={showServerPlans} style={{ background: availableCredentialCount > 0 ? '#0A6ED1' : '#64748B', color: '#fff', border: 'none', padding: '12px 18px', borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.24)', width: isMobile ? '100%' : 'auto', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  Pay
+                </button>
+              )}
+              <button type="button" onClick={() => { window.location.href = 'tel:+919010062578'; }} style={{ background: selectedCourse.serviceType === 'server' ? '#fff' : '#0A6ED1', color: selectedCourse.serviceType === 'server' ? '#0A6ED1' : '#fff', border: selectedCourse.serviceType === 'server' ? '1.5px solid #0A6ED1' : 'none', padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: selectedCourse.serviceType === 'server' ? 'none' : '0 4px 12px rgba(10,110,209,0.3)', width: isMobile ? '100%' : 'auto', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+                Call
+              </button>
+            </div>
           </div>
 
           <hr style={{ borderWidth: 0, borderTop: '1px solid #E8ECF0', margin: '32px 0' }} />
+
+          {selectedCourse.serviceType === 'server' && Array.isArray(selectedCourse.pricePlans) && selectedCourse.pricePlans.length > 0 && (
+            <div ref={serverPlansRef} style={{ marginBottom: 32, padding: 18, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, scrollMarginTop: 80 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', margin: '0 0 6px' }}>Server access plans</h3>
+              <p style={{ margin: '0 0 14px', color: '#9A3412', fontSize: 13 }}>Choose a duration. A login is assigned only after Razorpay confirms the payment.</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14, padding: '9px 12px', background: availableCredentialCount > 0 ? '#DCFCE7' : '#FEE2E2', borderRadius: 7, color: availableCredentialCount > 0 ? '#166534' : '#991B1B', fontSize: 13, fontWeight: 800 }}>
+                <span>{availableCredentialCount > 0 ? `${availableCredentialCount} credential${availableCredentialCount === 1 ? '' : 's'} available` : 'Out of stock'}</span>
+                {bookingMessage && <span style={{ fontWeight: 600, textAlign: 'right' }}>{bookingMessage}</span>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+                {selectedCourse.pricePlans.map((plan, index) => (
+                  <div key={`${plan.months}-${index}`} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: 8, padding: 14 }}>
+                    <strong style={{ display: 'block', color: '#0F172A', fontSize: 14 }}>{plan.months} month{Number(plan.months) === 1 ? '' : 's'}</strong>
+                    <span style={{ display: 'block', marginTop: 8, color: '#DC2626', textDecoration: 'line-through', fontSize: 12 }}>Original: ₹{Number(plan.originalPrice || 0).toLocaleString('en-IN')}</span>
+                    <strong style={{ display: 'block', marginTop: 2, color: '#166534', fontSize: 20 }}>₹{Number(plan.discountPrice || 0).toLocaleString('en-IN')}</strong>
+                    <span style={{ display: 'inline-block', marginTop: 8, padding: '3px 7px', background: '#DCFCE7', color: '#166534', borderRadius: 5, fontSize: 11, fontWeight: 800 }}>Save {Number(plan.discountPercent || 0)}%</span>
+                    <button type="button" disabled={bookingBusy || availableCredentialCount < 1} onClick={() => handleServerBooking(plan)} style={{ width: '100%', marginTop: 12, padding: '9px 10px', border: 'none', borderRadius: 7, background: bookingBusy || availableCredentialCount < 1 ? '#CBD5E1' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: bookingBusy || availableCredentialCount < 1 ? 'not-allowed' : 'pointer' }}>{bookingBusy ? 'Processing...' : availableCredentialCount < 1 ? 'Out of stock' : `Pay ₹${Number(plan.discountPrice || 0).toLocaleString('en-IN')}`}</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>About this service</h3>
           <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.6, marginBottom: 32 }}>{selectedCourse.fullDesc}</p>
@@ -3282,20 +3610,45 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
             )}
           </div>
 
-          {(selectedCourse.servers?.length > 0) && (
-            <div style={{ marginBottom: 32 }}>
-              <h4 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>Required Servers / Systems</h4>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {selectedCourse.servers.map((s, i) => (
-                  <span key={i} style={{ background: '#F1F5F9', color: '#334155', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600 }}>{s}</span>
+          <div style={{ marginBottom: 32 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>{selectedCourse.serviceType === 'server' ? 'Supported modules' : 'Related server access'}</h3>
+            {selectedCourse.serviceType === 'server' ? (
+              selectedCourse.serverModules?.length > 0 ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{selectedCourse.serverModules.map(module => <span key={module} style={{ background: '#DCFCE7', color: '#166534', padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{module}</span>)}</div> : <p style={{ margin: 0, color: '#94A3B8', fontSize: 14 }}>No module has been linked to this server.</p>
+            ) : (selectedCourse.servers?.length > 0 || relatedServerCourses.length > 0) ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+                {(selectedCourse.servers || []).map((server, index) => (
+                  <div key={`${server}-${index}`} style={{ background: '#F8FAFC', border: '1px solid #DBEAFE', borderRadius: 10, padding: 14, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 9, background: '#E0F2FE', color: '#0369A1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/></svg>
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <h4 style={{ margin: 0, color: '#0F172A', fontSize: 14, fontWeight: 800, overflowWrap: 'anywhere' }}>{server}</h4>
+                        <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>Practice environment for {selectedCourse.module}</p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
+                      <span style={{ color: '#059669', fontSize: 12, fontWeight: 700 }}>Access by request</span>
+                      <a href="tel:+919010062578" style={{ color: '#0A6ED1', fontSize: 12, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap' }}>Book access</a>
+                    </div>
+                  </div>
+                ))}
+                {relatedServerCourses.map(server => (
+                  <div key={server.id} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: 14, minWidth: 0 }}>
+                    <strong style={{ display: 'block', color: '#166534', fontSize: 14 }}>{server.title}</strong>
+                    <p style={{ margin: '5px 0 10px', color: '#475569', fontSize: 12, lineHeight: 1.4 }}>{server.shortDesc || 'Server access for this module.'}</p>
+                    <span style={{ color: '#166534', fontSize: 12, fontWeight: 700 }}>{server.pricePlans?.length || 0} pricing plan{server.pricePlans?.length === 1 ? '' : 's'}</span>
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p style={{ margin: 0, color: '#94A3B8', fontSize: 14 }}>No server has been attached to this service yet.</p>
+            )}
+          </div>
 
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Attached Trainers</h3>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {(selectedCourse.trainers || []).map(tKey => {
+            {relatedTrainerIds.map(tKey => {
               const t = users[tKey];
               if (!t) return null;
               const summary = getTrainerRatingSummary(t.id);
@@ -3311,7 +3664,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
               );
             })}
           </div>
-          {(selectedCourse.trainers || []).length === 0 && <p style={{ margin: 0, color: '#94A3B8', fontSize: 14 }}>No trainers attached to this service.</p>}
+          {relatedTrainerIds.length === 0 && <p style={{ margin: 0, color: '#94A3B8', fontSize: 14 }}>No trainers attached to this service.</p>}
         </div>
       </div>
     );
@@ -3319,7 +3672,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
 
   return (
     <div style={{ padding: '20px', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
-      {showUpload && <ServiceUploadModal users={users} onClose={() => setShowUpload(false)} onSubmit={handleUpload} />}
+      {showUpload && <ServiceUploadModal users={users} courses={courses} currentUser={currentUser} initialCourse={editTarget} onClose={() => { setShowUpload(false); setEditTarget(null); }} onSubmit={handleUpload} onAddCredentials={addServerCredentials} />}
       {deleteTarget && (
         <ConfirmModal
           title="Delete Service?"
@@ -3334,7 +3687,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ color: '#64748B', fontSize: 14 }}>{courses.length} Available</span>
           {canManageServices && (
-            <button onClick={() => setShowUpload(true)} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(10,110,209,0.25)' }}>
+            <button onClick={() => { setEditTarget(null); setShowUpload(true); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(10,110,209,0.25)' }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Upload
             </button>
@@ -3372,6 +3725,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
 
             <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                <span style={{ background: course.serviceType === 'server' ? '#DCFCE7' : '#EFF6FF', color: course.serviceType === 'server' ? '#166534' : '#0A6ED1', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{course.serviceType === 'server' ? 'Server Access' : 'Module'}</span>
                 <span style={{ background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{course.module}</span>
                 {course.moduleType && (
                   <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{course.moduleType}</span>
@@ -3382,6 +3736,13 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
               </div>
               <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>{course.title}</h3>
               <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748B', lineHeight: 1.5, flex: 1 }}>{course.shortDesc}</p>
+
+              {course.serviceType === 'server' && course.pricePlans?.length > 0 && (() => {
+                const lowestPlan = [...course.pricePlans].sort((a, b) => Number(a.discountPrice || 0) - Number(b.discountPrice || 0))[0];
+                return <div style={{ marginBottom: 14 }}><span style={{ color: '#DC2626', textDecoration: 'line-through', fontSize: 12 }}>₹{Number(lowestPlan.originalPrice || 0).toLocaleString('en-IN')}</span> <strong style={{ color: '#166534', fontSize: 16 }}>₹{Number(lowestPlan.discountPrice || 0).toLocaleString('en-IN')}</strong> <span style={{ color: '#166534', fontSize: 11, fontWeight: 700 }}>Save {Number(lowestPlan.discountPercent || 0)}%</span><span style={{ display: 'block', marginTop: 5, color: course.credentialCount > 0 ? '#059669' : '#DC2626', fontSize: 11, fontWeight: 700 }}>{course.credentialCount > 0 ? `${course.credentialCount} credentials available` : 'Out of stock'}</span></div>;
+              })()}
+
+              {canManageServices && <button type="button" onClick={e => { e.stopPropagation(); setEditTarget(course); setShowUpload(true); }} style={{ alignSelf: 'flex-start', marginBottom: 12, border: 'none', background: 'transparent', color: '#0A6ED1', padding: 0, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Edit service</button>}
 
               <button style={{ width: '100%', padding: '10px', background: '#fff', border: '1.5px solid #0A6ED1', color: '#0A6ED1', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = '#0A6ED1'; e.currentTarget.style.color = '#fff'; }}
@@ -3729,7 +4090,7 @@ const MediaGridItem = ({ media, isSelected, selectionMode, onToggle }) => {
 };
 
 function SettingsPanel({ currentUser, onNavigateToChat }) {
-  const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats, updateUserProfile, uploadChatMedia, deleteAccount } = useApp();
+  const { autoDownloadMedia, setAutoDownloadMedia, chatMessages, deleteChatMedia, chats, updateUserProfile, uploadChatMedia, startBackgroundUpload, deleteAccount } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const [activeTab, setActiveTab] = useState('profile');
@@ -3938,11 +4299,21 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
               if (currentUser?.isImpersonating) return;
               const updates = { name, title, description, location, teachingMode, profession, resumeName, avatar: profilePic };
               if (profilePicFile) {
-                const uploaded = await uploadChatMedia(profilePicFile);
-                if (!uploaded?.url) return alert('Could not upload profile picture.');
-                updates.avatar = uploaded.url;
-                setProfilePic(uploaded.url);
+                const selectedFile = profilePicFile;
                 setProfilePicFile(null);
+                startBackgroundUpload({
+                  file: selectedFile,
+                  fileName: selectedFile.name,
+                  kind: 'profile',
+                  execute: async ({ onProgress, signal }) => {
+                    const uploaded = await uploadChatMedia(selectedFile, onProgress, signal);
+                    if (!uploaded?.url) throw new Error('Could not upload profile picture.');
+                    const result = await updateUserProfile(currentUser.id, { ...updates, avatar: uploaded.url });
+                    if (!result?.success) throw new Error(result?.error || 'Could not save profile.');
+                    setProfilePic(uploaded.url);
+                  },
+                });
+                return;
               }
               const result = await updateUserProfile(currentUser.id, updates);
               if (!result?.success) {
@@ -4551,7 +4922,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
               {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
               {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
               {btnSm('Details', () => viewUserProfile(u.id), '#475569', '#F1F5F9')}
-              {btnSm('Activity', () => alert(`Activity for ${u.name}: Joined 3 months ago. 12 posts liked, 3 comments posted.`), '#0A6ED1', '#EFF6FF')}
+              {btnSm('Activity', () => viewUserProfile(u.id), '#0A6ED1', '#EFF6FF')}
               {u.id !== currentUser.id && !currentUser.isImpersonating && btnSm('View As', () => login(u.email, null, u.id))}
             </>} />
           ))}
@@ -4570,7 +4941,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
               {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
               {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
               {btnSm('Details', () => viewUserProfile(u.id), '#475569', '#F1F5F9')}
-              {btnSm('Activity', () => alert(`Activity for ${u.name}: 3 sessions hosted this week. 28 students mentored.`), '#0A6ED1', '#EFF6FF')}
+              {btnSm('Activity', () => viewUserProfile(u.id), '#0A6ED1', '#EFF6FF')}
               {u.id !== currentUser.id && !currentUser.isImpersonating && btnSm('View As', () => login(u.email, null, u.id))}
             </>} />
           ))}
@@ -4987,7 +5358,7 @@ function GlobalUserProfileModal() {
                   {isTrainer && (
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>Resume / CV</span>
-                      <a href="#" onClick={(e) => { e.preventDefault(); alert(`Downloading ${user.resumeName || 'Resume.pdf'}...`); }} style={{ fontSize: 14, color: '#0A6ED1', fontWeight: 600, textDecoration: 'none' }}>Download {user.resumeName || 'Resume.pdf'}</a>
+                      {user.resumeUrl || (typeof user.resume === 'string' && user.resume.startsWith('http')) ? <a href={user.resumeUrl || user.resume} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: '#0A6ED1', fontWeight: 600, textDecoration: 'none' }}>Download {user.resumeName || 'Resume.pdf'}</a> : <span style={{ fontSize: 13, color: '#94A3B8' }}>{user.resumeName ? 'Resume file is not available' : 'No resume uploaded'}</span>}
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', alignItems: isMobile ? 'start' : 'center', gap: isMobile ? 4 : 16 }}>
@@ -5221,7 +5592,7 @@ function ScheduleMeetingModal() {
 
 export default function HomePage() {
   const router = useRouter();
-  const { posts, chats, currentUser, addPost, likePost, uploadChatMedia, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
+  const { posts, chats, currentUser, addPost, likePost, uploadChatMedia, uploadTask, startBackgroundUpload, cancelBackgroundUpload, setTargetChat, endImpersonation, login, logout, notifications, markNotificationRead, initialDataLoading } = useApp();
   const width = useWindowWidth();
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
@@ -5234,8 +5605,7 @@ export default function HomePage() {
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [postUpload, setPostUpload] = useState(null);
-  const postUploadAbortRef = useRef(null);
+  const [uploadPreviewOpen, setUploadPreviewOpen] = useState(false);
 
   const [mounted, setMounted] = useState(false);
   const [viewRestored, setViewRestored] = useState(false);
@@ -5246,6 +5616,10 @@ export default function HomePage() {
     setMobilePage('feed');
     setActiveNav('feed');
   });
+
+  useEffect(() => {
+    if (!uploadTask) setUploadPreviewOpen(false);
+  }, [uploadTask]);
 
   useEffect(() => {
     setMounted(true);
@@ -5309,8 +5683,6 @@ export default function HomePage() {
     }
   }, [currentUser, likePost, setTargetChat]);
 
-  useEffect(() => () => postUploadAbortRef.current?.abort(), []);
-
   if (!mounted || !currentUser) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', color: '#64748B' }}>
@@ -5359,34 +5731,22 @@ export default function HomePage() {
 
   const startPostUpload = async (post, file) => {
     if (!file) return addPost(post);
-    postUploadAbortRef.current?.abort();
-    const taskId = `post-upload-${Date.now()}`;
-    const controller = new AbortController();
-    postUploadAbortRef.current = controller;
-    setPostUpload({ id: taskId, fileName: file.name, progress: 0, status: 'uploading', error: null });
-
-    try {
-      const uploaded = await uploadChatMedia(file, progress => {
-        setPostUpload(task => task?.id === taskId ? { ...task, progress } : task);
-      }, controller.signal);
-      if (controller.signal.aborted) return;
-      setPostUpload(task => task?.id === taskId ? { ...task, progress: 100, status: 'publishing' } : task);
-      await addPost({ ...post, mediaUrl: uploaded?.url || null, mediaType: post.mediaType });
-      setPostUpload(task => task?.id === taskId ? { ...task, progress: 100, status: 'complete' } : task);
-      window.setTimeout(() => setPostUpload(task => task?.id === taskId ? null : task), 1500);
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      console.error('Post media upload failed:', error);
-      setPostUpload(task => task?.id === taskId ? { ...task, status: 'error', error: error?.message || 'Could not upload post media' } : task);
-    } finally {
-      if (postUploadAbortRef.current === controller) postUploadAbortRef.current = null;
-    }
+    startBackgroundUpload({
+      file,
+      fileName: file.name,
+      kind: 'post',
+      execute: async ({ onProgress, signal }) => {
+        const uploaded = await uploadChatMedia(file, onProgress, signal);
+        if (signal.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+        await addPost({ ...post, mediaUrl: uploaded?.url || null, mediaType: post.mediaType });
+      },
+    });
   };
 
-  const cancelPostUpload = () => {
-    postUploadAbortRef.current?.abort();
-    postUploadAbortRef.current = null;
-    setPostUpload(null);
+  const cancelActiveUpload = () => {
+    cancelBackgroundUpload();
+    setUploadPreviewOpen(false);
+    setUserMenuOpen(false);
   };
 
   /* ── DESKTOP LAYOUT ──────────────────────────────── */
@@ -5396,6 +5756,7 @@ export default function HomePage() {
         <GlobalUserProfileModal />
         <ProfilePicViewerModal />
         <ScheduleMeetingModal />
+        {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onCancel={cancelActiveUpload} />}
 
         {showCreatePost && isAdmin(currentUser) && (
           <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
@@ -5435,7 +5796,6 @@ export default function HomePage() {
 
           {/* Right controls */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <UploadProgressAvatar currentUser={currentUser} upload={postUpload} onCancel={cancelPostUpload} />
             {/* Notification */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setActiveNav('notifications')} style={{ width: 38, height: 38, background: activeNav === 'notifications' ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeNav === 'notifications' ? '#0A6ED1' : '#64748B', position: 'relative' }}>
@@ -5447,7 +5807,7 @@ export default function HomePage() {
             {/* User */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setUserMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: userMenuOpen ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 22, padding: '5px 12px 5px 5px', cursor: 'pointer' }}>
-                <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={30} online={currentUser.online} />
+                <ProfileAvatarWithUpload currentUser={currentUser} upload={uploadTask} />
                 <div style={{ textAlign: 'left' }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>{currentUser.name}</p>
                   <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>{currentUser.role}</p>
@@ -5456,6 +5816,7 @@ export default function HomePage() {
               </button>
               {userMenuOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: 180, zIndex: 300, overflow: 'hidden' }}>
+                  <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onCancel={cancelActiveUpload} />
                   <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -5470,7 +5831,7 @@ export default function HomePage() {
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     ><span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests</button>
                   )}
-                  <button onClick={() => { alert('Help'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                  <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.help}</span>Help</button>
@@ -5500,7 +5861,7 @@ export default function HomePage() {
               </button>
             ))}
             <div style={{ flex: 1 }} />
-            <button onClick={() => alert('Help & Support')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', fontWeight: 500, textAlign: 'left', width: '100%' }}>
+            <button onClick={() => setActiveNav('settings')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', fontWeight: 500, textAlign: 'left', width: '100%' }}>
               <span style={{ opacity: 0.5 }}>{NavIcons.help}</span> Help
             </button>
           </div>
@@ -5626,6 +5987,7 @@ export default function HomePage() {
       <GlobalUserProfileModal />
       <ProfilePicViewerModal />
       <ScheduleMeetingModal />
+      {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onCancel={cancelActiveUpload} />}
 
       {showCreatePost && isAdmin(currentUser) && (
         <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
@@ -5659,14 +6021,13 @@ export default function HomePage() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
-          <UploadProgressAvatar currentUser={currentUser} upload={postUpload} onCancel={cancelPostUpload} />
           <button onClick={() => setNotifOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38 }}>
             {MenuIcons.bell}
             {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}
           </button>
 
           <button onClick={() => setUserMenuOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={30} online={currentUser.online} />
+            <ProfileAvatarWithUpload currentUser={currentUser} upload={uploadTask} />
           </button>
 
           {/* Mobile Notifications Dropdown */}
@@ -5689,6 +6050,7 @@ export default function HomePage() {
           {/* Mobile User Menu Dropdown */}
           {userMenuOpen && (
             <div style={{ position: 'absolute', right: 0, top: '120%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: 180, zIndex: 300, overflow: 'hidden' }}>
+              <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onCancel={cancelActiveUpload} />
               <button onClick={() => { setMobilePage('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}>{MenuIcons.profile}</span>View Profile
               </button>

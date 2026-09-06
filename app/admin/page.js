@@ -21,7 +21,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const { globalContent, updateContent, triggerSave, isSaving, saveSuccess } = useCMS();
+  const { globalContent, updateContent, replaceContent, triggerSave, isSaving, saveSuccess } = useCMS();
   const comboOffers = globalContent.comboOffers || { sticker: {}, predefined: [], catalogPrices: {} };
 
   // Form state for creating slots
@@ -47,25 +47,20 @@ export default function AdminDashboard() {
   const [cmsSaveNotice, setCmsSaveNotice] = useState('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedModules = localStorage.getItem('ssr_cms_modules');
-      const savedPhone = localStorage.getItem('ssr_cms_phone');
-      const savedEmail = localStorage.getItem('ssr_cms_email');
-      if (savedModules) setCmsModules(JSON.parse(savedModules));
-      if (savedPhone) setCmsPhone(savedPhone);
-      if (savedEmail) setCmsEmail(savedEmail);
+    if (Array.isArray(globalContent?.functionalModules) && globalContent.functionalModules.length > 0) {
+      setCmsModules(globalContent.functionalModules);
     }
-  }, []);
+    setCmsPhone(globalContent?.contactUs?.infoPhone || globalContent?.sidebar?.phone || '+91 9010062578');
+    setCmsEmail(globalContent?.contactUs?.email || globalContent?.sidebar?.email || 'sales@ssrbusinesssolutions.com');
+  }, [globalContent?.functionalModules, globalContent?.contactUs, globalContent?.sidebar]);
 
   const saveCmsData = (updatedModules, updatedPhone = cmsPhone, updatedEmail = cmsEmail) => {
     setCmsModules(updatedModules);
     setCmsPhone(updatedPhone);
     setCmsEmail(updatedEmail);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('ssr_cms_modules', JSON.stringify(updatedModules));
-      localStorage.setItem('ssr_cms_phone', updatedPhone);
-      localStorage.setItem('ssr_cms_email', updatedEmail);
-    }
+    replaceContent('functionalModules', updatedModules);
+    replaceContent('contactUs', { ...globalContent.contactUs, infoPhone: updatedPhone, email: updatedEmail });
+    replaceContent('sidebar', { ...globalContent.sidebar, phone: updatedPhone, email: updatedEmail });
     setCmsSaveNotice('✅ Changes saved globally!');
     setTimeout(() => setCmsSaveNotice(''), 3000);
   };

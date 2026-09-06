@@ -1,13 +1,14 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../AppShell';
 import { useApp } from '../AppContext';
+import { useTheme } from '../../../hooks/useTheme';
 
 const SETTINGS = [
   { icon: '🔔', label: 'Notifications', desc: 'Push, email & in-app alerts' },
   { icon: '🎨', label: 'Theme', desc: 'Light mode (default)' },
-  { icon: '🌐', label: 'Language', desc: 'English (India)' },
   { icon: '💾', label: 'Data & Storage', desc: 'Manage media auto-download' },
   { icon: '🔐', label: 'Privacy & Security', desc: 'Password, 2FA settings' },
   { icon: '❓', label: 'Help & Support', desc: 'FAQs, contact support' },
@@ -28,7 +29,36 @@ const ROLE_COLOR = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { currentUser, logout } = useApp();
+  const { currentUser, logout, autoDownloadMedia, setAutoDownloadMedia } = useApp();
+  const { theme, setTheme } = useTheme();
+  const [activeSetting, setActiveSetting] = useState(null);
+  const [pushPermission, setPushPermission] = useState('default');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if ('Notification' in window) setPushPermission(window.Notification.permission);
+  }, []);
+
+  const enableNotifications = () => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event('ssr-enable-push'));
+    window.setTimeout(() => {
+      if ('Notification' in window) setPushPermission(window.Notification.permission);
+    }, 700);
+  };
+
+  const renderSettingPanel = () => {
+    if (!activeSetting) return null;
+    const panel = {
+      Notifications: <><p style={{ color: '#64748B', fontSize: 13 }}>Push notifications are controlled by your browser and this device.</p><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: 12, background: '#F8FAFC', borderRadius: 10 }}><span style={{ color: '#0F172A', fontWeight: 600 }}>Browser permission: {pushPermission}</span>{pushPermission !== 'granted' && <button type="button" onClick={enableNotifications} style={{ border: 0, borderRadius: 8, padding: '8px 12px', background: '#0A6ED1', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Enable push</button>}</div></>,
+      Theme: <><p style={{ color: '#64748B', fontSize: 13 }}>Choose how the platform looks on this device.</p><div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setTheme('light')} style={{ flex: 1, border: `1px solid ${theme === 'light' ? '#0A6ED1' : '#E2E8F0'}`, background: theme === 'light' ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, color: '#0F172A', cursor: 'pointer' }}>Light</button><button type="button" onClick={() => setTheme('dark')} style={{ flex: 1, border: `1px solid ${theme === 'dark' ? '#0A6ED1' : '#E2E8F0'}`, background: theme === 'dark' ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, color: '#0F172A', cursor: 'pointer' }}>Dark</button></div></>,
+      'Data & Storage': <><p style={{ color: '#64748B', fontSize: 13 }}>Automatically download chat media when it is received.</p><button type="button" onClick={() => setAutoDownloadMedia(!autoDownloadMedia)} style={{ border: 0, borderRadius: 8, padding: '10px 14px', background: autoDownloadMedia ? '#0A6ED1' : '#E2E8F0', color: autoDownloadMedia ? '#fff' : '#334155', fontWeight: 700, cursor: 'pointer' }}>{autoDownloadMedia ? 'Auto-download is on' : 'Auto-download is off'}</button></>,
+      'Privacy & Security': <><p style={{ color: '#64748B', fontSize: 13 }}>Your account is signed in as <strong>{currentUser?.email || 'your account'}</strong>.</p><p style={{ color: '#64748B', fontSize: 13, marginBottom: 0 }}>To change your password or recover access, use the Forgot password flow on the login screen.</p></>,
+      'Help & Support': <><p style={{ color: '#64748B', fontSize: 13 }}>For account, training, or server-access help, contact the SSR team.</p><a href="tel:+919010062578" style={{ display: 'block', color: '#0A6ED1', fontWeight: 700, marginBottom: 8 }}>Call +91 90100 62578</a><a href="mailto:sales@ssrbusinesssolutions.com" style={{ color: '#0A6ED1', fontWeight: 700 }}>Email support</a></>,
+      About: <><p style={{ color: '#0F172A', fontWeight: 700, marginBottom: 6 }}>SSR Business Solutions</p><p style={{ color: '#64748B', fontSize: 13, margin: 0 }}>SAP Learning Platform · Version 1.0.0</p></>,
+    }[activeSetting];
+    return <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.42)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }} onClick={() => setActiveSetting(null)}><div role="dialog" aria-modal="true" onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 16px 50px rgba(15,23,42,0.2)' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><h3 style={{ margin: 0, color: '#0F172A', fontSize: 18 }}>{activeSetting}</h3><button type="button" onClick={() => setActiveSetting(null)} aria-label="Close settings" style={{ border: 0, background: 'transparent', color: '#64748B', fontSize: 20, cursor: 'pointer' }}>x</button></div>{panel}</div></div>;
+  };
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
@@ -83,7 +113,7 @@ export default function ProfilePage() {
         <div style={{ margin: '16px', background: '#fff', borderRadius: 16, overflow: 'hidden', border: '1px solid #F1F5F9' }}>
           <h3 style={{ margin: 0, padding: '14px 16px 10px', fontSize: 12, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase', borderBottom: '1px solid #F1F5F9' }}>Settings</h3>
           {SETTINGS.map((item, i) => (
-            <button key={item.label} onClick={() => alert(`${item.label} settings`)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', borderBottom: i < SETTINGS.length - 1 ? '1px solid #F8FAFC' : 'none', cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' }}
+            <button key={item.label} onClick={() => setActiveSetting(item.label)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', borderBottom: i < SETTINGS.length - 1 ? '1px solid #F8FAFC' : 'none', cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
@@ -96,6 +126,8 @@ export default function ProfilePage() {
             </button>
           ))}
         </div>
+
+        {renderSettingPanel()}
 
         {/* Logout */}
         <div style={{ margin: '0 16px 32px' }}>

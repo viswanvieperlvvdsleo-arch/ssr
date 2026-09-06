@@ -109,6 +109,11 @@ export function buildCourseData(data = {}) {
     savedBy: Array.isArray(data.savedBy) ? data.savedBy : [],
     moduleType: data.moduleType || 'Functional',
     publishToWebsite: data.publishToWebsite !== false,
+    serviceType: data.serviceType === 'server' ? 'server' : 'module',
+    serverModules: Array.isArray(data.serverModules) ? data.serverModules : [],
+    pricePlans: Array.isArray(data.pricePlans) ? data.pricePlans : [],
+    orderEnabled: data.serviceType === 'server' && data.orderEnabled === true,
+    credentialCount: Number.isInteger(data.credentialCount) && data.credentialCount >= 0 ? data.credentialCount : 0,
   };
 }
 

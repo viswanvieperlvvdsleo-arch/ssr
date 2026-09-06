@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
-import { buildCourseData } from '../defaults';
+import { buildCourseData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
 
 export async function GET(req) {
@@ -36,12 +36,29 @@ export async function POST(req) {
 
 export async function PUT(req) {
   try {
-    const { action, id, userId } = await req.json();
-    if (action !== 'toggleSave' || !id || !userId) {
+    const payload = await req.json();
+    const { action, id, userId } = payload;
+    if (!id) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
     const course = await prisma.appCourse.findUnique({ where: { id } });
     if (!course) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+
+    if (action === 'update') {
+      const editor = userId ? await prisma.appUser.findUnique({ where: { id: userId }, select: { role: true, permissions: true } }) : null;
+      if (!editor || !hasEmployeePermission(editor, 'post_services')) {
+        return NextResponse.json({ error: 'You do not have permission to edit services' }, { status: 403 });
+      }
+      const updatedCourse = await prisma.appCourse.update({
+        where: { id },
+        data: buildCourseData({ ...course, ...payload, id: undefined }),
+      });
+      return NextResponse.json(updatedCourse);
+    }
+
+    if (action !== 'toggleSave' || !userId) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
     const savedBy = Array.isArray(course.savedBy) ? course.savedBy : [];
     const hasSaved = savedBy.includes(userId);
     const updatedCourse = await prisma.appCourse.update({

@@ -5,6 +5,8 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 const CMSContext = createContext(null);
 
 export const DEFAULT_GLOBAL_CONTENT = {
+  functionalModules: [],
+  categoryModules: {},
   home: {
     heroEyebrow: "SAP Authorized Training Center | Placements",
     heroTitle: "SSR Business Solutions",
@@ -192,6 +194,8 @@ export function CMSProvider({ children }) {
       if (savedContent) {
         const parsed = JSON.parse(savedContent);
         return {
+          functionalModules: Array.isArray(parsed.functionalModules) ? parsed.functionalModules : DEFAULT_GLOBAL_CONTENT.functionalModules,
+          categoryModules: parsed.categoryModules && typeof parsed.categoryModules === 'object' ? parsed.categoryModules : DEFAULT_GLOBAL_CONTENT.categoryModules,
           home: { ...DEFAULT_GLOBAL_CONTENT.home, ...(parsed.home || {}) },
           services: { ...DEFAULT_GLOBAL_CONTENT.services, ...(parsed.services || {}) },
           aboutUs: { ...DEFAULT_GLOBAL_CONTENT.aboutUs, ...(parsed.aboutUs || {}) },
@@ -217,6 +221,8 @@ export function CMSProvider({ children }) {
         if (json.success && json.data) {
           const dbData = json.data;
           setGlobalContent(prev => ({
+            functionalModules: Array.isArray(dbData.functionalModules) ? dbData.functionalModules : prev.functionalModules,
+            categoryModules: dbData.categoryModules && typeof dbData.categoryModules === 'object' ? dbData.categoryModules : prev.categoryModules,
             home: { ...prev.home, ...(dbData.home || {}) },
             services: { ...prev.services, ...(dbData.services || {}) },
             aboutUs: { ...prev.aboutUs, ...(dbData.aboutUs || {}) },
@@ -279,6 +285,15 @@ export function CMSProvider({ children }) {
     syncToMongoDB(newContent);
   };
 
+  const replaceContent = (page, value) => {
+    const newContent = { ...globalContent, [page]: value };
+    setGlobalContent(newContent);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("ssr_global_content", JSON.stringify(newContent));
+    }
+    syncToMongoDB(newContent);
+  };
+
   const triggerSave = async (saveCallback) => {
     setIsSaving(true);
     setSaveSuccess(false);
@@ -303,7 +318,8 @@ export function CMSProvider({ children }) {
         saveSuccess,
         triggerSave,
         globalContent,
-        updateContent
+        updateContent,
+        replaceContent
       }}
     >
       {children}
@@ -321,7 +337,8 @@ export function useCMS() {
       saveSuccess: false,
       triggerSave: () => {},
       globalContent: DEFAULT_GLOBAL_CONTENT,
-      updateContent: () => {}
+      updateContent: () => {},
+      replaceContent: () => {}
     };
   }
   // Ensure globalContent is never undefined

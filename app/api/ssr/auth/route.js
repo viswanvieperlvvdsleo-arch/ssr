@@ -20,6 +20,15 @@ export async function POST(req) {
       if (!user || user.password !== password) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
+      if (category) {
+        const requestedRole = normalizeRole(category);
+        const isPrivilegedAccount = user.role === 'Admin' || user.role === 'Super Admin';
+        if (!isPrivilegedAccount && requestedRole !== user.role) {
+          return NextResponse.json({
+            error: `This account is registered as ${user.role}. Please choose ${user.role} and try again.`,
+          }, { status: 403 });
+        }
+      }
       return NextResponse.json({ user });
     }
 

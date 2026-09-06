@@ -33,7 +33,7 @@ function LoginForm() {
     setError('');
     if (!email || !password) { setError('Please fill all fields.'); return; }
     setLoading(true);
-    const result = await login(email.trim().toLowerCase(), password.trim());
+    const result = await login(email.trim().toLowerCase(), password.trim(), meta.label);
     if (result?.success) {
       setSelectedRole(meta.label);
       router.push('/ssr-app/home');

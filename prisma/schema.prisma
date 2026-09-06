@@ -73,18 +73,18 @@ model RegisteredUser {
 // ==========================================
 
 model AppUser {
-  id       String    @id @default(auto()) @map("_id") @db.ObjectId
-  email    String    @unique
-  name     String
-  phone    String?
-  password String
-  role     String // 'Admin', 'Super Admin', 'Trainer', 'Participant', 'Employee'
-  initials String?
-  color    String?
-  avatar   String?
-  mediaStorageMode String   @default("cloud")
-  online   Boolean   @default(false)
-  lastSeen DateTime?
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  email            String    @unique
+  name             String
+  phone            String?
+  password         String
+  role             String // 'Admin', 'Super Admin', 'Trainer', 'Participant', 'Employee'
+  initials         String?
+  color            String?
+  avatar           String?
+  mediaStorageMode String    @default("cloud")
+  online           Boolean   @default(false)
+  lastSeen         DateTime?
 
   // Trainer Specific
   title      String?
@@ -154,6 +154,11 @@ model AppCourse {
   savedBy          String[] @default([])
   moduleType       String   @default("Functional")
   publishToWebsite Boolean  @default(true)
+  serviceType      String? // 'module' or 'server'
+  serverModules    String[] @default([])
+  pricePlans       Json?
+  orderEnabled     Boolean? @default(false)
+  credentialCount  Int      @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -169,6 +174,67 @@ model AppTrainerRating {
   updatedAt DateTime @updatedAt
 
   @@unique([trainerId, raterId])
+}
+
+model AppServerCredential {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  courseId      String
+  credential    String
+  status        String    @default("available")
+  assignedTo    String?
+  assignedAt    DateTime?
+  reservationId String?
+  reservedUntil DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([courseId, status])
+}
+
+model AppServerBooking {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseId          String
+  credentialId      String
+  userId            String
+  months            Int
+  originalPrice     Int
+  discountPrice     Int
+  discountPercent   Int
+  paymentStatus     String   @default("manual_confirmation")
+  status            String   @default("confirmed")
+  chatId            String?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([courseId, createdAt])
+  @@index([razorpayOrderId])
+}
+
+model AppServerPayment {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  razorpayOrderId   String   @unique
+  razorpayPaymentId String?
+  courseId          String
+  credentialId      String
+  reservationId     String
+  userId            String
+  months            Int
+  originalPrice     Int
+  discountPrice     Int
+  discountPercent   Int
+  amount            Int
+  currency          String   @default("INR")
+  status            String   @default("created")
+  bookingId         String?
+  chatId            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([courseId, status])
 }
 
 model AppPost {
@@ -268,22 +334,22 @@ model AppMediaChunk {
 }
 
 model AppMeeting {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  title        String
-  module       String
-  hostId       String
-  date         String
-  endDate      String?
-  time         String
-  duration     String
-  link         String
-  status       String
-  recurrence   String
-  weekdays     String[] @default([])
-  monthlyDates String?
-  chatId       String?
-  participants String[] @default([])
-  timezone     String?
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  title              String
+  module             String
+  hostId             String
+  date               String
+  endDate            String?
+  time               String
+  duration           String
+  link               String
+  status             String
+  recurrence         String
+  weekdays           String[]  @default([])
+  monthlyDates       String?
+  chatId             String?
+  participants       String[]  @default([])
+  timezone           String?
   lastNotificationAt DateTime?
 
   createdAt DateTime @default(now())
@@ -300,7 +366,7 @@ model AppScheduledMessage {
   startDate    String
   endDate      String?
   time         String
-  weekdays     String[] @default([])
+  weekdays     String[]  @default([])
   monthlyDates String?
   timezone     String?
   status       String?

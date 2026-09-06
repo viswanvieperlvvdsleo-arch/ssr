@@ -107,7 +107,7 @@ export default function EntryPage() {
         setLoading(false);
       }
     } else {
-      const result = await login(email.trim().toLowerCase(), password.trim());
+      const result = await login(email.trim().toLowerCase(), password.trim(), CATEGORY_TO_ROLE[category]);
       if (result && result.success) {
         router.push('/ssr-app/home');
       } else {

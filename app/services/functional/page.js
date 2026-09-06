@@ -64,24 +64,14 @@ const MODULES = [
 ];
 
 export default function FunctionalModulesPage() {
-  const [modulesList, setModulesList] = useState(MODULES);
+  const { isEditMode, globalContent, replaceContent } = useCMS();
+  const [modulesList, setModulesList] = useState(() => MODULES);
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('ssr_cms_modules');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setModulesList(parsed);
-          }
-        } catch (e) {
-          console.error("Failed to parse CMS modules", e);
-        }
-      }
-    }
-  }, []);
+    const persisted = globalContent?.functionalModules;
+    if (Array.isArray(persisted) && persisted.length > 0) setModulesList(persisted);
+  }, [globalContent?.functionalModules]);
 
   const safeIndex = activeIndex >= modulesList.length ? 0 : activeIndex;
   const active = modulesList[safeIndex] || modulesList[0];
@@ -89,7 +79,6 @@ export default function FunctionalModulesPage() {
   const prev = () => setActiveIndex((i) => (i - 1 + modulesList.length) % modulesList.length);
   const next = () => setActiveIndex((i) => (i + 1) % modulesList.length);
 
-  const { isEditMode, globalContent } = useCMS();
   const comboOffers = globalContent?.comboOffers || {};
   const globalDiscount = comboOffers.globalDiscount ?? 15;
   const moduleDiscounts = comboOffers.moduleDiscounts || {};
@@ -112,9 +101,7 @@ export default function FunctionalModulesPage() {
     const updated = [...modulesList];
     updated[optIndex] = { ...updated[optIndex], [field]: newValue };
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("ssr_cms_modules", JSON.stringify(updated));
-    }
+    replaceContent('functionalModules', updated);
   };
 
   const handleAddCard = (index) => {
@@ -132,9 +119,7 @@ export default function FunctionalModulesPage() {
     const updated = [...modulesList];
     updated.splice(index + 1, 0, newCard);
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("ssr_cms_modules", JSON.stringify(updated));
-    }
+    replaceContent('functionalModules', updated);
     // Allow DOM to render the new item before applying transform transition
     setTimeout(() => setActiveIndex(index + 1), 50);
   };
@@ -144,9 +129,7 @@ export default function FunctionalModulesPage() {
     const updated = modulesList.filter((_, i) => i !== index);
     if (updated.length === 0) return; // Prevent deleting the last card completely
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("ssr_cms_modules", JSON.stringify(updated));
-    }
+    replaceContent('functionalModules', updated);
     setActiveIndex(0);
   };
 

@@ -16,43 +16,23 @@ export default function CategoryModulesPage() {
     { id: "mod2", name: "New Module 2", image: "/ssrlogo.jpeg", tagline: "Category", what: "Describe what this module is.", does: "Describe what it does.", benefit: "List the key benefits.", eligible: "Who is this for?", level: "Beginner" },
   ];
 
-  // We fallback to old 'ssr_cms_modules' for 'functional' to preserve existing data, else use specific category key
-  const storageKey = categoryId === 'functional' ? 'ssr_cms_modules' : `ssr_cms_modules_${categoryId}`;
-
-  const [modulesList, setModulesList] = useState([]);
+  const { isEditMode, globalContent, replaceContent } = useCMS();
+  const [modulesList, setModulesList] = useState(DEFAULT_MODULES);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setModulesList(parsed);
-          } else {
-            setModulesList(DEFAULT_MODULES);
-          }
-        } catch (e) {
-          console.error("Failed to parse CMS modules", e);
-          setModulesList(DEFAULT_MODULES);
-        }
-      } else {
-        // If it's 'functional', maybe load original hardcoded data? We can just use DEFAULT_MODULES for everything else.
-        setModulesList(DEFAULT_MODULES);
-      }
-      setLoaded(true);
-    }
-  }, [storageKey]);
+    const persisted = categoryId === 'functional'
+      ? globalContent?.functionalModules
+      : globalContent?.categoryModules?.[categoryId];
+    setModulesList(Array.isArray(persisted) && persisted.length > 0 ? persisted : DEFAULT_MODULES);
+    setActiveIndex(0);
+  }, [categoryId, globalContent?.functionalModules, globalContent?.categoryModules]);
 
   const safeIndex = activeIndex >= modulesList.length ? 0 : activeIndex;
   const active = modulesList[safeIndex] || modulesList[0];
 
   const prev = () => setActiveIndex((i) => (i - 1 + modulesList.length) % modulesList.length);
   const next = () => setActiveIndex((i) => (i + 1) % modulesList.length);
-
-  const { isEditMode } = useCMS();
 
   const fileInputRef = useRef(null);
   const [uploadIndex, setUploadIndex] = useState(null);
@@ -61,9 +41,10 @@ export default function CategoryModulesPage() {
     const updated = [...modulesList];
     updated[optIndex] = { ...updated[optIndex], [field]: newValue };
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    }
+    const nextContent = categoryId === 'functional'
+      ? updated
+      : { ...(globalContent?.categoryModules || {}), [categoryId]: updated };
+    replaceContent(categoryId === 'functional' ? 'functionalModules' : 'categoryModules', nextContent);
   };
 
   const handleAddCard = (index) => {
@@ -81,9 +62,10 @@ export default function CategoryModulesPage() {
     const updated = [...modulesList];
     updated.splice(index + 1, 0, newCard);
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    }
+    const nextContent = categoryId === 'functional'
+      ? updated
+      : { ...(globalContent?.categoryModules || {}), [categoryId]: updated };
+    replaceContent(categoryId === 'functional' ? 'functionalModules' : 'categoryModules', nextContent);
     setTimeout(() => setActiveIndex(index + 1), 50);
   };
 
@@ -92,9 +74,10 @@ export default function CategoryModulesPage() {
     const updated = modulesList.filter((_, i) => i !== index);
     if (updated.length === 0) return; // Prevent deleting the last card completely
     setModulesList(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    }
+    const nextContent = categoryId === 'functional'
+      ? updated
+      : { ...(globalContent?.categoryModules || {}), [categoryId]: updated };
+    replaceContent(categoryId === 'functional' ? 'functionalModules' : 'categoryModules', nextContent);
     setActiveIndex(0);
   };
 
@@ -109,7 +92,7 @@ export default function CategoryModulesPage() {
     }
   };
 
-  if (!loaded || modulesList.length === 0) return null;
+  if (modulesList.length === 0) return null;
 
   return (
     <>

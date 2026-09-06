@@ -11,8 +11,7 @@ export default function ChatComposePage() {
     currentUser,
     mediaComposer,
     closeMediaComposer,
-    uploadChatMedia,
-    sendChatMessage,
+    sendChatMediaInBackground,
   } = useApp();
 
   useEffect(() => {
@@ -31,9 +30,8 @@ export default function ChatComposePage() {
       <MediaPreviewModal
         file={mediaComposer.file}
         onClose={close}
-        onSend={async ({ file, caption, onProgress }) => {
-          const attachment = await uploadChatMedia(file, onProgress);
-          await sendChatMessage(mediaComposer.chatId, caption || '', mediaComposer.replyTo, attachment);
+        onSend={({ file, caption }) => {
+          sendChatMediaInBackground({ chatId: mediaComposer.chatId, file, caption: caption || '', replyTo: mediaComposer.replyTo });
           closeMediaComposer();
           router.back();
         }}
