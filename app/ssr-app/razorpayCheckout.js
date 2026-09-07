@@ -42,11 +42,11 @@ export async function checkoutServerAccess({ courseId, user, plan, onAvailabilit
       settled = true;
       callback(value);
     };
-    const cancelReservation = async () => {
+    const cancelReservation = async (reason = 'cancelled') => {
       const response = await fetch('/api/ssr/payments/order', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.orderId, userId: user.id }),
+        body: JSON.stringify({ orderId: order.orderId, userId: user.id, reason }),
       }).catch(() => null);
       if (response) {
         const data = await readJson(response);
@@ -80,20 +80,20 @@ export async function checkoutServerAccess({ courseId, user, plan, onAvailabilit
       },
       modal: {
         ondismiss: async () => {
-          await cancelReservation();
+          await cancelReservation('cancelled');
           settle(reject, new Error('Payment cancelled. No server credential was assigned.'));
         },
       },
     });
     checkout.on('payment.failed', async response => {
-      await cancelReservation();
+      await cancelReservation('failed');
       const description = response?.error?.description || response?.error?.reason || 'Payment failed. Please try again.';
       settle(reject, new Error(description));
     });
     try {
       checkout.open();
     } catch (error) {
-      cancelReservation().finally(() => settle(reject, error));
+      cancelReservation('cancelled').finally(() => settle(reject, error));
     }
   });
 }

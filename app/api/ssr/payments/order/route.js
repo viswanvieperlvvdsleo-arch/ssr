@@ -115,7 +115,7 @@ export async function POST(req) {
 
 export async function DELETE(req) {
   try {
-    const { orderId, userId } = await req.json();
+    const { orderId, userId, reason } = await req.json();
     if (!orderId || !userId) return NextResponse.json({ error: 'Invalid cancellation details' }, { status: 400 });
     const payment = await prisma.appServerPayment.findUnique({ where: { razorpayOrderId: orderId } });
     if (!payment || payment.userId !== userId) return NextResponse.json({ error: 'Payment order not found' }, { status: 404 });
@@ -125,7 +125,8 @@ export async function DELETE(req) {
     if (Number(order.amount_paid || 0) > 0 || order.status === 'paid') {
       return NextResponse.json({ error: 'Payment has already been received and must be verified' }, { status: 409 });
     }
-    const cancelled = await prisma.appServerPayment.updateMany({ where: { id: payment.id, status: 'created' }, data: { status: 'cancelled' } });
+    const finalStatus = reason === 'failed' ? 'failed' : 'cancelled';
+    const cancelled = await prisma.appServerPayment.updateMany({ where: { id: payment.id, status: 'created' }, data: { status: finalStatus } });
     if (cancelled.count === 1) await releaseReservation(payment.credentialId, payment.reservationId);
     return NextResponse.json({ success: true, availableCount: await refreshAvailability(payment.courseId) });
   } catch (error) {
