@@ -71,7 +71,18 @@ export async function checkoutServerAccess({ courseId, user, plan, onAvailabilit
             body: JSON.stringify({ userId: user.id, ...payment }),
           });
           const result = await readJson(verifyResponse);
-          if (!verifyResponse.ok || !result.success) throw new Error(result.error || 'Could not verify the payment');
+          if (!verifyResponse.ok || !result.success) {
+            const retryResponse = await fetch('/api/ssr/payments/reconcile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id, orderId: order.orderId }),
+            });
+            const retryResult = await readJson(retryResponse);
+            if (!retryResponse.ok || !retryResult.success) throw new Error(retryResult.error || result.error || 'Could not verify the payment');
+            onAvailability?.(Number(retryResult.availableCount || 0));
+            settle(resolve, retryResult);
+            return;
+          }
           onAvailability?.(Number(result.availableCount || 0));
           settle(resolve, result);
         } catch (error) {

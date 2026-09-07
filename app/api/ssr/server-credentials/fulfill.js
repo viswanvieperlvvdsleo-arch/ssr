@@ -71,7 +71,14 @@ export async function fulfillServerPayment(payment) {
         isSystem: true,
       },
     });
-    await prisma.appServerBooking.update({ where: { id: booking.id }, data: { chatId: chat.id } });
+    const unreadBy = chat.unreadBy && typeof chat.unreadBy === 'object' && !Array.isArray(chat.unreadBy)
+      ? { ...chat.unreadBy }
+      : {};
+    unreadBy[payment.userId] = Number(unreadBy[payment.userId] || 0) + 1;
+    await Promise.all([
+      prisma.appServerBooking.update({ where: { id: booking.id }, data: { chatId: chat.id } }),
+      prisma.appChat.update({ where: { id: chat.id }, data: { updatedAt: new Date(), unreadBy } }),
+    ]);
 
     const availableCount = await prisma.appServerCredential.count({ where: { courseId: payment.courseId, status: 'available' } });
     await prisma.appCourse.update({ where: { id: payment.courseId }, data: { credentialCount: availableCount } });

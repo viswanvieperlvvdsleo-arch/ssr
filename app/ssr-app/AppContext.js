@@ -272,10 +272,11 @@ export function AppProvider({ children }) {
       try {
         const storedUser = readStoredAppUser();
         const currId = storedUser ? storedUser.id : null;
-        const [chatsRes, messagesRes, scheduledMessagesRes] = await Promise.all([
+        const [chatsRes, messagesRes, scheduledMessagesRes, notificationsRes] = await Promise.all([
           fetch('/api/ssr/chats').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/messages').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
         ]);
 
         if (requestGeneration !== sessionGenerationRef.current) return;
@@ -306,6 +307,7 @@ export function AppProvider({ children }) {
           });
         }
         if (scheduledMessagesRes && !scheduledMessagesRes.error && Array.isArray(scheduledMessagesRes)) setIfChanged(setScheduledMessages, scheduledMessagesRes);
+        if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
       } catch (e) {
         console.error('Failed to load realtime data:', e);
       } finally {
