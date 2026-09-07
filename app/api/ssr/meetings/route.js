@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildMeetingData } from '../defaults';
 import { notifyUsers } from '../notify';
+import { validateScheduleFields } from '../schedule';
 
 export async function GET(req) {
   try {
@@ -16,6 +17,11 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const data = await req.json();
+    if (!data.hostId || !String(data.title || '').trim() || !String(data.link || '').trim()) {
+      return NextResponse.json({ error: 'Host, title, and meeting link are required.' }, { status: 400 });
+    }
+    const validationError = validateScheduleFields(data, 'date');
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const newMeeting = await prisma.appMeeting.create({ data: buildMeetingData(data) });
     let recipientIds = Array.isArray(newMeeting.participants) ? newMeeting.participants : [];
     if (newMeeting.chatId) {

@@ -14,6 +14,7 @@ export default function BookingsPage() {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -35,8 +36,30 @@ export default function BookingsPage() {
     setMessage('');
   };
 
+  useEffect(() => {
+    if (!selectedServer?.id) return;
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    fetch(`/api/ssr/server-credentials?courseId=${encodeURIComponent(selectedServer.id)}`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not refresh server availability');
+        if (cancelled) return;
+        const count = Number(data.availableCount || 0);
+        updateCourseAvailability(selectedServer.id, count);
+        setSelectedServer(previous => previous?.id === selectedServer.id ? { ...previous, credentialCount: count } : previous);
+      })
+      .catch(error => { if (!cancelled) setMessage(error.message || 'Could not refresh server availability'); })
+      .finally(() => { if (!cancelled) setAvailabilityLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedServer?.id]);
+
   const handleBook = async () => {
-    if (!selectedServer || !selectedPlan || !currentUser?.id || loading) return;
+    if (!selectedServer || !selectedPlan || !currentUser?.id || loading || availabilityLoading) return;
+    if (Number(selectedServer.credentialCount || 0) < 1) {
+      setMessage('This server is currently out of stock. Please call for availability.');
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
@@ -44,7 +67,10 @@ export default function BookingsPage() {
         courseId: selectedServer.id,
         user: currentUser,
         plan: selectedPlan,
-        onAvailability: count => updateCourseAvailability(selectedServer.id, count),
+        onAvailability: count => {
+          updateCourseAvailability(selectedServer.id, count);
+          setSelectedServer(previous => previous ? { ...previous, credentialCount: count } : previous);
+        },
       });
       updateCourseAvailability(selectedServer.id, data.availableCount);
       setBookings(previous => [{ id: data.bookingId, courseId: selectedServer.id, months: selectedPlan.months, originalPrice: selectedPlan.originalPrice, discountPrice: selectedPlan.discountPrice, discountPercent: selectedPlan.discountPercent, paymentStatus: 'paid', status: 'confirmed', chatId: data.chatId, createdAt: new Date().toISOString() }, ...previous]);
@@ -71,7 +97,7 @@ export default function BookingsPage() {
           {servers.map(server => {
             const available = Number(server.credentialCount || 0);
             const plans = Array.isArray(server.pricePlans) ? server.pricePlans : [];
-            return <button key={server.id} type="button" onClick={() => available > 0 && openServer(server)} disabled={available < 1} style={{ textAlign: 'left', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, cursor: available > 0 ? 'pointer' : 'not-allowed', opacity: available > 0 ? 1 : 0.65 }}>
+            return <button key={server.id} type="button" onClick={() => openServer(server)} style={{ textAlign: 'left', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, cursor: 'pointer', opacity: 1 }}>
               {server.image && <img src={server.image} alt="" style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, marginBottom: 10 }} />}
               <strong style={{ display: 'block', color: '#0F172A', fontSize: 14 }}>{server.title}</strong>
               <span style={{ display: 'block', color: '#64748B', fontSize: 12, margin: '5px 0 10px' }}>{server.shortDesc || server.module}</span>
@@ -89,7 +115,7 @@ export default function BookingsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
             {(selectedServer.pricePlans || []).map(plan => <button key={plan.months} type="button" onClick={() => setSelectedPlan(plan)} style={{ border: `1px solid ${selectedPlan?.months === plan.months ? '#0A6ED1' : '#E2E8F0'}`, background: selectedPlan?.months === plan.months ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, textAlign: 'left', cursor: 'pointer' }}><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>{plan.months} month{Number(plan.months) === 1 ? '' : 's'}</strong><span style={{ color: '#0A6ED1', fontWeight: 700, fontSize: 13 }}>{money(plan.discountPrice)}</span><span style={{ display: 'block', color: '#94A3B8', textDecoration: 'line-through', fontSize: 11 }}>{money(plan.originalPrice)}</span></button>)}
           </div>
-          <button type="button" onClick={handleBook} disabled={loading || !selectedPlan} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, background: loading ? '#94A3B8' : '#0A6ED1', color: '#fff', fontWeight: 700, cursor: loading ? 'wait' : 'pointer' }}>{loading ? 'Opening payment...' : `Pay ${money(selectedPlan?.discountPrice)} securely`}</button>
+          <button type="button" onClick={handleBook} disabled={loading || availabilityLoading || !selectedPlan || Number(selectedServer.credentialCount || 0) < 1} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, background: loading || availabilityLoading || Number(selectedServer.credentialCount || 0) < 1 ? '#94A3B8' : '#0A6ED1', color: '#fff', fontWeight: 700, cursor: loading || availabilityLoading ? 'wait' : Number(selectedServer.credentialCount || 0) < 1 ? 'not-allowed' : 'pointer' }}>{loading ? 'Opening payment...' : availabilityLoading ? 'Checking availability...' : Number(selectedServer.credentialCount || 0) < 1 ? 'Out of stock' : `Pay ${money(selectedPlan?.discountPrice)} securely`}</button>
         </div>}
 
         <div style={{ marginTop: 28 }}><h3 style={{ margin: '0 0 10px', fontSize: 16, color: '#0F172A' }}>My bookings</h3>{loadingBookings ? <p style={{ color: '#64748B', fontSize: 13 }}>Loading bookings...</p> : bookings.length === 0 ? <p style={{ color: '#64748B', fontSize: 13 }}>No bookings yet.</p> : bookings.map(booking => { const server = courses.find(course => course.id === booking.courseId); return <div key={booking.id} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '11px 13px', marginBottom: 8 }}><strong style={{ color: '#0F172A', fontSize: 13 }}>{server?.title || 'Server access'}</strong><div style={{ color: '#047857', fontSize: 12, marginTop: 3 }}>{booking.months} month{Number(booking.months) === 1 ? '' : 's'} · {money(booking.discountPrice)} · {booking.status || 'confirmed'}</div></div>; })}</div>

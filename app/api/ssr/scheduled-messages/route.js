@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildScheduledMessageData } from '../defaults';
+import { validateScheduleFields } from '../schedule';
 
 export async function GET(req) {
   try {
@@ -20,6 +21,14 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const data = await req.json();
+    if (!data.chatId || !data.senderId) {
+      return NextResponse.json({ error: 'Chat and sender are required.' }, { status: 400 });
+    }
+    if (!String(data.content || data.text || '').trim() && !data.attachment) {
+      return NextResponse.json({ error: 'Choose a message or attachment to schedule.' }, { status: 400 });
+    }
+    const validationError = validateScheduleFields(data);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const newScheduledMessage = await prisma.appScheduledMessage.create({ data: buildScheduledMessageData(data) });
     return NextResponse.json(newScheduledMessage);
   } catch (error) {

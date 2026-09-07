@@ -117,6 +117,17 @@ const normalizeChat = (chat = {}) => ({
   time: chat.time || '',
 });
 
+const normalizeAttachment = (attachment) => {
+  if (!attachment) return attachment;
+  const type = String(attachment.type || attachment.mimeType || '').toLowerCase();
+  const name = String(attachment.name || '').toLowerCase();
+  const useExtension = !type || type === 'application/octet-stream';
+  const isAudio = Boolean(attachment.voiceMessage || type.startsWith('audio/') || (useExtension && /\.(mp3|wav|m4a|aac|flac|oga)$/i.test(name)));
+  const isVideo = !isAudio && Boolean(type.startsWith('video/') || (useExtension && /\.(mp4|webm|ogg|mov|m4v)$/i.test(name)));
+  const isImage = Boolean(type.startsWith('image/') || (useExtension && /\.(jpg|jpeg|png|gif|webp)$/i.test(name)));
+  return { ...attachment, isImage, isVideo, isAudio };
+};
+
 const normalizeMessage = (message = {}, currentUserId = null) => ({
   ...message,
   text: message.text ?? message.content ?? '',
@@ -126,6 +137,7 @@ const normalizeMessage = (message = {}, currentUserId = null) => ({
   senderAvatar: message.senderAvatar || null,
   deletedFor: safeArray(message.deletedFor),
   reactions: message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions) ? message.reactions : {},
+  attachment: normalizeAttachment(message.attachment),
   isMe: message.senderId === currentUserId,
 });
 
@@ -305,8 +317,8 @@ export function AppProvider({ children }) {
     loadStaticData().then(() => loadRealtimeData());
     intervalId = setInterval(loadRealtimeData, 5000); // 5s for chats+messages only
 
-    // Local development has no Vercel Cron invocation, so run the same protected
-    // processor while the app is open. Production is handled by vercel.json.
+    // Local development has no external scheduler, so run the processor while
+    // the app is open. Production calls the protected endpoint externally.
     let localScheduleIntervalId;
     if (process.env.NODE_ENV !== 'production') {
       const runLocalScheduledTasks = () => fetch('/api/ssr/scheduled-tasks', { cache: 'no-store' }).catch(() => {});
@@ -932,35 +944,29 @@ export function AppProvider({ children }) {
       throw error;
     }
 
-    return {
+    return normalizeAttachment({
       url: `/api/ssr/media/${mediaId}`,
       mediaId,
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,
-      isImage: file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name),
-      isVideo: file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov)$/i.test(file.name),
-      isAudio: file.type.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(file.name),
       isDownloaded: true,
-    };
+    });
   };
 
   const sendChatMediaInBackground = ({ chatId, file, caption = '', replyTo = null, attachmentMeta = {} }) => {
     if (!currentUser || !chatId || !file) return null;
     const tempId = `uploading-${currentUser.id}-${Date.now()}`;
     const previewUrl = URL.createObjectURL(file);
-    const pendingAttachment = {
+    const pendingAttachment = normalizeAttachment({
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,
-      isImage: file.type?.startsWith('image/'),
-      isVideo: file.type?.startsWith('video/'),
-      isAudio: file.type?.startsWith('audio/'),
       previewUrl,
       uploading: true,
       uploadProgress: 0,
       ...attachmentMeta,
-    };
+    });
     setChatMessages(prev => ({
       ...prev,
       [chatId]: [...(prev[chatId] || []), normalizeMessage({

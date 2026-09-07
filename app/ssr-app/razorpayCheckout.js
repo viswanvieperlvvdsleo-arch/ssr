@@ -85,6 +85,15 @@ export async function checkoutServerAccess({ courseId, user, plan, onAvailabilit
         },
       },
     });
-    checkout.open();
+    checkout.on('payment.failed', async response => {
+      await cancelReservation();
+      const description = response?.error?.description || response?.error?.reason || 'Payment failed. Please try again.';
+      settle(reject, new Error(description));
+    });
+    try {
+      checkout.open();
+    } catch (error) {
+      cancelReservation().finally(() => settle(reject, error));
+    }
   });
 }

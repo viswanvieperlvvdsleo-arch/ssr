@@ -702,7 +702,7 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
                 ) : (
                   <>
                     {msg.attachment.isImage && <img src={msg.attachment.url} alt="Attached image" onClick={() => onViewMedia && onViewMedia(msg.attachment)} style={{ maxWidth: '100%', maxHeight: 240, display: 'block', objectFit: 'cover', cursor: 'pointer' }} />}
-                    {msg.attachment.isVideo && <video src={msg.attachment.url} controls style={{ maxWidth: '100%', maxHeight: 240, display: 'block' }} />}
+                    {msg.attachment.isVideo && !msg.attachment.isAudio && <video src={msg.attachment.url} controls style={{ maxWidth: '100%', maxHeight: 240, display: 'block' }} />}
                     {msg.attachment.isAudio && <audio src={msg.attachment.url} controls style={{ maxWidth: 220, display: 'block' }} />}
                     {!msg.attachment.isImage && !msg.attachment.isVideo && !msg.attachment.isAudio && (
                       <div onClick={() => onViewMedia && onViewMedia(msg.attachment)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: msg.isMe ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.04)', borderRadius: 8, cursor: 'pointer' }}>
@@ -1306,24 +1306,23 @@ function CreatePostModal({ onClose, onSubmit }) {
 }
 
 function AutoSendModal({ onClose, onSave }) {
+  const defaultSchedule = useMemo(() => {
+    const next = new Date(Date.now() + 2 * 60 * 1000);
+    const date = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+    const time = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`;
+    return { date, time };
+  }, []);
   const [interval, setInterval] = useState('none');
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(defaultSchedule.date);
   const [endDate, setEndDate] = useState('');
-  const [sendTime, setSendTime] = useState('09:00');
+  const [sendTime, setSendTime] = useState(defaultSchedule.time);
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState(new Set());
-  const [selectedMonths, setSelectedMonths] = useState(new Set());
   const [selectedDaysOfMonth, setSelectedDaysOfMonth] = useState(new Set());
 
   const toggleDayOfWeek = (day) => {
     const next = new Set(selectedDaysOfWeek);
     if (next.has(day)) next.delete(day); else next.add(day);
     setSelectedDaysOfWeek(next);
-  };
-
-  const toggleMonth = (month) => {
-    const next = new Set(selectedMonths);
-    if (next.has(month)) next.delete(month); else next.add(month);
-    setSelectedMonths(next);
   };
 
   const toggleDayOfMonth = (day) => {
@@ -1388,23 +1387,6 @@ function AutoSendModal({ onClose, onSave }) {
           )}
 
           {interval === 'monthly' && (
-            <>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Select Months</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
-                    <button
-                      key={month}
-                      type="button"
-                      onClick={() => toggleMonth(month)}
-                      style={{ padding: '6px 0', border: '1px solid', borderColor: selectedMonths.has(month) ? '#0A6ED1' : '#E2E8F0', background: selectedMonths.has(month) ? '#EFF6FF' : '#fff', color: selectedMonths.has(month) ? '#0A6ED1' : '#64748B', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      {month}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Select Days of the Month</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
@@ -1420,8 +1402,9 @@ function AutoSendModal({ onClose, onSave }) {
                   ))}
                 </div>
               </div>
-            </>
           )}
+          {endDate && endDate < startDate && <div style={{ color: '#DC2626', fontSize: 12, fontWeight: 700 }}>End date cannot be before the start date.</div>}
+          {interval === 'weekly' && selectedDaysOfWeek.size === 0 && <div style={{ color: '#D97706', fontSize: 12, fontWeight: 700 }}>Choose at least one weekday.</div>}
         </div>
 
         <div style={{ display: 'flex', borderTop: '1px solid #F1F5F9' }}>
@@ -1438,8 +1421,8 @@ function AutoSendModal({ onClose, onSave }) {
               e.stopPropagation();
               onSave({ recurrence: interval, startDate, endDate, time: sendTime, weekdays: Array.from(selectedDaysOfWeek), monthlyDates: Array.from(selectedDaysOfMonth).join(',') });
             }}
-            style={{ flex: 1, padding: '16px', border: 'none', background: startDate && sendTime ? '#0A6ED1' : '#CBD5E1', cursor: startDate && sendTime ? 'pointer' : 'default', color: '#fff', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
-            disabled={!startDate || !sendTime}
+            style={{ flex: 1, padding: '16px', border: 'none', background: startDate && sendTime && (!endDate || endDate >= startDate) && (interval !== 'weekly' || selectedDaysOfWeek.size > 0) ? '#0A6ED1' : '#CBD5E1', cursor: startDate && sendTime && (!endDate || endDate >= startDate) && (interval !== 'weekly' || selectedDaysOfWeek.size > 0) ? 'pointer' : 'default', color: '#fff', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
+            disabled={!startDate || !sendTime || Boolean(endDate && endDate < startDate) || (interval === 'weekly' && selectedDaysOfWeek.size === 0)}
           >
             Save
           </button>
@@ -3348,7 +3331,7 @@ function ServiceUploadModal({ onClose, onSubmit, onAddCredentials, onDeleteCrede
       module: form.serviceType === 'server' ? (serverModules[0] || form.module) : form.module,
       serverModules: form.serviceType === 'server' ? serverModules : [],
       pricePlans: normalizedPricePlans,
-      orderEnabled: false,
+      orderEnabled: form.serviceType === 'server',
       credentialEntries: [
         ...pendingCredentials,
         ...(credentialText.trim() ? [credentialText.trim()] : []),
@@ -3633,6 +3616,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
   const [bookingBusy, setBookingBusy] = useState(false);
   const [bookingMessage, setBookingMessage] = useState('');
   const [availableCredentialCount, setAvailableCredentialCount] = useState(0);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const serverPlansRef = useRef(null);
 
   useBackHandler(Boolean(selectedCourse), () => setSelectedCourse(null));
@@ -3649,7 +3633,26 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
   useEffect(() => {
     setAvailableCredentialCount(selectedCourse?.serviceType === 'server' ? Number(selectedCourse.credentialCount || 0) : 0);
     setBookingMessage('');
-  }, [selectedCourse?.id, selectedCourse?.serviceType, selectedCourse?.credentialCount]);
+  }, [selectedCourse?.id, selectedCourse?.serviceType]);
+
+  useEffect(() => {
+    if (!selectedCourse?.id || selectedCourse.serviceType !== 'server') return;
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    fetch(`/api/ssr/server-credentials?courseId=${encodeURIComponent(selectedCourse.id)}`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not refresh server availability');
+        if (cancelled) return;
+        const count = Number(data.availableCount || 0);
+        setAvailableCredentialCount(count);
+        updateCourseAvailability(selectedCourse.id, count);
+        setSelectedCourse(previous => previous?.id === selectedCourse.id ? { ...previous, credentialCount: count } : previous);
+      })
+      .catch(error => { if (!cancelled) setBookingMessage(error.message || 'Could not refresh server availability'); })
+      .finally(() => { if (!cancelled) setAvailabilityLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedCourse?.id, selectedCourse?.serviceType]);
 
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
   const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
@@ -3715,7 +3718,11 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
   };
 
   const handleServerBooking = async (plan) => {
-    if (bookingBusy || availableCredentialCount < 1 || !currentUser?.id) return;
+    if (bookingBusy || availabilityLoading || !currentUser?.id) return;
+    if (availableCredentialCount < 1) {
+      setBookingMessage('This server is currently out of stock. Please call for availability.');
+      return;
+    }
     setBookingBusy(true);
     setBookingMessage('');
     try {
@@ -3786,7 +3793,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
               {selectedCourse.serviceType === 'server' && (
                 <button type="button" onClick={showServerPlans} style={{ background: availableCredentialCount > 0 ? '#0A6ED1' : '#64748B', color: '#fff', border: 'none', padding: '12px 18px', borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(10,110,209,0.24)', width: isMobile ? '100%' : 'auto', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  Pay
+                  {availabilityLoading ? 'Checking...' : 'Pay'}
                 </button>
               )}
               <button type="button" onClick={() => { window.location.href = 'tel:+919010062578'; }} style={{ background: selectedCourse.serviceType === 'server' ? '#fff' : '#0A6ED1', color: selectedCourse.serviceType === 'server' ? '#0A6ED1' : '#fff', border: selectedCourse.serviceType === 'server' ? '1.5px solid #0A6ED1' : 'none', padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: selectedCourse.serviceType === 'server' ? 'none' : '0 4px 12px rgba(10,110,209,0.3)', width: isMobile ? '100%' : 'auto', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -3803,7 +3810,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
               <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', margin: '0 0 6px' }}>Server access plans</h3>
               <p style={{ margin: '0 0 14px', color: '#9A3412', fontSize: 13 }}>Choose a duration. A login is assigned only after Razorpay confirms the payment.</p>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14, padding: '9px 12px', background: availableCredentialCount > 0 ? '#DCFCE7' : '#FEE2E2', borderRadius: 7, color: availableCredentialCount > 0 ? '#166534' : '#991B1B', fontSize: 13, fontWeight: 800 }}>
-                <span>{availableCredentialCount > 0 ? `${availableCredentialCount} credential${availableCredentialCount === 1 ? '' : 's'} available` : 'Out of stock'}</span>
+                <span>{availabilityLoading ? 'Checking availability...' : availableCredentialCount > 0 ? `${availableCredentialCount} credential${availableCredentialCount === 1 ? '' : 's'} available` : 'Out of stock'}</span>
                 {bookingMessage && <span style={{ fontWeight: 600, textAlign: 'right' }}>{bookingMessage}</span>}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
@@ -3813,7 +3820,7 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
                     <span style={{ display: 'block', marginTop: 8, color: '#DC2626', textDecoration: 'line-through', fontSize: 12 }}>Original: ₹{Number(plan.originalPrice || 0).toLocaleString('en-IN')}</span>
                     <strong style={{ display: 'block', marginTop: 2, color: '#166534', fontSize: 20 }}>₹{Number(plan.discountPrice || 0).toLocaleString('en-IN')}</strong>
                     <span style={{ display: 'inline-block', marginTop: 8, padding: '3px 7px', background: '#DCFCE7', color: '#166534', borderRadius: 5, fontSize: 11, fontWeight: 800 }}>Save {Number(plan.discountPercent || 0)}%</span>
-                    <button type="button" disabled={bookingBusy || availableCredentialCount < 1} onClick={() => handleServerBooking(plan)} style={{ width: '100%', marginTop: 12, padding: '9px 10px', border: 'none', borderRadius: 7, background: bookingBusy || availableCredentialCount < 1 ? '#CBD5E1' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: bookingBusy || availableCredentialCount < 1 ? 'not-allowed' : 'pointer' }}>{bookingBusy ? 'Processing...' : availableCredentialCount < 1 ? 'Out of stock' : `Pay ₹${Number(plan.discountPrice || 0).toLocaleString('en-IN')}`}</button>
+                    <button type="button" disabled={bookingBusy || availabilityLoading || availableCredentialCount < 1} onClick={() => handleServerBooking(plan)} style={{ width: '100%', marginTop: 12, padding: '9px 10px', border: 'none', borderRadius: 7, background: bookingBusy || availabilityLoading || availableCredentialCount < 1 ? '#CBD5E1' : '#0A6ED1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: bookingBusy || availabilityLoading || availableCredentialCount < 1 ? 'not-allowed' : 'pointer' }}>{bookingBusy ? 'Processing...' : availabilityLoading ? 'Checking...' : availableCredentialCount < 1 ? 'Out of stock' : `Pay ₹${Number(plan.discountPrice || 0).toLocaleString('en-IN')}`}</button>
                   </div>
                 ))}
               </div>

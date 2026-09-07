@@ -13,7 +13,11 @@ export async function GET(req) {
 
   try {
     const result = await processDueScheduledTasks();
-    return NextResponse.json({ success: true, ...result });
+    const failureCount = result.details.scheduledMessages.failures.length + result.details.meetingNotifications.failures.length;
+    return NextResponse.json(
+      { success: failureCount === 0, ...result },
+      { status: failureCount === 0 ? 200 : 500, headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (error) {
     console.error('Scheduled tasks API Error:', error);
     return NextResponse.json({ error: 'Could not process scheduled tasks' }, { status: 500 });

@@ -31,7 +31,7 @@ export async function GET(req) {
       data: { status: 'available', assignedTo: null, reservationId: null, reservedUntil: null },
     });
     const availableCount = await prisma.appServerCredential.count({ where: { courseId, status: 'available' } });
-    await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount } }).catch(() => null);
+    await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount, orderEnabled: true } }).catch(() => null);
     if (managerId) {
       const manager = await findManager(managerId);
       if (!manager || !hasEmployeePermission(manager, 'post_services')) {
@@ -69,7 +69,7 @@ export async function POST(req) {
       data: { courseId, credential: encryptCredential(credential) },
     })));
     const availableCount = await prisma.appServerCredential.count({ where: { courseId, status: 'available' } });
-    await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount } });
+    await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount, orderEnabled: true } });
     return NextResponse.json({ success: true, added: items.length, availableCount });
   } catch (error) {
     console.error('Server credentials POST API Error:', error);
