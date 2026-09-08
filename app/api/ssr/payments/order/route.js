@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { getRazorpayConfig, razorpayRequest } from '../razorpay';
+import { decryptCredential } from '../../server-credentials/credentials';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +23,14 @@ async function reserveCredential(courseId, userId, reservationId) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const credential = await prisma.appServerCredential.findFirst({ where: { courseId, status: 'available' }, orderBy: { createdAt: 'asc' } });
     if (!credential) return null;
+    // Verify delivery is possible before reserving stock or opening checkout.
+    try {
+      decryptCredential(credential.credential);
+    } catch {
+      const error = new Error('Server login delivery is unavailable. Please contact support before paying.');
+      error.code = 'CREDENTIAL_DELIVERY_UNAVAILABLE';
+      throw error;
+    }
     const result = await prisma.appServerCredential.updateMany({
       where: { id: credential.id, courseId, status: 'available' },
       data: { status: 'reserved', assignedTo: userId, reservationId, reservedUntil: new Date(Date.now() + 15 * 60 * 1000) },
@@ -45,6 +54,9 @@ export async function POST(req) {
     const { courseId, userId, months } = await req.json();
     if (!courseId || !userId || !Number.isInteger(Number(months))) {
       return NextResponse.json({ error: 'Invalid payment details' }, { status: 400 });
+    }
+    if (!process.env.SERVER_CREDENTIAL_ENCRYPTION_KEY) {
+      return NextResponse.json({ error: 'Server login delivery is not configured. Please contact support before paying.' }, { status: 503 });
     }
     const { keyId } = getRazorpayConfig();
     const [course, user] = await Promise.all([
@@ -108,7 +120,7 @@ export async function POST(req) {
   } catch (error) {
     if (reservedCredential?.id && reservationId) await releaseReservation(reservedCredential.id, reservationId).catch(() => null);
     console.error('Razorpay order API Error:', error);
-    const status = error.message === 'Razorpay is not configured' ? 503 : 500;
+    const status = error.message === 'Razorpay is not configured' || error.code === 'CREDENTIAL_DELIVERY_UNAVAILABLE' ? 503 : 500;
     return NextResponse.json({ error: status === 503 ? error.message : 'Could not start the payment' }, { status });
   }
 }
