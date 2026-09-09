@@ -55,16 +55,19 @@ function actionsForType(type) {
 // Listens and intercepts incoming notifications while the browser tab is closed/minimized
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  
+
   const notification = payload.notification || {};
-  const notificationTitle = notification.title || 'SSR Learning Platform';
+  const notificationTitle = notification.title || payload.data?.title || 'SSR Learning Platform';
   const notificationOptions = {
-    body: notification.body || 'You have a new notification.',
+    body: notification.body || payload.data?.body || 'You have a new notification.',
     icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
     data: payload.data || {},
     actions: actionsForType(payload.data?.type),
-    tag: payload.data?.messageId || payload.data?.postId || `ssr-${Date.now()}`,
+    tag: payload.data?.notificationTag || payload.messageId || `ssr-${Date.now()}`,
+    renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200],
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  return self.registration.showNotification(notificationTitle, notificationOptions);
 });

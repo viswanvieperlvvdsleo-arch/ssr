@@ -66,7 +66,7 @@ export default function NotificationTrigger() {
           return;
         }
 
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=2', { scope: '/firebase-cloud-messaging-push-scope' });
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=3', { scope: '/firebase-cloud-messaging-push-scope' });
         messagingRegistration = registration;
         await registration.update().catch(() => {});
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
@@ -100,15 +100,20 @@ export default function NotificationTrigger() {
     unsubscribe = onMessage(messaging, async payload => {
       if (Notification.permission !== 'granted') return;
       const notification = payload.notification || {};
-      if (notification.title) {
+      const title = notification.title || payload.data?.title;
+      const body = notification.body || payload.data?.body || '';
+      if (title) {
         const registration = messagingRegistration || await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
         if (registration) {
-          await registration.showNotification(notification.title, {
-            body: notification.body || '',
+          await registration.showNotification(title, {
+            body,
             icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
             data: payload.data || {},
             actions: actionsForType(payload.data?.type),
-            tag: payload.data?.messageId || payload.data?.postId || `ssr-${Date.now()}`,
+            tag: payload.data?.notificationTag || payload.messageId || `ssr-${Date.now()}`,
+            renotify: true,
+            silent: false,
+            vibrate: [200, 100, 200],
           });
         }
       }

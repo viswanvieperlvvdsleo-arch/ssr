@@ -84,9 +84,18 @@ function isInvalidToken(response, result) {
 async function sendToToken(accessToken, projectId, token, notification, data, url) {
   const message = {
     token,
-    notification,
-    data,
-    webpush: url ? { fcm_options: { link: url } } : undefined,
+    // Keep this data-only. Including FCM's top-level `notification` payload
+    // makes the browser display it automatically while our service worker
+    // displays it again, resulting in duplicate notifications.
+    data: {
+      ...data,
+      title: String(notification.title || 'SSR Learning Platform'),
+      body: String(notification.body || 'You have a new notification.'),
+    },
+    webpush: {
+      headers: { Urgency: 'high' },
+      ...(url ? { fcm_options: { link: url } } : {}),
+    },
   };
   const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: 'POST',
@@ -104,8 +113,15 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
   const uniqueUserIds = [...new Set((userIds || []).filter(Boolean).map(String))];
   if (!uniqueUserIds.length) return { sent: 0, skipped: 'no-recipients' };
 
+  const notificationTag = data.notificationTag
+    || data.messageId
+    || data.meetingId
+    || data.bookingId
+    || data.postId
+    || data.courseId
+    || `ssr-${Date.now()}`;
   const notificationData = Object.fromEntries(
-    Object.entries({ ...data, url: url || '' }).map(([key, value]) => [key, String(value ?? '')])
+    Object.entries({ ...data, url: url || '', notificationTag }).map(([key, value]) => [key, String(value ?? '')])
   );
   // Chat messages use hardware push only; the in-app bell is reserved for
   // feed, service, meeting, like, and comment activity.
