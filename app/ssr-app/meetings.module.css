@@ -1,0 +1,918 @@
+.workspace {
+  width: 100%;
+  min-height: calc(100vh - 58px);
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: #f4f6f9;
+  color: #0f172a;
+}
+
+.sidebar {
+  border-right: 1px solid #dbe2ea;
+  background: #ffffff;
+  padding: 24px 20px;
+}
+
+.calendarPanel {
+  width: 100%;
+}
+
+.monthHeader {
+  height: 46px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  background: #eef3fb;
+  color: #173f80;
+}
+
+.monthHeader strong {
+  text-align: center;
+  font-size: 14px;
+}
+
+.monthHeader button,
+.closeButton,
+.previewControls button,
+.expandButton {
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.monthHeader button {
+  width: 36px;
+  height: 36px;
+}
+
+.monthHeader svg,
+.closeButton svg,
+.expandButton svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.monthHeader button:first-child {
+  transform: rotate(180deg);
+}
+
+.nextIcon {
+  transform: none;
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 14px;
+}
+
+.weekday {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  padding: 5px 0;
+}
+
+.dayButton {
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 32px;
+  justify-self: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dayButton:hover {
+  background: #eff6ff;
+}
+
+.today {
+  border-color: #0a6ed1;
+  color: #0a6ed1;
+  font-weight: 800;
+}
+
+.selectedDay {
+  background: #174ea6;
+  border-color: #174ea6;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.selectedDay:hover {
+  background: #174ea6;
+}
+
+.clearDate {
+  margin-top: 12px;
+  border: 0;
+  background: transparent;
+  color: #0a6ed1;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 0;
+}
+
+.actionSection {
+  margin-top: 32px;
+  padding-top: 22px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.actionSection h3 {
+  margin: 0 0 16px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.actionGrid,
+.mobileActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.actionGrid button,
+.mobileActions button {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid #dbe2ea;
+  background: transparent;
+  color: #315ea8;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.actionGrid button:last-child,
+.mobileActions button:last-child {
+  border-right: 0;
+}
+
+.actionGrid button:disabled,
+.mobileActions button:disabled {
+  color: #a8b3c3;
+  cursor: not-allowed;
+}
+
+.actionGrid svg,
+.mobileActions svg,
+.planButton svg,
+.meetingDetails button svg,
+.emptyState svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.meetingArea {
+  min-width: 0;
+  padding: 26px 30px 48px;
+  max-width: 1180px;
+  width: 100%;
+  justify-self: center;
+}
+
+.pageHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.pageHeading h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.pageHeading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.planButton,
+.primaryButton,
+.joinButton {
+  border: 0;
+  border-radius: 7px;
+  background: #0a6ed1;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.planButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  font-size: 12px;
+}
+
+.planButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #b8c7de;
+  margin-bottom: 24px;
+}
+
+.tabs button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tabs button[aria-selected='true'] {
+  color: #174ea6;
+  font-weight: 800;
+}
+
+.tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: #174ea6;
+}
+
+.mobileActions {
+  display: none;
+}
+
+.mobileDateFilter {
+  display: none;
+}
+
+.dateGroup {
+  margin-bottom: 24px;
+}
+
+.dateGroup > h3 {
+  margin: 0 0 10px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.meetingCard {
+  background: #ffffff;
+  border: 1px solid #d8e0e9;
+  border-radius: 7px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.meetingRow {
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px;
+}
+
+.timeBlock {
+  align-self: stretch;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.timeBlock strong {
+  color: #334155;
+  font-size: 17px;
+}
+
+.timeBlock span {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.meetingInfo {
+  min-width: 0;
+}
+
+.meetingInfo > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meetingInfo h4 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.meetingInfo p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.repeatBadge {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.joinButton {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+.expandButton {
+  width: 34px;
+  height: 34px;
+  color: #174ea6;
+  transition: transform 0.15s ease;
+}
+
+.expanded {
+  transform: rotate(90deg);
+}
+
+.meetingDetails {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 16px;
+  align-items: center;
+  padding: 13px 16px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.linkDetail {
+  grid-column: span 3;
+}
+
+.meetingDetails div {
+  min-width: 0;
+}
+
+.meetingDetails span,
+.meetingDetails strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.meetingDetails span {
+  color: #94a3b8;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.meetingDetails strong {
+  margin-top: 3px;
+  color: #334155;
+  font-size: 11px;
+}
+
+.meetingDetails button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #b8c7de;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #174ea6;
+  cursor: pointer;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.meetingDetails button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.meetingDetails button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.emptyState {
+  min-height: 280px;
+  border: 1px dashed #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  text-align: center;
+  padding: 24px;
+}
+
+.emptyState svg {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 12px;
+}
+
+.emptyState strong {
+  color: #475569;
+  font-size: 14px;
+}
+
+.emptyState span {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.lobbyOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.joinDialog {
+  position: relative;
+  width: min(460px, 100%);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 34px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.24);
+}
+
+.joinDialog h2 {
+  margin: 7px 0 22px;
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.joinDialog label {
+  display: block;
+  margin: 14px 0 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.joinDialog input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #0f172a;
+  outline: none;
+  font-size: 13px;
+}
+
+.joinDialog input:focus {
+  border-color: #0a6ed1;
+  box-shadow: 0 0 0 2px rgba(10, 110, 209, 0.12);
+}
+
+.lobby {
+  position: relative;
+  width: min(980px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 42px;
+  padding: 48px;
+  border-radius: 8px;
+}
+
+.closeButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  color: #64748b;
+  z-index: 2;
+}
+
+.previewColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.previewColumn > strong {
+  margin-top: 14px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.videoPreview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #111827;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.videoPreview video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.hiddenVideo {
+  opacity: 0;
+}
+
+.cameraOff {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.cameraOff svg,
+.previewControls svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cameraOff svg {
+  width: 44px;
+  height: 44px;
+}
+
+.previewControls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.previewControls button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.previewControls .controlOff {
+  background: #dc2626;
+}
+
+.deviceMessage,
+.formError {
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.deviceMessage {
+  text-align: center;
+  margin: 8px 0 0;
+}
+
+.joinForm {
+  align-self: center;
+  min-width: 0;
+}
+
+.eyebrow {
+  color: #0a6ed1;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.joinForm h2 {
+  margin: 8px 0 24px;
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.joinForm label {
+  display: block;
+  margin: 14px 0 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.joinForm label span {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.joinForm input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #0f172a;
+  outline: none;
+  font-size: 13px;
+}
+
+.joinForm input:focus {
+  border-color: #0a6ed1;
+  box-shadow: 0 0 0 2px rgba(10, 110, 209, 0.12);
+}
+
+.meetingSummary {
+  border-left: 3px solid #0a6ed1;
+  background: #eff6ff;
+  padding: 10px 12px;
+  margin-bottom: 18px;
+}
+
+.meetingSummary span,
+.meetingSummary strong {
+  display: block;
+  font-size: 12px;
+}
+
+.meetingSummary span {
+  color: #475569;
+}
+
+.meetingSummary strong {
+  color: #0f172a;
+  margin-top: 4px;
+}
+
+.primaryButton {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.passwordNote {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 899px) {
+  .workspace {
+    min-height: auto;
+    display: block;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .meetingArea {
+    padding: 18px 12px 32px;
+  }
+
+  .pageHeading {
+    margin-bottom: 12px;
+  }
+
+  .pageHeading h2 {
+    font-size: 18px;
+  }
+
+  .pageHeading p,
+  .planButton {
+    display: none;
+  }
+
+  .tabs {
+    margin-bottom: 14px;
+    overflow-x: auto;
+  }
+
+  .tabs button {
+    flex: 1;
+    min-width: max-content;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .mobileActions {
+    display: grid;
+    background: #ffffff;
+    border: 1px solid #dbe2ea;
+    border-radius: 7px;
+    margin-bottom: 18px;
+    padding: 9px 0;
+  }
+
+  .mobileDateFilter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .mobileDateFilter label {
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .mobileDateFilter input {
+    min-width: 0;
+    flex: 1;
+    height: 36px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .mobileDateFilter button {
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: #0a6ed1;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .mobileActions svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .meetingRow {
+    min-height: 0;
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .timeBlock {
+    grid-row: 1 / span 2;
+  }
+
+  .timeBlock strong {
+    font-size: 14px;
+  }
+
+  .meetingInfo h4 {
+    font-size: 14px;
+  }
+
+  .cardActions {
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+
+  .joinButton {
+    flex: 1;
+  }
+
+  .meetingDetails {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .linkDetail {
+    grid-column: 1 / -1;
+  }
+
+  .meetingDetails button {
+    grid-column: 1 / -1;
+  }
+
+  .joinDialog {
+    width: 100%;
+    min-height: 100dvh;
+    border-radius: 0;
+    padding: 64px 18px 24px;
+  }
+
+  .lobbyOverlay {
+    padding: 0;
+  }
+
+  .lobby {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 58px 16px 24px;
+  }
+
+  .videoPreview {
+    width: min(100%, 420px);
+    aspect-ratio: 16 / 10;
+  }
+
+  .previewColumn > strong {
+    margin-top: 10px;
+  }
+
+  .joinForm {
+    width: min(100%, 420px);
+    margin: 0 auto;
+  }
+
+  .joinForm h2 {
+    margin-bottom: 16px;
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .sidebar {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .meetingArea {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .meetingRow {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+}

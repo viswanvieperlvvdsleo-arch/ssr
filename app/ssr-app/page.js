@@ -131,7 +131,7 @@ export default function EntryPage() {
 
       {/* Logo */}
       <div style={{ marginBottom: 36, textAlign: 'center' }}>
-        <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{
+        <img src="/ssrlogo.jpeg" alt="Company logo" style={{
           width: 56, height: 56,
           borderRadius: 8,
           margin: '0 auto 14px',
@@ -437,7 +437,7 @@ export default function EntryPage() {
 
       {/* Footer */}
       <p style={{ marginTop: 32, fontSize: 12, color: '#CBD5E1', textAlign: 'center' }}>
-        SSR Business Solutions · SAP Authorized Training Center & Placements
+        SJ INFO BUSINESS SOLUTIONS
       </p>
 
       {/* Spin animation */}

@@ -26,7 +26,7 @@ export default function PwaRegister() {
 
       if (process.env.NODE_ENV === 'production') {
         const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/ssr-app/' });
-        console.log('SSR app service worker registered:', registration.scope);
+        console.log('SJ INFO BUSINESS SOLUTIONS service worker registered:', registration.scope);
       } else {
         await Promise.all((await navigator.serviceWorker.getRegistrations()).map(registration => registration.unregister()));
         if ('caches' in window) {

@@ -61,7 +61,7 @@ function timezoneOffsetMinutes(date, timezone) {
   return match[1] === '+' ? minutes : -minutes;
 }
 
-function localDateTimeToUtc(dateValue, timeValue, timezone) {
+export function localDateTimeToUtc(dateValue, timeValue, timezone) {
   const date = parseScheduleDate(dateValue);
   const time = parseScheduleTime(timeValue);
   if (!date || !time) return null;

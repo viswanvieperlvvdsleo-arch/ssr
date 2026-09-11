@@ -6,6 +6,8 @@ import { useApp, MOCK_CHATS } from '../AppContext';
 import { useBackHandler } from '../useBackHandler';
 import { checkoutServerAccess } from '../razorpayCheckout';
 import PaymentHistory from '../PaymentHistory';
+import MeetingsWorkspace from '../MeetingsWorkspace';
+import DashboardPanel from '../DashboardPanel';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -54,6 +56,8 @@ const NavIcons = {
   learning:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>,
   courses:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>,
   meetings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  history:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.1 13a9 9 0 1 0 2.1-5.9L3 8"/><path d="M12 7v5l3 2"/></svg>,
+  dashboard: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   bookmarks: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
   settings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
   accounts:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
@@ -80,6 +84,8 @@ const getLeftNav = (user) => {
   if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
     nav.push({ id: 'requests', label: 'Requests' });
   }
+  nav.push({ id: 'history', label: 'History' });
+  nav.push({ id: 'dashboard', label: 'Dashboard' });
   return nav;
 };
 
@@ -4170,63 +4176,17 @@ function TrainersPanel() {
 
 
 function MeetingsPanel({ currentUser }) {
-  const { meetings, users } = useApp();
-  const isMobile = useWindowWidth() < 900;
+  const { meetings, users, openScheduleMeeting, addMeeting } = useApp();
+  return <MeetingsWorkspace currentUser={currentUser} meetings={meetings} users={users} addMeeting={addMeeting} onPlanMeeting={() => openScheduleMeeting(null)} />;
+}
 
+function HistoryPanel({ currentUser, onNavigateToChat }) {
   return (
-    <div style={{ padding: isMobile ? '14px 12px' : '20px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Meetings</h2>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {meetings.filter(m => {
-          if (currentUser.role === 'Admin' || currentUser.role === 'Super Admin') return true;
-          if (m.hostId === currentUser.id) return true;
-          if (m.participants && m.participants.includes(currentUser.id)) return true;
-          if (!m.participants) return true; // legacy mock meetings
-          return false;
-        }).map(m => {
-          const host = users[m.hostId];
-          const parsedDate = new Date(`${m.date}T00:00:00`);
-          const hasValidDate = !Number.isNaN(parsedDate.getTime());
-          const dateDay = hasValidDate ? parsedDate.toLocaleDateString(undefined, { day: '2-digit' }) : String(m.date || '').split(' ')[0];
-          const dateMonth = hasValidDate ? parsedDate.toLocaleDateString(undefined, { month: 'short' }) : String(m.date || '').split(' ')[1] || '';
-          return (
-            <div key={m.id} style={{ background: '#fff', borderRadius: 8, padding: isMobile ? 14 : 20, border: '1px solid #E8ECF0', display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '64px minmax(0, 1fr)' : undefined, gap: isMobile ? 12 : 20, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', minWidth: 0, overflow: 'hidden', boxSizing: 'border-box' }}>
-
-              <div style={{ width: isMobile ? 64 : 80, height: isMobile ? 64 : 80, background: '#F8FAFC', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{dateMonth}</span>
-                <span style={{ fontSize: isMobile ? 22 : 24, fontWeight: 800, color: '#0A6ED1', lineHeight: 1 }}>{dateDay}</span>
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0F172A', overflowWrap: 'anywhere', minWidth: 0 }}>{m.title}</h3>
-                  {m.module && <span style={{ background: '#EFF6FF', color: '#0A6ED1', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, maxWidth: '100%', overflowWrap: 'anywhere' }}>{m.module}</span>}
-                </div>
-                <p style={{ margin: '0 0 10px', fontSize: 13, color: '#64748B', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
-                  🕒 {m.time} ({m.duration}) · Hosted by {host?.name || 'Instructor'}
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }}></span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#10B981' }}>Upcoming</span>
-                </div>
-              </div>
-
-              <div style={{ flexShrink: 0, gridColumn: isMobile ? '1 / -1' : undefined, width: isMobile ? '100%' : 'auto' }}>
-                <a href={m.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box', textDecoration: 'none', background: '#0F172A', color: '#fff', padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 700, transition: 'background 0.15s', whiteSpace: 'nowrap' }}>
-                  Join / Start
-                </a>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div style={{ width: '100%', maxWidth: 1080, margin: '0 auto', padding: '24px 20px 48px', boxSizing: 'border-box' }}>
+      <PaymentHistory currentUser={currentUser} onNavigateToChat={onNavigateToChat} />
     </div>
   );
 }
-
 
 function BookmarksPanel({ currentUser }) {
   const { posts, courses, toggleCourseSave } = useApp();
@@ -4469,7 +4429,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
       <div style={{ width: isMobile ? '100%' : 220, flexShrink: 0, minWidth: 0 }}>
         <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Settings</h2>
         <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 4, overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 2 : 0 }}>
-          {[{id: 'profile', label: 'My Profile'}, {id: 'payments', label: 'Payments'}, {id: 'security', label: 'Security & Password'}, {id: 'notifications', label: 'Notifications'}, {id: 'chat-media', label: 'Chat & Media'}].map(tab => (
+          {[{id: 'profile', label: 'My Profile'}, {id: 'security', label: 'Security & Password'}, {id: 'notifications', label: 'Notifications'}, {id: 'chat-media', label: 'Chat & Media'}].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '10px 14px', textAlign: 'left', background: activeTab === tab.id ? '#EFF6FF' : 'transparent', color: activeTab === tab.id ? '#0A6ED1' : '#475569', fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 14, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
               {tab.label}
             </button>
@@ -4479,8 +4439,6 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
 
       {/* Settings Content */}
       <div style={{ flex: 1, width: '100%', minWidth: 0, boxSizing: 'border-box', background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', padding: isMobile ? '18px 14px' : '32px' }}>
-        {activeTab === 'payments' && <PaymentHistory currentUser={currentUser} onNavigateToChat={onNavigateToChat} />}
-
         {activeTab === 'profile' && (
           <div>
             <h3 style={{ margin: '0 0 24px', fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Profile Details</h3>
@@ -5264,7 +5222,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Email *</label>
-                  <input type="email" value={empForm.email} onChange={e => setEmpForm(f => ({ ...f, email: e.target.value }))} placeholder="employee@ssr.com" style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                  <input type="email" value={empForm.email} onChange={e => setEmpForm(f => ({ ...f, email: e.target.value }))} placeholder="employee@company.com" style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Password *</label>
@@ -5759,39 +5717,57 @@ function AppShellSkeleton() {
 }
 
 function ScheduleMeetingModal() {
-  const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, sendChatMessage, currentUser } = useApp();
-  useBackHandler(showScheduleMeeting, closeScheduleMeeting);
+  const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, sendChatMessage, currentUser, users } = useApp();
   const [meetingForm, setMeetingForm] = useState({
-    title: '', link: '', startDate: '', endDate: '', time: '',
+    title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour',
     recurrence: 'none', weekdays: [], monthlyDates: ''
+  });
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [scheduledMeeting, setScheduledMeeting] = useState(null);
+  useBackHandler(showScheduleMeeting, () => {
+    setScheduledMeeting(null);
+    closeScheduleMeeting();
   });
 
   if (!showScheduleMeeting) return null;
 
-  const handleScheduleMeeting = () => {
-    if (!meetingForm.title || !meetingForm.link || !meetingForm.startDate || !meetingForm.time) {
-      alert('Please fill all required meeting details (Title, Link, Start Date, Time).');
+  const handleScheduleMeeting = async () => {
+    if (!meetingForm.title || !meetingForm.startDate || !meetingForm.time || !meetingForm.endTime) {
+      alert('Please enter the title, start date, start time, and end time.');
+      return;
+    }
+    if (meetingForm.recurrence !== 'none' && !meetingForm.endDate) {
+      alert('Please choose an end date for this repeating meeting.');
       return;
     }
 
-    // Add meeting to state
-    addMeeting({
-      id: `m${Date.now()}`,
+    const isGeneralMeeting = !activeChatForMeeting?.id;
+    const generalParticipants = isGeneralMeeting && isAdmin(currentUser)
+      ? Object.values(users).map(user => user.id).filter(id => id && id !== currentUser.id)
+      : [];
+    setIsScheduling(true);
+    const result = await addMeeting({
       title: meetingForm.title,
       module: activeChatForMeeting?.name || 'General',
       hostId: currentUser.id,
       date: meetingForm.startDate,
       endDate: meetingForm.endDate,
       time: meetingForm.time,
-      duration: '1 hour',
-      link: meetingForm.link,
+      endTime: meetingForm.endTime,
+      duration: meetingForm.duration,
       status: 'upcoming',
       recurrence: meetingForm.recurrence,
       weekdays: meetingForm.weekdays,
       monthlyDates: meetingForm.monthlyDates,
-      chatId: activeChatForMeeting?.id,
-      participants: activeChatForMeeting?.participants || []
+      chatId: activeChatForMeeting?.id || null,
+      participants: activeChatForMeeting?.participants || generalParticipants
     });
+    setIsScheduling(false);
+    if (!result?.success) {
+      alert(result?.error || 'Could not schedule meeting.');
+      return;
+    }
+    setScheduledMeeting(result.meeting);
 
     // Send a system message in the chat
     let recurrenceMsg = '';
@@ -5799,9 +5775,26 @@ function ScheduleMeetingModal() {
     else if (meetingForm.recurrence === 'weekly') recurrenceMsg = `(Weekly on ${meetingForm.weekdays.join(', ')})`;
     else if (meetingForm.recurrence === 'monthly') recurrenceMsg = `(Monthly on dates: ${meetingForm.monthlyDates})`;
 
-    sendChatMessage(activeChatForMeeting.id, `📅 **Meeting Scheduled:** ${meetingForm.title} ${recurrenceMsg}\n🕒 ${meetingForm.startDate} at ${meetingForm.time}\n🔗 [Join Meeting](${meetingForm.link})`, null);
+    if (activeChatForMeeting?.id) {
+      await sendChatMessage(activeChatForMeeting.id, `**Meeting Scheduled: ${meetingForm.title}** ${recurrenceMsg}\n${meetingForm.startDate} ${meetingForm.time}-${meetingForm.endTime}\n[Join SJ Meeting](${result.meeting.link})\nMeeting ID: ${result.meeting.meetingCode}\nPassword: ${result.meeting.joinPassword}`, null);
+    }
+  };
 
+  const finishScheduling = () => {
+    setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '' });
+    setScheduledMeeting(null);
     closeScheduleMeeting();
+  };
+
+  const copyScheduledInvitation = async () => {
+    if (!scheduledMeeting) return;
+    await navigator.clipboard.writeText([
+      scheduledMeeting.title,
+      `${scheduledMeeting.date} ${scheduledMeeting.time}-${scheduledMeeting.endTime}`,
+      `Join: ${scheduledMeeting.link}`,
+      `Meeting ID: ${scheduledMeeting.meetingCode}`,
+      `Password: ${scheduledMeeting.joinPassword}`,
+    ].join('\n'));
   };
 
   const toggleWeekday = (day) => {
@@ -5818,16 +5811,33 @@ function ScheduleMeetingModal() {
       <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Schedule Meeting</h3>
-          <button onClick={closeScheduleMeeting} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button onClick={finishScheduling} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
+        {scheduledMeeting ? (
+          <div style={{ padding: 24, color: '#0F172A' }}>
+            <div style={{ color: '#067647', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Meeting scheduled</div>
+            <h4 style={{ margin: '0 0 18px', fontSize: 19 }}>{scheduledMeeting.title}</h4>
+            {[
+              ['SJ meeting link', scheduledMeeting.link],
+              ['Meeting ID', String(scheduledMeeting.meetingCode || '').replace(/(\d{3})(?=\d)/g, '$1 ')],
+              ['Password', scheduledMeeting.joinPassword],
+              ['Available until', `${scheduledMeeting.endDate || scheduledMeeting.date} at ${scheduledMeeting.endTime}`],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: 12, padding: '10px 0', borderBottom: '1px solid #E2E8F0' }}>
+                <span style={{ color: '#64748B', fontSize: 12 }}>{label}</span>
+                <strong style={{ color: '#0F172A', fontSize: 12, overflowWrap: 'anywhere' }}>{value}</strong>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button type="button" onClick={copyScheduledInvitation} style={{ flex: 1, minHeight: 42, border: '1px solid #0A6ED1', borderRadius: 7, background: '#fff', color: '#0A6ED1', cursor: 'pointer', fontWeight: 700 }}>Copy invitation</button>
+              <button type="button" onClick={finishScheduling} style={{ flex: 1, minHeight: 42, border: 0, borderRadius: 7, background: '#0A6ED1', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>Done</button>
+            </div>
+          </div>
+        ) : (<>
         <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Title</label>
             <input type="text" value={meetingForm.title} onChange={e => setMeetingForm({...meetingForm, title: e.target.value})} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Link (Zoom / Jio)</label>
-            <input type="text" value={meetingForm.link} onChange={e => setMeetingForm({...meetingForm, link: e.target.value})} placeholder="https://..." style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ flex: 1 }}>
@@ -5845,12 +5855,28 @@ function ScheduleMeetingModal() {
               <input type="time" value={meetingForm.time} onChange={e => setMeetingForm({...meetingForm, time: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>End Time</label>
+              <input type="time" value={meetingForm.endTime} onChange={e => setMeetingForm({...meetingForm, endTime: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Recurrence</label>
               <select value={meetingForm.recurrence} onChange={e => setMeetingForm({...meetingForm, recurrence: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: '#fff' }}>
                 <option value="none">Does not repeat</option>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Duration</label>
+              <select value={meetingForm.duration} onChange={e => setMeetingForm({...meetingForm, duration: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: '#fff' }}>
+                <option value="30 minutes">30 minutes</option>
+                <option value="1 hour">1 hour</option>
+                <option value="1.5 hours">1.5 hours</option>
+                <option value="2 hours">2 hours</option>
+                <option value="3 hours">3 hours</option>
               </select>
             </div>
           </div>
@@ -5878,8 +5904,9 @@ function ScheduleMeetingModal() {
 
         </div>
         <div style={{ padding: '20px', borderTop: '1px solid #F1F5F9' }}>
-          <button onClick={handleScheduleMeeting} style={{ width: '100%', background: '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Schedule & Notify Group</button>
+          <button onClick={handleScheduleMeeting} disabled={isScheduling} style={{ width: '100%', background: isScheduling ? '#94A3B8' : '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: isScheduling ? 'wait' : 'pointer' }}>{isScheduling ? 'Scheduling...' : activeChatForMeeting?.id ? 'Schedule & Notify Group' : 'Schedule Meeting'}</button>
         </div>
+        </>)}
       </div>
     </div>
   );
@@ -5975,7 +6002,7 @@ export default function HomePage() {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       navigateMobile('chat');
-    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard'].includes(section)) {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
@@ -6015,7 +6042,7 @@ export default function HomePage() {
 
   const handleNavClick = (id) => {
     setActiveNav(id);
-    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications'].includes(id)) {
+    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6037,7 +6064,7 @@ export default function HomePage() {
       navigateMobile('chat');
       return;
     }
-    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings'].includes(section)) {
+    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard'].includes(section)) {
       setNotificationCourseId(destination.searchParams.get('courseId'));
       if (notificationAction === 'like' && section === 'feed' && destination.searchParams.get('postId')) {
         likePost(destination.searchParams.get('postId'));
@@ -6119,7 +6146,7 @@ export default function HomePage() {
         <div style={{ position: 'fixed', top: currentUser?.isImpersonating ? 40 : 0, left: 0, right: 0, height: 58, background: '#fff', borderBottom: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16, zIndex: 400, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210, flexShrink: 0 }}>
-            <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
+            <img src="/ssrlogo.jpeg" alt="Company logo" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
             <span style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', whiteSpace: 'nowrap' }}>SAP Learning Platform</span>
           </div>
 
@@ -6300,6 +6327,18 @@ export default function HomePage() {
                 </div>
               )}
 
+              {activeNav === 'history' && (
+                <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+                  <HistoryPanel currentUser={currentUser} onNavigateToChat={(chatId) => { setTargetChat({ chatId }); setActiveNav('feed'); }} />
+                </div>
+              )}
+
+              {activeNav === 'dashboard' && (
+                <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+                  <DashboardPanel />
+                </div>
+              )}
+
               {activeNav === 'trainers' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <TrainersPanel />
@@ -6353,9 +6392,9 @@ export default function HomePage() {
       {/* Mobile Header */}
       <div style={{ position: 'sticky', top: currentUser?.isImpersonating ? 40 : 0, background: '#fff', borderBottom: '1px solid #E8ECF0', padding: '0 16px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="/ssrlogo.jpeg" alt="SSR Logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
+          <img src="/ssrlogo.jpeg" alt="Company logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks' })[mobilePage] || mobilePage}
+            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -6496,13 +6535,25 @@ export default function HomePage() {
         </div>
       )}
 
+      {mobilePage === 'history' && (
+        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <HistoryPanel currentUser={currentUser} onNavigateToChat={(chatId) => { setTargetChat({ chatId }); navigateMobile('chat'); }} />
+        </div>
+      )}
+
+      {mobilePage === 'dashboard' && (
+        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <DashboardPanel />
+        </div>
+      )}
+
       {mobilePage === 'trainers' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <TrainersPanel />
         </div>
       )}
 
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #E8ECF0', display: 'flex', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.06)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #E8ECF0', display: 'flex', overflowX: 'auto', overscrollBehaviorX: 'contain', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.06)', scrollbarWidth: 'none' }}>
         {[
           { id: 'feed', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Feed' },
           { id: 'chat', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>, label: 'Chat' },
@@ -6510,13 +6561,15 @@ export default function HomePage() {
           { id: 'meetings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>, label: 'Meetings' },
           { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
+          { id: 'history', icon: NavIcons.history, label: 'History' },
+          { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },
         ].map(item => {
           const active = mobilePage === item.id;
           return (
             <button key={item.id} onClick={() => {
               setUserMenuOpen(false);
               navigateMobile(item.id);
-            }} style={{ flex: 1, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>
+            }} style={{ flex: '0 0 68px', minWidth: 68, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>
               <span style={{ position: 'relative', fontSize: 20, filter: active ? 'none' : 'grayscale(1) opacity(0.5)' }}>
                 {item.icon}
                 {item.id === 'chat' && unreadChatCount > 0 && (

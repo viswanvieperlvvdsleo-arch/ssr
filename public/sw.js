@@ -1,7 +1,7 @@
-const CACHE_NAME = 'ssr-biz-cache-v1';
+const CACHE_NAME = 'sj-info-business-solutions-cache-v1';
 const URLS_TO_CACHE = [
-  '/',
-  '/services',
+  '/app-download',
+  '/ssr-app',
   '/manifest.json',
   '/ssrlogo.jpeg'
 ];

@@ -1484,7 +1484,8 @@ export function AppProvider({ children }) {
       });
       const data = await res.json();
       if (!res.ok || !data.id) return { success: false, error: data.error || 'Could not schedule meeting' };
-      setMeetings(prev => [data, ...prev]);
+      const { joinPassword, ...safeMeeting } = data;
+      setMeetings(prev => [safeMeeting, ...prev]);
       return { success: true, meeting: data };
     } catch(e) { console.error(e); return { success: false, error: e.message || 'Could not schedule meeting' }; }
   };

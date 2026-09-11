@@ -341,8 +341,16 @@ model AppMeeting {
   date               String
   endDate            String?
   time               String
-  duration           String
-  link               String
+    duration           String
+    endTime            String?
+    link               String
+    meetingCode        String?
+    passwordHash       String?
+    passwordSalt       String?
+    passwordEncrypted  String?
+    expiresAt          DateTime?
+    startedAt          DateTime?
+    endedAt            DateTime?
   status             String
   recurrence         String
   weekdays           String[]  @default([])
@@ -352,7 +360,41 @@ model AppMeeting {
   timezone           String?
   lastNotificationAt DateTime?
 
-  createdAt DateTime @default(now())
+    createdAt DateTime @default(now())
+
+    @@index([meetingCode])
+}
+
+model AppMeetingParticipant {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId     String
+  userId        String
+  peerId        String    @unique
+  name          String
+  role          String?
+  avatar        String?
+  micOn         Boolean   @default(true)
+  cameraOn      Boolean   @default(true)
+  screenSharing Boolean   @default(false)
+  joinedAt      DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  leftAt        DateTime?
+
+  @@index([meetingId, lastSeenAt])
+}
+
+model AppMeetingSignal {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId       String
+  senderPeerId    String
+  recipientPeerId String
+  type            String
+  payload         Json
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  @@index([meetingId, recipientPeerId, createdAt])
+  @@index([expiresAt])
 }
 
 model AppScheduledMessage {

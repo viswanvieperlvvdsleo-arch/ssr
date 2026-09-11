@@ -1,7 +1,7 @@
 {
-  "name": "SSR Business Solutions",
-  "short_name": "SSR Biz",
-  "description": "SAP Authorized Training Center | Staffing & Development — Visakhapatnam",
+  "name": "SJ INFO BUSINESS SOLUTIONS",
+  "short_name": "SJ INFO BUSINESS SOLUTIONS",
+  "description": "Learning, communication and business management platform",
   "start_url": "/ssr-app/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
@@ -34,17 +34,10 @@
   "screenshots": [],
   "shortcuts": [
     {
-      "name": "Training Modules",
-      "short_name": "Modules",
-      "description": "Explore SAP training modules",
+      "name": "Open SJ INFO BUSINESS SOLUTIONS",
+      "short_name": "Open App",
+      "description": "Open the SJ INFO BUSINESS SOLUTIONS app",
       "url": "/ssr-app/home",
-      "icons": [{ "src": "/logo/SSR_Business_Solutions_192x192_uncropped.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Contact Us",
-      "short_name": "Contact",
-      "description": "Get in touch with SSR",
-      "url": "/contact-us",
       "icons": [{ "src": "/logo/SSR_Business_Solutions_192x192_uncropped.png", "sizes": "192x192" }]
     }
   ]

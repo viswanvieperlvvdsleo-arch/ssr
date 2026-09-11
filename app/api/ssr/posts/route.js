@@ -22,7 +22,7 @@ export async function POST(req) {
       select: { id: true },
     });
     await notifyUsers(recipients.map(user => user.id), {
-      title: 'New post on SSR Learning Platform',
+      title: 'New post on SJ INFO BUSINESS SOLUTIONS',
       body: newPost.title || newPost.content.slice(0, 100) || 'A new post is available',
       url: `/ssr-app/home?section=feed&postId=${encodeURIComponent(newPost.id)}`,
       data: { type: 'post', postId: newPost.id },

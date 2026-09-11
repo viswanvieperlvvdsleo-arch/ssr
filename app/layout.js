@@ -1,21 +1,21 @@
 import "./globals.css";
-import AIAssistant from "../components/AIAssistant";
-import ScrollContactBar from "../components/ScrollContactBar";
-import ServiceAuthGate from "../components/ServiceAuthGate";
 import PwaRegister from "../components/PwaRegister";
 
-import { CMSProvider } from "../components/CMSContext";
-import EditorToolbar from "../components/EditorToolbar";
-
 export const metadata = {
-  title: "SSR – Business Solutions",
-  description:
-    "SSR Business Solutions – Premier IT Training, Staffing & Development. SAP Authorized Training Center, Visakhapatnam.",
+  title: "SJ INFO BUSINESS SOLUTIONS",
+  applicationName: "SJ INFO BUSINESS SOLUTIONS",
+  description: "SJ INFO BUSINESS SOLUTIONS learning, communication and business management platform.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "SJ INFO BUSINESS SOLUTIONS",
+    description: "Learning, communication and business management platform.",
+    siteName: "SJ INFO BUSINESS SOLUTIONS",
+    type: "website"
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "SSR Biz"
+    title: "SJ INFO BUSINESS SOLUTIONS"
   }
 };
 
@@ -30,14 +30,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <CMSProvider>
-          <EditorToolbar />
-          {children}
-          <AIAssistant />
-          <ScrollContactBar />
-          <ServiceAuthGate />
-          <PwaRegister />
-        </CMSProvider>
+        {children}
+        <PwaRegister />
       </body>
     </html>
   );

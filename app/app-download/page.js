@@ -1,7 +1,5 @@
 'use client';
 
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
 import { useEffect, useState } from 'react';
 
 export default function AppDownloadPage() {
@@ -31,7 +29,7 @@ export default function AppDownloadPage() {
     };
   }, []);
 
-  const openWebsite = () => {
+  const openApp = () => {
     window.open('/ssr-app', '_blank', 'noopener,noreferrer');
   };
 
@@ -39,8 +37,8 @@ export default function AppDownloadPage() {
     setInstallMessage('');
     if (isInstalled) return;
     if (!installPrompt) {
-      setInstallMessage('Open the website first, then use your browser menu and choose Install App.');
-      openWebsite();
+      setInstallMessage('Open the app first, then use your browser menu and choose Install App.');
+      openApp();
       return;
     }
 
@@ -87,21 +85,19 @@ export default function AppDownloadPage() {
   ];
 
   return (
-    <>
-      <Navbar />
-      <main className="min-h-screen bg-slate-50 pt-24 pb-16">
+      <main className="min-h-screen bg-slate-50 pt-12 pb-16">
         <section className="container mx-auto px-4 mb-16 mt-8">
           <div className="max-w-4xl mx-auto text-center">
             <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 animate-fade-in">
-              SSR SAP Learning &amp; Social Management Platform
+              SJ INFO BUSINESS SOLUTIONS
             </h1>
             <p className="text-lg text-slate-600 leading-relaxed mb-10">
               An enterprise-grade, Admin-Controlled educational and social platform designed specifically for SAP training institutes, corporate learners, consultants, and administrators.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openWebsite}>
+              <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openApp}>
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                Use Website
+                Open in Browser
               </button>
               <button className="bg-[#F0AB00] hover:bg-[#D99500] text-slate-950 font-bold py-4 px-10 rounded-full text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={installApp} disabled={isInstalled}>
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" /></svg>
@@ -184,9 +180,9 @@ export default function AppDownloadPage() {
         <section className="container mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Ready to experience the platform?</h2>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-3 px-8 rounded-full text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openWebsite}>
+            <button className="bg-[#0A6ED1] hover:bg-[#063D8A] text-white font-bold py-3 px-8 rounded-full text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={openApp}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              Use Website
+              Open in Browser
             </button>
             <button className="bg-[#F0AB00] hover:bg-[#D99500] text-slate-950 font-bold py-3 px-8 rounded-full text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3" onClick={installApp} disabled={isInstalled}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" /></svg>
@@ -194,9 +190,6 @@ export default function AppDownloadPage() {
             </button>
           </div>
         </section>
-
       </main>
-      <Footer />
-    </>
   );
 }

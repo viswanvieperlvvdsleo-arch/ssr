@@ -12,7 +12,7 @@ const SETTINGS = [
   { icon: '💾', label: 'Data & Storage', desc: 'Manage media auto-download' },
   { icon: '🔐', label: 'Privacy & Security', desc: 'Password, 2FA settings' },
   { icon: '❓', label: 'Help & Support', desc: 'FAQs, contact support' },
-  { icon: 'ℹ️', label: 'About', desc: 'Version 1.0.0 · SSR Platform' },
+  { icon: 'ℹ️', label: 'About', desc: 'Version 1.0.0 · SJ INFO BUSINESS SOLUTIONS' },
 ];
 
 const PERM_MAP = {
@@ -54,8 +54,8 @@ export default function ProfilePage() {
       Theme: <><p style={{ color: '#64748B', fontSize: 13 }}>Choose how the platform looks on this device.</p><div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setTheme('light')} style={{ flex: 1, border: `1px solid ${theme === 'light' ? '#0A6ED1' : '#E2E8F0'}`, background: theme === 'light' ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, color: '#0F172A', cursor: 'pointer' }}>Light</button><button type="button" onClick={() => setTheme('dark')} style={{ flex: 1, border: `1px solid ${theme === 'dark' ? '#0A6ED1' : '#E2E8F0'}`, background: theme === 'dark' ? '#EFF6FF' : '#fff', borderRadius: 8, padding: 10, color: '#0F172A', cursor: 'pointer' }}>Dark</button></div></>,
       'Data & Storage': <><p style={{ color: '#64748B', fontSize: 13 }}>Automatically download chat media when it is received.</p><button type="button" onClick={() => setAutoDownloadMedia(!autoDownloadMedia)} style={{ border: 0, borderRadius: 8, padding: '10px 14px', background: autoDownloadMedia ? '#0A6ED1' : '#E2E8F0', color: autoDownloadMedia ? '#fff' : '#334155', fontWeight: 700, cursor: 'pointer' }}>{autoDownloadMedia ? 'Auto-download is on' : 'Auto-download is off'}</button></>,
       'Privacy & Security': <><p style={{ color: '#64748B', fontSize: 13 }}>Your account is signed in as <strong>{currentUser?.email || 'your account'}</strong>.</p><p style={{ color: '#64748B', fontSize: 13, marginBottom: 0 }}>To change your password or recover access, use the Forgot password flow on the login screen.</p></>,
-      'Help & Support': <><p style={{ color: '#64748B', fontSize: 13 }}>For account, training, or server-access help, contact the SSR team.</p><a href="tel:+919010062578" style={{ display: 'block', color: '#0A6ED1', fontWeight: 700, marginBottom: 8 }}>Call +91 90100 62578</a><a href="mailto:sales@ssrbusinesssolutions.com" style={{ color: '#0A6ED1', fontWeight: 700 }}>Email support</a></>,
-      About: <><p style={{ color: '#0F172A', fontWeight: 700, marginBottom: 6 }}>SSR Business Solutions</p><p style={{ color: '#64748B', fontSize: 13, margin: 0 }}>SAP Learning Platform · Version 1.0.0</p></>,
+      'Help & Support': <><p style={{ color: '#64748B', fontSize: 13 }}>For account, training, or server-access help, contact the SJ INFO BUSINESS SOLUTIONS team.</p><a href="tel:+919010062578" style={{ display: 'block', color: '#0A6ED1', fontWeight: 700, marginBottom: 8 }}>Call +91 90100 62578</a><a href="mailto:sales@ssrbusinesssolutions.com" style={{ color: '#0A6ED1', fontWeight: 700 }}>Email support</a></>,
+      About: <><p style={{ color: '#0F172A', fontWeight: 700, marginBottom: 6 }}>SJ INFO BUSINESS SOLUTIONS</p><p style={{ color: '#64748B', fontSize: 13, margin: 0 }}>Business Management Platform · Version 1.0.0</p></>,
     }[activeSetting];
     return <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.42)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }} onClick={() => setActiveSetting(null)}><div role="dialog" aria-modal="true" onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 16px 50px rgba(15,23,42,0.2)' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><h3 style={{ margin: 0, color: '#0F172A', fontSize: 18 }}>{activeSetting}</h3><button type="button" onClick={() => setActiveSetting(null)} aria-label="Close settings" style={{ border: 0, background: 'transparent', color: '#64748B', fontSize: 20, cursor: 'pointer' }}>x</button></div>{panel}</div></div>;
   };
@@ -137,7 +137,7 @@ export default function ProfilePage() {
           >
             🚪 Log Out
           </button>
-          <p style={{ textAlign: 'center', color: '#CBD5E1', fontSize: 11, marginTop: 12 }}>SSR Business Solutions · SAP Authorized Training Center</p>
+          <p style={{ textAlign: 'center', color: '#CBD5E1', fontSize: 11, marginTop: 12 }}>SJ INFO BUSINESS SOLUTIONS</p>
         </div>
       </div>
     </AppShell>

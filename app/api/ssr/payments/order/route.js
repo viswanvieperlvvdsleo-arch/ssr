@@ -112,7 +112,7 @@ export async function POST(req) {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      name: 'SSR Biz',
+      name: 'SJ INFO BUSINESS SOLUTIONS',
       description: `${course.title} - ${Number(months)} month${Number(months) === 1 ? '' : 's'}`,
       prefill: { name: user.name || '', email: user.email || '', contact: user.phone || '' },
       availableCount,

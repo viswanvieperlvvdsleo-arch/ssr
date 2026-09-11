@@ -35,10 +35,10 @@ export async function sendPushToTokens(tokens, { title, body }, data = {}) {
 
   const response = await admin.messaging().sendEachForMulticast({
     tokens,
-    notification: { title: title || 'SSR Learning Platform', body: body || '' },
+    notification: { title: title || 'SJ INFO BUSINESS SOLUTIONS', body: body || '' },
     webpush: {
       notification: {
-        title: title || 'SSR Learning Platform',
+        title: title || 'SJ INFO BUSINESS SOLUTIONS',
         body: body || '',
         icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
         badge: '/logo/SSR_Business_Solutions_192x192_uncropped.png',

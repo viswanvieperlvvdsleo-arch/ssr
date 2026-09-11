@@ -89,7 +89,7 @@ async function sendToToken(accessToken, projectId, token, notification, data, ur
     // displays it again, resulting in duplicate notifications.
     data: {
       ...data,
-      title: String(notification.title || 'SSR Learning Platform'),
+      title: String(notification.title || 'SJ INFO BUSINESS SOLUTIONS'),
       body: String(notification.body || 'You have a new notification.'),
     },
     webpush: {
@@ -131,7 +131,7 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
         data: {
           userId,
           type: notificationData.type || 'general',
-          title: title || 'SSR Learning Platform',
+          title: title || 'SJ INFO BUSINESS SOLUTIONS',
           body: body || 'You have a new notification.',
           url: url || null,
           data: notificationData,
