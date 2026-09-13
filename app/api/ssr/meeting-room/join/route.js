@@ -30,6 +30,14 @@ export async function POST(req) {
 
     const user = await prisma.appUser.findUnique({ where: { id: userId } });
     if (!user) return NextResponse.json({ error: 'Sign in to join this meeting.' }, { status: 401 });
+    const canJoin = !user.restricted && (
+      ['Employee', 'Admin', 'Super Admin'].includes(user.role) ||
+      meeting.hostId === user.id ||
+      (meeting.participants || []).includes(user.id)
+    );
+    if (!canJoin) {
+      return NextResponse.json({ error: 'This meeting was not shared with your account.' }, { status: 403 });
+    }
     const expiresAt = meeting.expiresAt || meetingExpiry(meeting);
     if (meeting.endedAt || meeting.status === 'completed' || !expiresAt || expiresAt <= new Date()) {
       return NextResponse.json({ error: 'This meeting has ended. Its link and password are no longer valid.', expired: true }, { status: 410 });

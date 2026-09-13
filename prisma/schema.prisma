@@ -101,6 +101,7 @@ model AppUser {
   // Employee Specific
   permissions String[] @default([])
   restricted  Boolean  @default(false)
+  teamId      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -238,27 +239,97 @@ model AppServerPayment {
 }
 
 model AppPost {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  authorId       String
-  authorName     String
-  authorTitle    String
-  authorInitials String
-  authorColor    String
-  category       String
-  title          String?
-  tag            String?
-  time           String
-  content        String
-  image          String?
-  mediaType      String?
-  banner         Json?
-  likes          Int      @default(0)
-  comments       Int      @default(0) // legacy
-  commentsList   Json[]   @default([])
-  likedBy        String[] @default([])
-  savedBy        String[] @default([])
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  authorId          String
+  authorName        String
+  authorTitle       String
+  authorInitials    String
+  authorColor       String
+  category          String
+  title             String?
+  tag               String?
+  time              String
+  content           String
+  image             String?
+  mediaType         String?
+  banner            Json?
+  likes             Int      @default(0)
+  comments          Int      @default(0) // legacy
+  commentsList      Json[]   @default([])
+  likedBy           String[] @default([])
+  savedBy           String[] @default([])
+  visibility        String   @default("public")
+  isRequirement     Boolean  @default(false)
+  requirementStatus String   @default("none")
 
   createdAt DateTime @default(now())
+}
+
+model AppTeam {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  slug        String   @unique
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AppRequirementTask {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  postId        String    @unique
+  title         String
+  description   String?
+  createdById   String
+  createdByName String
+  teamId        String?
+  status        String    @default("open")
+  closedById    String?
+  closedByName  String?
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model AppTaskWorker {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  taskId      String
+  userId      String
+  userName    String
+  teamId      String?
+  status      String    @default("working")
+  joinedAt    DateTime  @default(now())
+  completedAt DateTime?
+
+  @@unique([taskId, userId])
+  @@index([taskId, joinedAt])
+}
+
+model AppTaskProfile {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId      String
+  workerId    String?
+  addedById   String
+  addedByName String
+  text        String
+  attachment  Json?
+  mentions    String[] @default([])
+  createdAt   DateTime @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model AppTaskEvent {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId    String
+  actorId   String
+  actorName String
+  type      String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
 }
 
 model AppChat {
@@ -341,16 +412,16 @@ model AppMeeting {
   date               String
   endDate            String?
   time               String
-    duration           String
-    endTime            String?
-    link               String
-    meetingCode        String?
-    passwordHash       String?
-    passwordSalt       String?
-    passwordEncrypted  String?
-    expiresAt          DateTime?
-    startedAt          DateTime?
-    endedAt            DateTime?
+  duration           String
+  endTime            String?
+  link               String
+  meetingCode        String?
+  passwordHash       String?
+  passwordSalt       String?
+  passwordEncrypted  String?
+  expiresAt          DateTime?
+  startedAt          DateTime?
+  endedAt            DateTime?
   status             String
   recurrence         String
   weekdays           String[]  @default([])
@@ -360,9 +431,9 @@ model AppMeeting {
   timezone           String?
   lastNotificationAt DateTime?
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-    @@index([meetingCode])
+  @@index([meetingCode])
 }
 
 model AppMeetingParticipant {
@@ -381,6 +452,20 @@ model AppMeetingParticipant {
   leftAt        DateTime?
 
   @@index([meetingId, lastSeenAt])
+}
+
+model AppTrainingReport {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId   String   @unique
+  totalDays   Int
+  weekdays    String[] @default([])
+  trainerId   String?
+  memberIds   String[] @default([])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
 }
 
 model AppMeetingSignal {

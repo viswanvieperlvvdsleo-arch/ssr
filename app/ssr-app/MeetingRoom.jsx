@@ -204,8 +204,15 @@ export default function MeetingRoom({ meetingCode }) {
 
   useEffect(() => {
     if (!meetingCode) return;
+    if (!currentUser?.id) {
+      setLoading(false);
+      setLoadError('Sign in to view this meeting.');
+      return;
+    }
     let active = true;
-    fetch(`/api/ssr/meetings?code=${encodeURIComponent(meetingCode)}`, { cache: 'no-store' })
+    setLoading(true);
+    setLoadError('');
+    fetch(`/api/ssr/meetings?code=${encodeURIComponent(meetingCode)}&userId=${encodeURIComponent(currentUser.id)}`, { cache: 'no-store' })
       .then(async response => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Meeting not found.');
@@ -214,7 +221,7 @@ export default function MeetingRoom({ meetingCode }) {
       .catch(error => { if (active) setLoadError(error.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [meetingCode]);
+  }, [currentUser?.id, meetingCode]);
 
   useEffect(() => {
     if (!meeting?.id || !currentUser?.id || meeting.hostId !== currentUser.id) return;

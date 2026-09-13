@@ -97,6 +97,7 @@ const normalizePost = (post = {}) => {
     commentsList: safeArray(post.commentsList),
     likedBy: safeArray(post.likedBy),
     savedBy: safeArray(post.savedBy),
+    visibility: post.visibility === 'internal' ? 'internal' : 'public',
   };
 };
 
@@ -214,11 +215,11 @@ export function AppProvider({ children }) {
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const postsPromise = fetch('/api/ssr/posts').then(r => r.json()).catch(() => ({}));
+        const postsPromise = fetch(currId ? `/api/ssr/posts?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/posts').then(r => r.json()).catch(() => ({}));
         const otherDataPromise = Promise.all([
           fetch(usersUrl).then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/courses').then(r => r.json()).catch(() => ({})),
-          fetch('/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
@@ -614,7 +615,7 @@ export function AppProvider({ children }) {
         persistedUpdates.resume = persistedUpdates.resumeName;
         delete persistedUpdates.resumeName;
       }
-      const allowedFields = ['email', 'name', 'phone', 'password', 'role', 'initials', 'color', 'avatar', 'mediaStorageMode', 'online', 'lastSeen', 'title', 'experience', 'profession', 'mode', 'location', 'shortDesc', 'bio', 'resume', 'rating', 'reviews', 'permissions', 'restricted'];
+      const allowedFields = ['email', 'name', 'phone', 'password', 'role', 'initials', 'color', 'avatar', 'mediaStorageMode', 'online', 'lastSeen', 'title', 'experience', 'profession', 'mode', 'location', 'shortDesc', 'bio', 'resume', 'rating', 'reviews', 'permissions', 'restricted', 'teamId'];
       const dbUpdates = Object.fromEntries(Object.entries(persistedUpdates).filter(([key]) => allowedFields.includes(key)));
       const res = await fetch('/api/ssr/users', {
         method: 'PUT',
@@ -728,10 +729,17 @@ export function AppProvider({ children }) {
   };
 
   const deletePost = async (postId) => {
+    if (!currentUser?.id) return;
+    const previousPosts = posts;
     setPosts(prev => prev.filter(p => p.id !== postId));
     try {
-      await fetch('/api/ssr/posts?id=' + postId, { method: 'DELETE' });
-    } catch(e) { console.error(e); }
+      const response = await fetch(`/api/ssr/posts?id=${encodeURIComponent(postId)}&userId=${encodeURIComponent(currentUser.id)}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not delete post');
+    } catch(e) {
+      console.error(e);
+      setPosts(previousPosts);
+    }
   };
 
   const addPost = async (post) => {
@@ -748,6 +756,9 @@ export function AppProvider({ children }) {
       content: post.content,
       image: post.mediaUrl || null,
       mediaType: post.mediaType || null,
+      visibility: post.visibility === 'internal' ? 'internal' : 'public',
+      isRequirement: post.visibility === 'internal' && Boolean(post.isRequirement),
+      teamId: post.teamId || null,
     };
     try {
       const res = await fetch('/api/ssr/posts', {
@@ -785,7 +796,7 @@ export function AppProvider({ children }) {
       await fetch('/api/ssr/posts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addComment', id: postId, comment: newComment })
+        body: JSON.stringify({ action: 'addComment', id: postId, userId: currentUser.id, comment: newComment })
       });
     } catch(e) { console.error(e); }
   };
@@ -1285,6 +1296,7 @@ export function AppProvider({ children }) {
       color: '#475569',
       permissions: employeeData.permissions || [],
       restricted: false,
+      teamId: employeeData.teamId || null,
     };
     try {
       const res = await fetch('/api/ssr/users', {
@@ -1490,6 +1502,38 @@ export function AppProvider({ children }) {
     } catch(e) { console.error(e); return { success: false, error: e.message || 'Could not schedule meeting' }; }
   };
 
+  const addMeetingParticipants = async (meetingId, participantIds) => {
+    if (!currentUser?.id) return { success: false, error: 'Sign in to manage this meeting' };
+    try {
+      const res = await fetch('/api/ssr/meetings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: meetingId, userId: currentUser.id, action: 'addParticipants', participantIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.id) return { success: false, error: data.error || 'Could not add people' };
+      setMeetings(previous => previous.map(meeting => meeting.id === meetingId ? data : meeting));
+      return { success: true, meeting: data };
+    } catch (error) {
+      console.error(error);
+      return { success: false, error: error.message || 'Could not add people' };
+    }
+  };
+
+  const deleteMeeting = async meetingId => {
+    if (!currentUser?.id) return { success: false, error: 'Sign in to manage this meeting' };
+    try {
+      const res = await fetch(`/api/ssr/meetings?id=${encodeURIComponent(meetingId)}&userId=${encodeURIComponent(currentUser.id)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) return { success: false, error: data.error || 'Could not delete meeting' };
+      setMeetings(previous => previous.filter(meeting => meeting.id !== meetingId));
+      return { success: true };
+    } catch (error) {
+      console.error(error);
+      return { success: false, error: error.message || 'Could not delete meeting' };
+    }
+  };
+
   const markNotificationRead = async (id) => {
     if (!currentUser?.id || !id) return;
     setNotifications(prev => prev.map(notification => notification.id === id ? { ...notification, read: true } : notification));
@@ -1578,7 +1622,7 @@ export function AppProvider({ children }) {
       deleteChatMedia,
       courses, toggleCourseSave, addCourse, updateCourse, updateCourseAvailability, deleteCourse,
       trainerRatings, getTrainerRatingSummary, rateTrainer,
-      meetings, addMeeting,
+      meetings, addMeeting, addMeetingParticipants, deleteMeeting,
       scheduledMessages, cancelScheduledMessage,
       users,
       deleteUser, restrictUser, addEmployee, updateUserPermissions, updateEmployeeProfile,

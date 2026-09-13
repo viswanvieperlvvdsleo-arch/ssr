@@ -8,6 +8,8 @@ import { checkoutServerAccess } from '../razorpayCheckout';
 import PaymentHistory from '../PaymentHistory';
 import MeetingsWorkspace from '../MeetingsWorkspace';
 import DashboardPanel from '../DashboardPanel';
+import TaskBoard from '../TaskBoard';
+import RequirementStatus from '../RequirementStatus';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -49,6 +51,7 @@ function chatDayLabel(value) {
 
 /* ─── constants ───────────────────────────────────── */
 const FEED_TABS = ['All', 'Announcements', 'Training Updates', 'Discussions', 'Videos'];
+const INTERNAL_FEED_TAB = 'Internal Feed';
 
 // Monochrome SVG icons for nav
 const NavIcons = {
@@ -58,6 +61,7 @@ const NavIcons = {
   meetings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   history:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.1 13a9 9 0 1 0 2.1-5.9L3 8"/><path d="M12 7v5l3 2"/></svg>,
   dashboard: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
+  'task-board': <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M7 10h10M7 14h6"/></svg>,
   bookmarks: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
   settings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
   accounts:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
@@ -85,7 +89,10 @@ const getLeftNav = (user) => {
     nav.push({ id: 'requests', label: 'Requests' });
   }
   nav.push({ id: 'history', label: 'History' });
-  nav.push({ id: 'dashboard', label: 'Dashboard' });
+  if (user && ['Employee', 'Admin', 'Super Admin'].includes(user.role) && !user.restricted) {
+    nav.push({ id: 'task-board', label: 'Task Board' });
+    nav.push({ id: 'dashboard', label: 'Dashboard' });
+  }
   return nav;
 };
 
@@ -961,6 +968,7 @@ function PostCard({ post, currentUser, isDesktop }) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <RequirementStatus post={post} currentUser={currentUser} compact />
               <span style={{ background: `${tagBg}18`, color: tagBg, fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: `1px solid ${tagBg}30`, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{post.tag}</span>
               {canDelete && (
                 <div style={{ position: 'relative' }}>
@@ -1229,6 +1237,8 @@ function CreatePostModal({ onClose, onSubmit }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Announcements');
+  const [visibility, setVisibility] = useState('public');
+  const [isRequirement, setIsRequirement] = useState(false);
 
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaType, setMediaType] = useState(null);
@@ -1248,6 +1258,9 @@ function CreatePostModal({ onClose, onSubmit }) {
         tag: category.slice(0, -1),
         tagColor: '#0A6ED1',
         category,
+        visibility,
+        isRequirement,
+        teamId: currentUser.teamId || null,
         title,
         content,
         mediaUrl: mediaFile ? null : mediaUrl,
@@ -1267,12 +1280,12 @@ function CreatePostModal({ onClose, onSubmit }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 540, maxHeight: 'calc(100dvh - 32px)', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Create Post</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#94A3B8', cursor: 'pointer' }}>✕</button>
         </div>
-        <form onSubmit={handleSubmit} style={{ padding: '20px 22px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '20px 22px', overflowY: 'auto', minHeight: 0, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
             <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={38} />
             <div>
@@ -1280,6 +1293,18 @@ function CreatePostModal({ onClose, onSubmit }) {
               <select value={category} onChange={e => setCategory(e.target.value)} style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: '#0A6ED1', fontWeight: 600, background: '#EFF6FF', cursor: 'pointer', marginTop: 2 }}>
                 {FEED_TABS.filter(t => t !== 'All').map(t => <option key={t}>{t}</option>)}
               </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <span style={{ display: 'block', marginBottom: 6, color: '#475569', fontSize: 12, fontWeight: 700 }}>Post visibility</span>
+            <div role="group" aria-label="Post visibility" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>
+              {[
+                { id: 'public', label: 'Public', description: 'Visible to every account' },
+                { id: 'internal', label: 'Internal', description: 'Staff only' },
+              ].map(option => {
+                const selected = visibility === option.id;
+                return <button key={option.id} type="button" onClick={() => { setVisibility(option.id); if (option.id === 'public') setIsRequirement(false); }} aria-pressed={selected} style={{ minWidth: 0, border: 0, borderRight: option.id === 'public' ? '1px solid #CBD5E1' : 0, background: selected ? '#EAF3FF' : '#fff', color: selected ? '#0A6ED1' : '#475569', padding: '9px 8px', cursor: 'pointer', textAlign: 'left' }}><strong style={{ display: 'block', fontSize: 12 }}>{option.label}</strong><span style={{ display: 'block', marginTop: 2, color: selected ? '#315EA8' : '#94A3B8', fontSize: 10 }}>{option.description}</span></button>;
+              })}
             </div>
           </div>
           <input
@@ -1351,6 +1376,11 @@ function CreatePostModal({ onClose, onSubmit }) {
               </div>
             )}
           </div>
+
+          {visibility === 'internal' && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 16, padding: 11, border: `1px solid ${isRequirement ? '#FACC15' : '#CBD5E1'}`, borderRadius: 7, background: isRequirement ? '#FEFCE8' : '#F8FAFC', cursor: 'pointer' }}>
+            <input type="checkbox" checked={isRequirement} onChange={event => setIsRequirement(event.target.checked)} style={{ marginTop: 2 }} />
+            <span><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>Create as a requirement</strong><span style={{ display: 'block', marginTop: 3, color: '#64748B', fontSize: 11 }}>Adds the white status indicator and creates a connected Task Board record.</span></span>
+          </label>}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1.5px solid #E2E8F0', borderRadius: 10, background: '#fff', color: '#64748B', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
@@ -4176,8 +4206,8 @@ function TrainersPanel() {
 
 
 function MeetingsPanel({ currentUser }) {
-  const { meetings, users, openScheduleMeeting, addMeeting } = useApp();
-  return <MeetingsWorkspace currentUser={currentUser} meetings={meetings} users={users} addMeeting={addMeeting} onPlanMeeting={() => openScheduleMeeting(null)} />;
+  const { meetings, users, chats, openScheduleMeeting, addMeeting, addMeetingParticipants, deleteMeeting } = useApp();
+  return <MeetingsWorkspace currentUser={currentUser} meetings={meetings} users={users} chats={chats} addMeeting={addMeeting} addMeetingParticipants={addMeetingParticipants} deleteMeeting={deleteMeeting} onPlanMeeting={() => openScheduleMeeting(null)} />;
 }
 
 function HistoryPanel({ currentUser, onNavigateToChat }) {
@@ -5016,14 +5046,51 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
   const [tab, setTab] = useState('dashboard');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [showCreateEmp, setShowCreateEmp] = useState(null); // null or userId for editing
-  const [empForm, setEmpForm] = useState({ name: '', email: '' });
+  const [empForm, setEmpForm] = useState({ name: '', email: '', teamId: '' });
   const [empPerms, setEmpPerms] = useState([]);
   const [editingPermsFor, setEditingPermsFor] = useState(null);
   const [editPerms, setEditPerms] = useState([]);
   const [editPassword, setEditPassword] = useState('');
   const [editName, setEditName] = useState('');
+  const [editTeamId, setEditTeamId] = useState('');
   const [savingEmployee, setSavingEmployee] = useState(false);
   const [employeeError, setEmployeeError] = useState('');
+  const [teams, setTeams] = useState([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [teamError, setTeamError] = useState('');
+  const [teamBusy, setTeamBusy] = useState(false);
+
+  const loadTeams = useCallback(async () => {
+    const response = await fetch('/api/ssr/teams', { cache: 'no-store' });
+    const data = await response.json().catch(() => []);
+    if (response.ok) setTeams(Array.isArray(data) ? data : []);
+  }, []);
+
+  useEffect(() => { loadTeams(); }, [loadTeams]);
+
+  const createTeam = async () => {
+    if (!newTeamName.trim()) return;
+    setTeamBusy(true); setTeamError('');
+    const response = await fetch('/api/ssr/teams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorId: currentUser.id, name: newTeamName }) });
+    const data = await response.json().catch(() => ({}));
+    setTeamBusy(false);
+    if (!response.ok) { setTeamError(data.error || 'Could not create team'); return; }
+    setNewTeamName('');
+    setTeams(list => [...list, data]);
+  };
+
+  const deleteTeam = async team => {
+    if (!window.confirm(`Delete ${team.name}? Employee accounts will remain, but their team assignment will be cleared.`)) return;
+    setTeamBusy(true); setTeamError('');
+    const response = await fetch(`/api/ssr/teams?id=${encodeURIComponent(team.id)}&actorId=${encodeURIComponent(currentUser.id)}`, { method: 'DELETE' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) { setTeamError(data.error || 'Could not delete team'); setTeamBusy(false); return; }
+    const affected = Object.values(users).filter(user => user.teamId === team.id);
+    await Promise.all(affected.map(user => updateEmployeeProfile(user.id, { teamId: null })));
+    setTeams(list => list.filter(item => item.id !== team.id));
+    setEmpForm(form => form.teamId === team.id ? { ...form, teamId: '' } : form);
+    setTeamBusy(false);
+  };
 
   if (currentUser.role !== 'Admin' && currentUser.role !== 'Super Admin') return null;
 
@@ -5067,6 +5134,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
             {u.restricted && <span style={{ background: '#FEF9C3', color: '#92400E', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>Restricted</span>}
           </div>
           <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{u.email}</div>
+          {u.teamId && <div style={{ marginTop: 4, fontSize: 11, color: '#0A6ED1', fontWeight: 700 }}>{teams.find(team => team.id === u.teamId)?.name || 'Assigned team'}</div>}
           {u.permissions?.length > 0 && (
             <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {u.permissions.map(p => <span key={p} style={{ background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>{PERMS.find(x => x.id === p)?.label || p}</span>)}
@@ -5204,8 +5272,16 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
       {/* Employees tab */}
       {tab === 'employees' && (
         <div>
+          <div style={{ marginBottom: 18, border: '1px solid #CBD5E1', borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}><strong style={{ color: '#0F172A', fontSize: 14 }}>Employee Teams</strong><p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 11 }}>Create or remove team categories without changing account permissions.</p></div>
+            <div style={{ padding: 14 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}><input value={newTeamName} onChange={event => setNewTeamName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); createTeam(); } }} placeholder="New team name" maxLength={60} style={{ flex: 1, minWidth: 0, border: '1px solid #CBD5E1', borderRadius: 6, padding: '8px 10px', fontSize: 12, outline: 'none' }} /><button type="button" disabled={teamBusy || !newTeamName.trim()} onClick={createTeam} style={{ border: 'none', borderRadius: 6, background: '#0A6ED1', color: '#fff', padding: '8px 12px', fontSize: 11, fontWeight: 800, cursor: teamBusy ? 'wait' : 'pointer' }}>Add team</button></div>
+              {teamError && <p style={{ margin: '0 0 10px', color: '#B91C1C', fontSize: 11 }}>{teamError}</p>}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{teams.map(team => <span key={team.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid #CBD5E1', borderRadius: 6, padding: '6px 7px 6px 9px', color: '#334155', fontSize: 11, fontWeight: 700 }}><span>{team.name}</span><button type="button" disabled={teamBusy} onClick={() => deleteTeam(team)} aria-label={`Delete ${team.name}`} title={`Delete ${team.name}`} style={{ width: 21, height: 21, border: 'none', borderRadius: '50%', background: '#FEF2F2', color: '#DC2626', cursor: teamBusy ? 'wait' : 'pointer', lineHeight: 1 }}>x</button></span>)}</div>
+            </div>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-            <button onClick={() => { setShowCreateEmp(true); setEmpForm({ name: '', email: '' }); setEmpPerms([]); setEmployeeError(''); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => { setShowCreateEmp(true); setEmpForm({ name: '', email: '', teamId: '' }); setEmpPerms([]); setEmployeeError(''); }} style={{ background: '#0A6ED1', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Create Employee ID
             </button>
@@ -5215,7 +5291,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
           {showCreateEmp && (
             <div style={{ background: '#F8FAFC', borderRadius: 12, border: '1px solid #E8ECF0', padding: 20, marginBottom: 20 }}>
               <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0F172A' }}>New Employee Account</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Full Name *</label>
                   <input value={empForm.name} onChange={e => setEmpForm(f => ({ ...f, name: e.target.value }))} placeholder="Employee name" style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
@@ -5227,6 +5303,10 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Password *</label>
                   <input type="text" value={empForm.password || ''} onChange={e => setEmpForm(f => ({ ...f, password: e.target.value }))} placeholder="Password" style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Team *</label>
+                  <select value={empForm.teamId || ''} onChange={event => setEmpForm(form => ({ ...form, teamId: event.target.value }))} style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff' }}><option value="">Select team</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
                 </div>
               </div>
               <div style={{ marginBottom: 16 }}>
@@ -5243,7 +5323,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
               </div>
               {employeeError && <p style={{ margin: '0 0 12px', padding: '9px 11px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>{employeeError}</p>}
               <div style={{ display: 'flex', gap: 10 }}>
-                <button disabled={savingEmployee} onClick={async () => { if (!empForm.name?.trim() || !empForm.email?.trim()) { setEmployeeError('Name and email are required'); return; } setSavingEmployee(true); setEmployeeError(''); const result = await addEmployee({ ...empForm, permissions: empPerms }); setSavingEmployee(false); if (!result.success) { setEmployeeError(result.error); return; } setShowCreateEmp(false); }} style={{ padding: '9px 20px', background: savingEmployee ? '#93C5FD' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: savingEmployee ? 'wait' : 'pointer' }}>{savingEmployee ? 'Saving...' : 'Create Account'}</button>
+                <button disabled={savingEmployee} onClick={async () => { if (!empForm.name?.trim() || !empForm.email?.trim() || !empForm.teamId) { setEmployeeError('Name, email, and team are required'); return; } setSavingEmployee(true); setEmployeeError(''); const result = await addEmployee({ ...empForm, permissions: empPerms }); setSavingEmployee(false); if (!result.success) { setEmployeeError(result.error); return; } setShowCreateEmp(false); }} style={{ padding: '9px 20px', background: savingEmployee ? '#93C5FD' : '#0A6ED1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: savingEmployee ? 'wait' : 'pointer' }}>{savingEmployee ? 'Saving...' : 'Create Account'}</button>
                 <button disabled={savingEmployee} onClick={() => setShowCreateEmp(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: savingEmployee ? 'default' : 'pointer' }}>Cancel</button>
               </div>
             </div>
@@ -5265,13 +5345,13 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                 <div key={u.id}>
                   <UserRow u={u} actions={<>
                     {onViewEmployeeChats && btnSm('View Chats', () => onViewEmployeeChats(u), '#0A6ED1', '#EFF6FF')}
-                    <button onClick={() => { setEditingPermsFor(isEditingThis ? null : u.id); setEditPerms(u.permissions || []); setEditPassword(u.password || ''); setEditName(u.name || ''); }} style={{ padding: '6px 12px', background: isEditingThis ? '#EFF6FF' : '#F1F5F9', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, color: isEditingThis ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>Edit Access</button>
+                    <button onClick={() => { setEditingPermsFor(isEditingThis ? null : u.id); setEditPerms(u.permissions || []); setEditPassword(u.password || ''); setEditName(u.name || ''); setEditTeamId(u.teamId || ''); }} style={{ padding: '6px 12px', background: isEditingThis ? '#EFF6FF' : '#F1F5F9', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, color: isEditingThis ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>Edit Access</button>
                     {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
                     {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
                   </>} />
                   {isEditingThis && (
                     <div style={{ padding: '16px 20px 16px 72px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 20, marginBottom: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 20, marginBottom: 16 }}>
                         <div>
                           <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Full Name</label>
                           <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, outline: 'none' }} />
@@ -5279,6 +5359,10 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                         <div>
                           <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Password</label>
                           <input type="text" value={editPassword} onChange={e => setEditPassword(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Team</label>
+                          <select value={editTeamId} onChange={event => setEditTeamId(event.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, outline: 'none', background: '#fff' }}><option value="">No team</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
                         </div>
                         <div>
                           <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Permissions</label>
@@ -5293,7 +5377,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => { updateEmployeeProfile(u.id, { permissions: editPerms, password: editPassword, name: editName }); setEditingPermsFor(null); }} style={{ padding: '7px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save Changes</button>
+                        <button onClick={() => { updateEmployeeProfile(u.id, { permissions: editPerms, password: editPassword, name: editName, teamId: editTeamId || null }); setEditingPermsFor(null); }} style={{ padding: '7px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save Changes</button>
                         <button onClick={() => setEditingPermsFor(null)} style={{ padding: '7px 16px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                       </div>
                     </div>
@@ -5717,17 +5801,33 @@ function AppShellSkeleton() {
 }
 
 function ScheduleMeetingModal() {
-  const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, sendChatMessage, currentUser, users } = useApp();
+  const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, currentUser, users, chats } = useApp();
   const [meetingForm, setMeetingForm] = useState({
     title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour',
-    recurrence: 'none', weekdays: [], monthlyDates: ''
+    recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: []
   });
+  const [inviteSearch, setInviteSearch] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduledMeeting, setScheduledMeeting] = useState(null);
   useBackHandler(showScheduleMeeting, () => {
     setScheduledMeeting(null);
     closeScheduleMeeting();
   });
+
+  const availableGroups = useMemo(() => (chats || [])
+    .filter(chat => chat.type === 'group' && (isAdmin(currentUser) || chat.participants?.includes(currentUser?.id)))
+    .sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))), [chats, currentUser]);
+  const availablePeople = useMemo(() => Object.values(users || {})
+    .filter(user => user.id !== currentUser?.id && !user.restricted)
+    .filter(user => `${user.name || ''} ${user.role || ''}`.toLowerCase().includes(inviteSearch.trim().toLowerCase()))
+    .sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))), [currentUser?.id, inviteSearch, users]);
+
+  useEffect(() => {
+    if (!showScheduleMeeting) return;
+    if (activeChatForMeeting?.type === 'group') {
+      setMeetingForm(previous => ({ ...previous, audienceType: 'group', groupId: activeChatForMeeting.id, participantIds: [] }));
+    }
+  }, [activeChatForMeeting, showScheduleMeeting]);
 
   if (!showScheduleMeeting) return null;
 
@@ -5741,14 +5841,19 @@ function ScheduleMeetingModal() {
       return;
     }
 
-    const isGeneralMeeting = !activeChatForMeeting?.id;
-    const generalParticipants = isGeneralMeeting && isAdmin(currentUser)
-      ? Object.values(users).map(user => user.id).filter(id => id && id !== currentUser.id)
-      : [];
+    if (meetingForm.audienceType === 'group' && !meetingForm.groupId) {
+      alert('Please select a group.');
+      return;
+    }
+    if (meetingForm.audienceType === 'individual' && meetingForm.participantIds.length === 0) {
+      alert('Please select at least one person.');
+      return;
+    }
+    const selectedGroup = availableGroups.find(group => group.id === meetingForm.groupId);
     setIsScheduling(true);
     const result = await addMeeting({
       title: meetingForm.title,
-      module: activeChatForMeeting?.name || 'General',
+      module: selectedGroup?.name || 'General',
       hostId: currentUser.id,
       date: meetingForm.startDate,
       endDate: meetingForm.endDate,
@@ -5759,8 +5864,8 @@ function ScheduleMeetingModal() {
       recurrence: meetingForm.recurrence,
       weekdays: meetingForm.weekdays,
       monthlyDates: meetingForm.monthlyDates,
-      chatId: activeChatForMeeting?.id || null,
-      participants: activeChatForMeeting?.participants || generalParticipants
+      chatId: meetingForm.audienceType === 'group' ? meetingForm.groupId : null,
+      participants: meetingForm.audienceType === 'individual' ? meetingForm.participantIds : [],
     });
     setIsScheduling(false);
     if (!result?.success) {
@@ -5768,20 +5873,11 @@ function ScheduleMeetingModal() {
       return;
     }
     setScheduledMeeting(result.meeting);
-
-    // Send a system message in the chat
-    let recurrenceMsg = '';
-    if (meetingForm.recurrence === 'daily') recurrenceMsg = '(Daily)';
-    else if (meetingForm.recurrence === 'weekly') recurrenceMsg = `(Weekly on ${meetingForm.weekdays.join(', ')})`;
-    else if (meetingForm.recurrence === 'monthly') recurrenceMsg = `(Monthly on dates: ${meetingForm.monthlyDates})`;
-
-    if (activeChatForMeeting?.id) {
-      await sendChatMessage(activeChatForMeeting.id, `**Meeting Scheduled: ${meetingForm.title}** ${recurrenceMsg}\n${meetingForm.startDate} ${meetingForm.time}-${meetingForm.endTime}\n[Join SJ Meeting](${result.meeting.link})\nMeeting ID: ${result.meeting.meetingCode}\nPassword: ${result.meeting.joinPassword}`, null);
-    }
   };
 
   const finishScheduling = () => {
-    setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '' });
+    setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: [] });
+    setInviteSearch('');
     setScheduledMeeting(null);
     closeScheduleMeeting();
   };
@@ -5804,11 +5900,20 @@ function ScheduleMeetingModal() {
     }));
   };
 
+  const toggleParticipant = userId => {
+    setMeetingForm(previous => ({
+      ...previous,
+      participantIds: previous.participantIds.includes(userId)
+        ? previous.participantIds.filter(id => id !== userId)
+        : [...previous.participantIds, userId],
+    }));
+  };
+
   const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+      <div style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 620, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Schedule Meeting</h3>
           <button onClick={finishScheduling} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -5838,6 +5943,27 @@ function ScheduleMeetingModal() {
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Title</label>
             <input type="text" value={meetingForm.title} onChange={e => setMeetingForm({...meetingForm, title: e.target.value})} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 7 }}>Invite</label>
+            <div role="group" aria-label="Meeting audience" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden', marginBottom: 10 }}>
+              {[['group', 'Group'], ['individual', 'Individuals']].map(([id, label]) => <button key={id} type="button" aria-pressed={meetingForm.audienceType === id} onClick={() => setMeetingForm(previous => ({ ...previous, audienceType: id, groupId: id === 'group' ? previous.groupId : '', participantIds: id === 'individual' ? previous.participantIds : [] }))} style={{ border: 0, borderRight: id === 'group' ? '1px solid #CBD5E1' : 0, background: meetingForm.audienceType === id ? '#EAF3FF' : '#fff', color: meetingForm.audienceType === id ? '#0A6ED1' : '#475569', padding: '9px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{label}</button>)}
+            </div>
+            {meetingForm.audienceType === 'group' ? (
+              <select aria-label="Select meeting group" value={meetingForm.groupId} onChange={event => setMeetingForm(previous => ({ ...previous, groupId: event.target.value }))} style={{ width: '100%', minHeight: 42, padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 7, background: '#fff', color: '#334155', fontSize: 13 }}>
+                <option value="">Select a group</option>
+                {availableGroups.map(group => <option key={group.id} value={group.id}>{group.name || 'Unnamed group'} ({group.participants?.length || 0} members)</option>)}
+              </select>
+            ) : (
+              <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>
+                <input aria-label="Search people" value={inviteSearch} onChange={event => setInviteSearch(event.target.value)} placeholder="Search trainers, users, employees, or admins" style={{ width: '100%', boxSizing: 'border-box', border: 0, borderBottom: '1px solid #E2E8F0', padding: '10px 12px', fontSize: 12, outline: 'none' }} />
+                <div style={{ maxHeight: 170, overflowY: 'auto', padding: 6 }}>
+                  {availablePeople.map(user => <label key={user.id} style={{ minHeight: 38, display: 'flex', alignItems: 'center', gap: 9, padding: '6px 7px', borderRadius: 5, cursor: 'pointer' }}><input type="checkbox" checked={meetingForm.participantIds.includes(user.id)} onChange={() => toggleParticipant(user.id)} /><span style={{ minWidth: 0 }}><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>{user.name}</strong><span style={{ color: '#64748B', fontSize: 10 }}>{user.role}</span></span></label>)}
+                  {availablePeople.length === 0 && <p style={{ margin: 0, padding: 12, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>No accounts found</p>}
+                </div>
+                <div style={{ borderTop: '1px solid #E2E8F0', padding: '7px 12px', color: '#315EA8', background: '#F8FAFC', fontSize: 10, fontWeight: 800 }}>{meetingForm.participantIds.length} selected</div>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ flex: 1 }}>
@@ -5904,7 +6030,7 @@ function ScheduleMeetingModal() {
 
         </div>
         <div style={{ padding: '20px', borderTop: '1px solid #F1F5F9' }}>
-          <button onClick={handleScheduleMeeting} disabled={isScheduling} style={{ width: '100%', background: isScheduling ? '#94A3B8' : '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: isScheduling ? 'wait' : 'pointer' }}>{isScheduling ? 'Scheduling...' : activeChatForMeeting?.id ? 'Schedule & Notify Group' : 'Schedule Meeting'}</button>
+          <button onClick={handleScheduleMeeting} disabled={isScheduling} style={{ width: '100%', background: isScheduling ? '#94A3B8' : '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: isScheduling ? 'wait' : 'pointer' }}>{isScheduling ? 'Scheduling...' : meetingForm.audienceType === 'group' ? 'Schedule & notify group' : meetingForm.participantIds.length ? `Schedule & notify ${meetingForm.participantIds.length} people` : 'Schedule & notify people'}</button>
         </div>
         </>)}
       </div>
@@ -5919,6 +6045,8 @@ export default function HomePage() {
   const isMobile = width < 900;
   const isDesktop = width >= 1100;
   const unreadChatCount = (chats || []).reduce((total, chat) => total + Number(chat.unreadBy?.[currentUser?.id] || 0), 0);
+  const canViewInternalFeed = Boolean(currentUser && ['Employee', 'Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.restricted);
+  const availableFeedTabs = canViewInternalFeed ? ['All', INTERNAL_FEED_TAB, ...FEED_TABS.slice(1)] : FEED_TABS;
 
   const [activeNav, setActiveNav] = useState('feed');
   const [feedTab, setFeedTab] = useState('All');
@@ -5944,6 +6072,20 @@ export default function HomePage() {
     window.dispatchEvent(new Event('ssr:app-navigation'));
   }, []);
 
+  useEffect(() => {
+    const openTaskBoard = event => {
+      const taskId = event.detail?.taskId;
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set('section', 'task-board');
+      if (taskId) nextUrl.searchParams.set('taskId', taskId);
+      window.history.replaceState(window.history.state, '', nextUrl);
+      setActiveNav('task-board');
+      navigateMobile('task-board');
+    };
+    window.addEventListener('sj-open-task-board', openTaskBoard);
+    return () => window.removeEventListener('sj-open-task-board', openTaskBoard);
+  }, [navigateMobile]);
+
   useBackHandler(isMobile && mobileHistory.length > 1, () => {
     setMobileHistory(previous => previous.length > 1 ? previous.slice(0, -1) : previous);
   });
@@ -5953,6 +6095,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!uploadTask) setUploadPreviewOpen(false);
   }, [uploadTask]);
+
+  useEffect(() => {
+    if (!canViewInternalFeed && feedTab === INTERNAL_FEED_TAB) setFeedTab('All');
+  }, [canViewInternalFeed, feedTab]);
 
   useEffect(() => {
     setMounted(true);
@@ -5997,15 +6143,17 @@ export default function HomePage() {
     const section = params.get('section');
     const courseId = params.get('courseId');
     const notificationAction = params.get('notificationAction');
+    const requestedFeed = params.get('feed');
     if (!currentUser) return;
     if (chatId) {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       navigateMobile('chat');
-    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board'].includes(section)) {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
+      if (section === 'feed' && requestedFeed === 'internal' && canViewInternalFeed) setFeedTab(INTERNAL_FEED_TAB);
       if (notificationAction === 'like' && section === 'feed' && params.get('postId')) {
         likePost(params.get('postId'));
       }
@@ -6014,7 +6162,7 @@ export default function HomePage() {
       params.delete('notificationAction');
       window.history.replaceState({ ...(window.history.state || {}) }, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
     }
-  }, [currentUser, likePost, navigateMobile, setTargetChat]);
+  }, [canViewInternalFeed, currentUser, likePost, navigateMobile, setTargetChat]);
 
   if (!mounted || !currentUser) {
     return (
@@ -6028,6 +6176,9 @@ export default function HomePage() {
   if (initialDataLoading) return <AppShellSkeleton />;
 
   const filteredPosts = [...posts].filter(p => {
+    const isInternalPost = p.visibility === 'internal';
+    if (feedTab === INTERNAL_FEED_TAB) return canViewInternalFeed && isInternalPost;
+    if (isInternalPost) return false;
     if (feedTab === 'All') return true;
     return p.category === feedTab;
   }).sort((a, b) => {
@@ -6042,7 +6193,7 @@ export default function HomePage() {
 
   const handleNavClick = (id) => {
     setActiveNav(id);
-    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard'].includes(id)) {
+    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6064,7 +6215,7 @@ export default function HomePage() {
       navigateMobile('chat');
       return;
     }
-    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard'].includes(section)) {
+    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board'].includes(section)) {
       setNotificationCourseId(destination.searchParams.get('courseId'));
       if (notificationAction === 'like' && section === 'feed' && destination.searchParams.get('postId')) {
         likePost(destination.searchParams.get('postId'));
@@ -6240,7 +6391,7 @@ export default function HomePage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Home Feed</h2>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      {isAdmin(currentUser) && !currentUser?.isImpersonating && (
+                      {hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
                         <button onClick={() => setShowCreatePost(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
                           <span style={{ fontSize: 16 }}>＋</span> Create Post
                         </button>
@@ -6250,7 +6401,7 @@ export default function HomePage() {
 
                   {/* Filter tabs */}
                   <div style={{ display: 'flex', gap: 0, borderBottom: '1.5px solid #F1F5F9', marginBottom: 16 }}>
-                    {FEED_TABS.map(tab => (
+                    {availableFeedTabs.map(tab => (
                       <button key={tab} onClick={() => setFeedTab(tab)} style={{ padding: '10px 16px', borderWidth: 0, background: 'transparent', borderBottom: `2.5px solid ${feedTab === tab ? '#0A6ED1' : 'transparent'}`, color: feedTab === tab ? '#0A6ED1' : '#64748B', fontWeight: feedTab === tab ? 700 : 500, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', marginBottom: -1.5 }}>
                         {tab}
                       </button>
@@ -6339,6 +6490,12 @@ export default function HomePage() {
                 </div>
               )}
 
+              {activeNav === 'task-board' && (
+                <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+                  <TaskBoard />
+                </div>
+              )}
+
               {activeNav === 'trainers' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <TrainersPanel />
@@ -6394,7 +6551,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/ssrlogo.jpeg" alt="Company logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard' })[mobilePage] || mobilePage}
+            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard', 'task-board': 'Task Board' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -6454,14 +6611,14 @@ export default function HomePage() {
         <div style={{ padding: '12px 12px 0' }}>
           {/* Feed filter tabs */}
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
-            {FEED_TABS.map(tab => (
+            {availableFeedTabs.map(tab => (
               <button key={tab} onClick={() => setFeedTab(tab)} style={{ padding: '7px 14px', border: `1.5px solid ${feedTab === tab ? '#0A6ED1' : '#E2E8F0'}`, background: feedTab === tab ? '#0A6ED1' : '#fff', color: feedTab === tab ? '#fff' : '#64748B', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: feedTab === tab ? 700 : 500, whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {tab}
               </button>
             ))}
           </div>
 
-          {isAdmin(currentUser) && !currentUser?.isImpersonating && (
+          {hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
             <button onClick={() => setShowCreatePost(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12, boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
               ＋ Create Post
             </button>
@@ -6547,6 +6704,12 @@ export default function HomePage() {
         </div>
       )}
 
+      {mobilePage === 'task-board' && (
+        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <TaskBoard />
+        </div>
+      )}
+
       {mobilePage === 'trainers' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <TrainersPanel />
@@ -6562,7 +6725,10 @@ export default function HomePage() {
           { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
           { id: 'history', icon: NavIcons.history, label: 'History' },
-          { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },
+          ...(['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted ? [
+            { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },
+            { id: 'task-board', icon: NavIcons['task-board'], label: 'Tasks' },
+          ] : []),
         ].map(item => {
           const active = mobilePage === item.id;
           return (

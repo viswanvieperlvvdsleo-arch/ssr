@@ -58,12 +58,14 @@ export function buildUserData(data = {}) {
     reviews: typeof data.reviews === 'number' ? data.reviews : null,
     permissions: Array.isArray(data.permissions) ? data.permissions : [],
     restricted: Boolean(data.restricted),
+    teamId: data.teamId || null,
   };
 }
 
 export function buildPostData(data = {}) {
   const title = data.title || extractTitle(data.content);
   const content = stripMarkdownTitle(data.content || '');
+  const visibility = data.visibility === 'internal' ? 'internal' : 'public';
 
   return {
     authorId: data.authorId,
@@ -84,6 +86,9 @@ export function buildPostData(data = {}) {
     commentsList: Array.isArray(data.commentsList) ? data.commentsList : [],
     likedBy: Array.isArray(data.likedBy) ? data.likedBy : [],
     savedBy: Array.isArray(data.savedBy) ? data.savedBy : [],
+    visibility,
+    isRequirement: visibility === 'internal' && Boolean(data.isRequirement),
+    requirementStatus: visibility === 'internal' && data.isRequirement ? (data.requirementStatus || 'open') : 'none',
   };
 }
 

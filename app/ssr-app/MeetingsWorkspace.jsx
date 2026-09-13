@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './meetings.module.css';
 
@@ -15,8 +15,13 @@ const Icons = {
   micOff: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 2 20 20M9 9v1a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M17 16.95A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 10.59 6M12 19v3M8 22h8"/></svg>,
   videoOff: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 2 20 20M10.66 5H14a2 2 0 0 1 2 2v3l5-3v10l-3.1-1.86M14 19H5a2 2 0 0 1-2-2V7c0-.55.22-1.05.59-1.41"/></svg>,
   copy: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  plus: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>,
+  trash: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6"/></svg>,
   close: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>,
+  chart: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>,
 };
+
+const REPORT_WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function parseMeetingTime(meeting) {
   if (!meeting?.date) return null;
@@ -171,7 +176,115 @@ function JoinMeetingDialog({ onClose, onJoin }) {
   );
 }
 
-export default function MeetingsWorkspace({ currentUser, meetings = [], users = {}, onPlanMeeting, addMeeting }) {
+function TrainingReportDialog({ meeting, existingReport, users, currentUser, onClose, onSaved, onDeleted }) {
+  const availablePeople = useMemo(() => {
+    const ids = [...new Set([meeting.hostId, ...(meeting.participants || [])])];
+    return ids.map(id => users[id]).filter(user => user && !user.restricted).sort((left, right) => {
+      if (left.role === 'Trainer' && right.role !== 'Trainer') return -1;
+      if (right.role === 'Trainer' && left.role !== 'Trainer') return 1;
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+  }, [meeting.hostId, meeting.participants, users]);
+  const availableIds = useMemo(() => new Set(availablePeople.map(user => user.id)), [availablePeople]);
+  const [totalDays, setTotalDays] = useState(existingReport?.totalDays || 1);
+  const [weekdays, setWeekdays] = useState(existingReport?.weekdays?.length ? existingReport.weekdays : meeting.weekdays?.length ? meeting.weekdays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+  const [trainerId, setTrainerId] = useState(existingReport?.trainerId && availableIds.has(existingReport.trainerId) ? existingReport.trainerId : meeting.hostId);
+  const [memberIds, setMemberIds] = useState(() => {
+    const existing = existingReport?.memberIds?.filter(id => availableIds.has(id)) || [];
+    return existing.length ? existing : availablePeople.map(user => user.id).filter(id => id !== (existingReport?.trainerId || meeting.hostId));
+  });
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const memberCandidates = availablePeople.filter(user => user.id !== trainerId && `${user.name || ''} ${user.role || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
+
+  const toggleWeekday = day => setWeekdays(previous => previous.includes(day) ? previous.filter(value => value !== day) : [...previous, day]);
+  const toggleMember = userId => setMemberIds(previous => previous.includes(userId) ? previous.filter(id => id !== userId) : [...previous, userId]);
+  const changeTrainer = value => {
+    setTrainerId(value);
+    if (value) setMemberIds(previous => previous.filter(id => id !== value));
+  };
+
+  const save = async event => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/ssr/training-reports', {
+        method: existingReport ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          meetingId: meeting.id,
+          totalDays: Number(totalDays),
+          weekdays,
+          trainerId: trainerId || null,
+          memberIds,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not save training report.');
+      window.dispatchEvent(new CustomEvent('sj-training-report-updated'));
+      onSaved(data);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!existingReport || !window.confirm(`Remove ${meeting.title} from the training dashboard? Attendance meeting records will remain available if it is connected again.`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/ssr/training-reports?meetingId=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not delete training report.');
+      window.dispatchEvent(new CustomEvent('sj-training-report-updated'));
+      onDeleted(meeting.id);
+    } catch (deleteError) {
+      setError(deleteError.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={styles.reportOverlay} role="dialog" aria-modal="true" aria-label={`${existingReport ? 'Edit' : 'Connect'} training report`}>
+      <form className={styles.reportDialog} onSubmit={save}>
+        <div className={styles.reportDialogHeader}>
+          <div><span>Training dashboard</span><h2>{meeting.title}</h2></div>
+          <button type="button" onClick={onClose} aria-label="Close" title="Close">{Icons.close}</button>
+        </div>
+        <div className={styles.reportDialogBody}>
+          <div className={styles.reportFields}>
+            <label><span>Total training days</span><input type="number" min="1" max="1000" value={totalDays} onChange={event => setTotalDays(event.target.value)} required /></label>
+            <label><span>Trainer</span><select value={trainerId} onChange={event => changeTrainer(event.target.value)}><option value="">No trainer selected</option>{availablePeople.map(user => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}</select></label>
+          </div>
+          <fieldset className={styles.weekdayFieldset}>
+            <legend>Training weekdays</legend>
+            <div>{REPORT_WEEKDAYS.map(day => <label key={day}><input type="checkbox" checked={weekdays.includes(day)} onChange={() => toggleWeekday(day)} /><span>{day}</span></label>)}</div>
+          </fieldset>
+          <div className={styles.reportMembers}>
+            <div className={styles.reportMembersHeading}><div><strong>Tracked attendees</strong><span>Only accounts already invited to this meeting are available.</span></div><span>{memberIds.length} selected</span></div>
+            <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search invited accounts" aria-label="Search invited accounts" />
+            <div className={styles.reportMemberList}>
+              {memberCandidates.map(user => <label key={user.id}><input type="checkbox" checked={memberIds.includes(user.id)} onChange={() => toggleMember(user.id)} /><span><strong>{user.name}</strong><small>{user.role}{user.id === meeting.hostId ? ' | Host' : ''}</small></span></label>)}
+              {memberCandidates.length === 0 && <p>No invited accounts match this search.</p>}
+            </div>
+          </div>
+          {error && <p className={styles.reportError}>{error}</p>}
+        </div>
+        <div className={styles.reportDialogFooter}>
+          {existingReport && <button type="button" className={styles.removeReportButton} onClick={remove} disabled={saving}>{Icons.trash} Delete report</button>}
+          <button type="submit" className={styles.saveReportButton} disabled={saving}>{saving ? 'Saving...' : existingReport ? 'Save report' : 'Connect to dashboard'}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default function MeetingsWorkspace({ currentUser, meetings = [], users = {}, onPlanMeeting, addMeeting, addMeetingParticipants, deleteMeeting }) {
   const router = useRouter();
   const [tab, setTab] = useState('upcoming');
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -181,16 +294,37 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const [startingMeeting, setStartingMeeting] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [meetingCredentials, setMeetingCredentials] = useState({});
+  const [memberMeetingId, setMemberMeetingId] = useState(null);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [meetingActionId, setMeetingActionId] = useState(null);
+  const [meetingActionError, setMeetingActionError] = useState('');
+  const [trainingReports, setTrainingReports] = useState({});
+  const [reportMeeting, setReportMeeting] = useState(null);
   const now = useMemo(() => new Date(), [meetings, tab]);
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : [];
   const canPlan = ['Admin', 'Super Admin'].includes(currentUser?.role) || (currentUser?.role === 'Employee' && (permissions.includes('all_access') || permissions.includes('arrange_meetings')));
+  const canUseTrainingReports = ['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted;
+
+  useEffect(() => {
+    if (!canUseTrainingReports || !currentUser?.id) return undefined;
+    let active = true;
+    const loadReports = () => fetch(`/api/ssr/training-reports?userId=${encodeURIComponent(currentUser.id)}`, { cache: 'no-store' })
+      .then(async response => response.ok ? response.json() : [])
+      .then(data => { if (active && Array.isArray(data)) setTrainingReports(Object.fromEntries(data.map(report => [report.meetingId, report]))); })
+      .catch(() => {});
+    loadReports();
+    const refresh = () => loadReports();
+    window.addEventListener('sj-training-report-updated', refresh);
+    return () => { active = false; window.removeEventListener('sj-training-report-updated', refresh); };
+  }, [canUseTrainingReports, currentUser?.id]);
 
   const visibleMeetings = useMemo(() => meetings.filter(meeting => {
-    if (['Admin', 'Super Admin'].includes(currentUser?.role)) return true;
+    if (['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted) return true;
     if (meeting.hostId === currentUser?.id) return true;
     if (meeting.participants?.includes(currentUser?.id)) return true;
     return !meeting.participants;
-  }), [currentUser?.id, currentUser?.role, meetings]);
+  }), [currentUser?.id, currentUser?.restricted, currentUser?.role, meetings]);
 
   const filteredMeetings = useMemo(() => visibleMeetings
     .filter(meeting => (tab === 'previous') === isPastMeeting(meeting, now))
@@ -216,7 +350,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   };
 
   const startInstantMeeting = async () => {
-    if (!addMeeting || startingMeeting) return;
+    if (!addMeeting || startingMeeting || !canPlan) return;
     const now = new Date();
     const end = new Date(now.getTime() + 60 * 60 * 1000);
     setStartingMeeting(true);
@@ -244,7 +378,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const toggleMeetingDetails = async meeting => {
     const isClosing = expandedMeetingId === meeting.id;
     setExpandedMeetingId(isClosing ? null : meeting.id);
-    if (isClosing || meetingCredentials[meeting.id] || (!['Admin', 'Super Admin'].includes(currentUser?.role) && meeting.hostId !== currentUser?.id)) return;
+    if (isClosing || meetingCredentials[meeting.id] || (!canPlan && meeting.hostId !== currentUser?.id)) return;
     try {
       const response = await fetch(`/api/ssr/meetings?id=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}&includeCredentials=true`, { cache: 'no-store' });
       const data = await response.json().catch(() => ({}));
@@ -278,16 +412,52 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
     } catch { setCopiedId(null); }
   };
 
+  const toggleMember = userId => {
+    setSelectedMemberIds(previous => previous.includes(userId) ? previous.filter(id => id !== userId) : [...previous, userId]);
+  };
+
+  const openMemberPicker = meeting => {
+    setExpandedMeetingId(meeting.id);
+    setMemberMeetingId(previous => previous === meeting.id ? null : meeting.id);
+    setSelectedMemberIds([]);
+    setMemberSearch('');
+    setMeetingActionError('');
+  };
+
+  const saveMembers = async meeting => {
+    if (!selectedMemberIds.length || !addMeetingParticipants) return;
+    setMeetingActionId(meeting.id);
+    setMeetingActionError('');
+    const result = await addMeetingParticipants(meeting.id, selectedMemberIds);
+    setMeetingActionId(null);
+    if (!result?.success) {
+      setMeetingActionError(result?.error || 'Could not add people.');
+      return;
+    }
+    setMemberMeetingId(null);
+    setSelectedMemberIds([]);
+  };
+
+  const removeMeeting = async meeting => {
+    if (!deleteMeeting || !window.confirm(`Delete ${meeting.title}? Invited people will be notified that it was cancelled.`)) return;
+    setMeetingActionId(meeting.id);
+    setMeetingActionError('');
+    const result = await deleteMeeting(meeting.id);
+    setMeetingActionId(null);
+    if (!result?.success) window.alert(result?.error || 'Could not delete meeting.');
+  };
+
   return (
     <div className={styles.workspace}>
       {showJoinDialog && <JoinMeetingDialog onClose={() => setShowJoinDialog(false)} onJoin={(code, joinPassword) => openInternalMeeting(code, joinPassword)} />}
+      {reportMeeting && <TrainingReportDialog meeting={reportMeeting} existingReport={trainingReports[reportMeeting.id]} users={users} currentUser={currentUser} onClose={() => setReportMeeting(null)} onSaved={report => { setTrainingReports(previous => ({ ...previous, [report.meetingId]: report })); setReportMeeting(null); }} onDeleted={meetingId => { setTrainingReports(previous => { const next = { ...previous }; delete next[meetingId]; return next; }); setReportMeeting(null); }} />}
 
       <aside className={styles.sidebar}>
         <Calendar month={month} selectedDate={selectedDate} onMonthChange={setMonth} onSelectDate={setSelectedDate} />
         <div className={styles.actionSection}>
           <h3>Meeting actions</h3>
           <div className={styles.actionGrid}>
-            <button type="button" onClick={startInstantMeeting} disabled={startingMeeting}>{Icons.video}<span>{startingMeeting ? 'Starting' : 'Start'}</span></button>
+            <button type="button" onClick={startInstantMeeting} disabled={startingMeeting || !canPlan} title={canPlan ? 'Start an instant meeting' : 'Only authorized staff can start meetings'}>{Icons.video}<span>{startingMeeting ? 'Starting' : 'Start'}</span></button>
             <button type="button" onClick={() => setShowJoinDialog(true)}>{Icons.join}<span>Join</span></button>
             <button type="button" onClick={onPlanMeeting} disabled={!canPlan} title={canPlan ? 'Plan a meeting' : 'Only authorized staff can plan meetings'}>{Icons.calendar}<span>Plan</span></button>
           </div>
@@ -315,7 +485,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
         </div>
 
         <div className={styles.mobileActions}>
-          <button type="button" onClick={startInstantMeeting} disabled={startingMeeting}>{Icons.video}<span>{startingMeeting ? 'Starting' : 'Start'}</span></button>
+          <button type="button" onClick={startInstantMeeting} disabled={startingMeeting || !canPlan}>{Icons.video}<span>{startingMeeting ? 'Starting' : 'Start'}</span></button>
           <button type="button" onClick={() => setShowJoinDialog(true)}>{Icons.join}<span>Join</span></button>
           <button type="button" onClick={onPlanMeeting} disabled={!canPlan}>{Icons.calendar}<span>Plan</span></button>
         </div>
@@ -332,6 +502,11 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
             {dateMeetings.map(meeting => {
               const host = users[meeting.hostId];
               const expanded = expandedMeetingId === meeting.id;
+              const canManage = meeting.hostId === currentUser?.id || canPlan;
+              const memberCandidates = Object.values(users)
+                .filter(user => user.id !== meeting.hostId && !user.restricted && !meeting.participants?.includes(user.id))
+                .filter(user => `${user.name || ''} ${user.role || ''}`.toLowerCase().includes(memberSearch.trim().toLowerCase()))
+                .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')));
               return (
                 <article key={meeting.id} className={styles.meetingCard}>
                   <div className={styles.meetingRow}>
@@ -345,6 +520,8 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                     </div>
                     <div className={styles.cardActions}>
                       {tab === 'upcoming' && <button type="button" className={styles.joinButton} onClick={() => openInternalMeeting(meeting.meetingCode)} disabled={!meeting.meetingCode}>Join</button>}
+                      {tab === 'upcoming' && canManage && <button type="button" className={styles.iconAction} onClick={() => openMemberPicker(meeting)} aria-label="Add people" title="Add people" disabled={meetingActionId === meeting.id}>{Icons.plus}</button>}
+                      {canManage && <button type="button" className={`${styles.iconAction} ${styles.deleteAction}`} onClick={() => removeMeeting(meeting)} aria-label="Delete meeting" title="Delete meeting" disabled={meetingActionId === meeting.id}>{Icons.trash}</button>}
                       <button type="button" className={`${styles.expandButton} ${expanded ? styles.expanded : ''}`} onClick={() => toggleMeetingDetails(meeting)} aria-expanded={expanded} aria-label={expanded ? 'Hide meeting details' : 'Show meeting details'} title={expanded ? 'Hide details' : 'Show details'}>{Icons.chevron}</button>
                     </div>
                   </div>
@@ -353,10 +530,21 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                       <div className={styles.linkDetail}><span>SJ meeting link</span><strong>{meeting.link || 'Legacy meeting - create a new internal room'}</strong></div>
                       <button type="button" onClick={() => copyMeetingLink(meeting)} disabled={!meeting.link} title="Copy meeting link">{Icons.copy}{copiedId === meeting.id ? 'Copied' : 'Copy link'}</button>
                       <div><span>Meeting ID</span><strong>{meeting.meetingCode ? meeting.meetingCode.replace(/(\d{3})(?=\d)/g, '$1 ') : 'Not generated'}</strong></div>
-                      <div><span>Password</span><strong>{meeting.hostId === currentUser?.id || ['Admin', 'Super Admin'].includes(currentUser?.role) ? meetingCredentials[meeting.id] || 'Loading...' : 'Provided by host'}</strong></div>
+                      <div><span>Password</span><strong>{meeting.hostId === currentUser?.id || canPlan ? meetingCredentials[meeting.id] || 'Loading...' : 'Provided by host'}</strong></div>
                       <div><span>Ends</span><strong>{meeting.endDate || meeting.date} at {meeting.endTime || 'Not set'}</strong></div>
                       <div><span>Participants</span><strong>{meeting.participants?.length || 0}</strong></div>
-                      {(meeting.hostId === currentUser?.id || ['Admin', 'Super Admin'].includes(currentUser?.role)) && <button type="button" onClick={() => copyInvitation(meeting)} disabled={!meeting.meetingCode} title="Copy full invitation">{Icons.copy}{copiedId === `invite-${meeting.id}` ? 'Copied' : 'Copy invitation'}</button>}
+                      {(meeting.hostId === currentUser?.id || canPlan) && <button type="button" onClick={() => copyInvitation(meeting)} disabled={!meeting.meetingCode} title="Copy full invitation">{Icons.copy}{copiedId === `invite-${meeting.id}` ? 'Copied' : 'Copy invitation'}</button>}
+                      {canUseTrainingReports && <button type="button" className={styles.dashboardReportButton} onClick={() => setReportMeeting(meeting)} title={trainingReports[meeting.id] ? 'Edit training report' : 'Connect meeting to training dashboard'}>{Icons.chart}{trainingReports[meeting.id] ? 'Edit dashboard report' : 'Connect to dashboard'}</button>}
+                      {memberMeetingId === meeting.id && <div className={styles.memberPicker}>
+                        <div className={styles.memberPickerHeader}><strong>Add people</strong><button type="button" onClick={() => setMemberMeetingId(null)} aria-label="Close member picker" title="Close">{Icons.close}</button></div>
+                        <input value={memberSearch} onChange={event => setMemberSearch(event.target.value)} aria-label="Search people to add" placeholder="Search accounts" />
+                        <div className={styles.memberList}>
+                          {memberCandidates.map(user => <label key={user.id}><input type="checkbox" checked={selectedMemberIds.includes(user.id)} onChange={() => toggleMember(user.id)} /><span><strong>{user.name}</strong><small>{user.role}</small></span></label>)}
+                          {memberCandidates.length === 0 && <p>No more accounts found</p>}
+                        </div>
+                        {meetingActionError && <p className={styles.actionError}>{meetingActionError}</p>}
+                        <button type="button" className={styles.addMembersButton} disabled={!selectedMemberIds.length || meetingActionId === meeting.id} onClick={() => saveMembers(meeting)}>{meetingActionId === meeting.id ? 'Adding...' : `Add & notify ${selectedMemberIds.length || ''}`}</button>
+                      </div>}
                     </div>
                   )}
                 </article>
