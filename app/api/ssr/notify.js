@@ -119,7 +119,7 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
     || data.bookingId
     || data.postId
     || data.courseId
-    || `ssr-${Date.now()}`;
+    || `sj-${Date.now()}`;
   const notificationData = Object.fromEntries(
     Object.entries({ ...data, url: url || '', notificationTag }).map(([key, value]) => [key, String(value ?? '')])
   );
@@ -151,15 +151,15 @@ export async function notifyUsers(userIds, { title, body, url, data = {} }) {
   try {
     const pushTokens = await prisma.appPushToken.findMany({
       where: { userId: { in: uniqueUserIds } },
-      select: { token: true },
+      select: { token: true, userId: true },
     });
     if (!pushTokens.length) return { sent: 0, skipped: 'no-device-tokens' };
 
     const accessToken = await getAccessToken(account);
     const notification = { title, body };
     const absoluteUrl = makeAbsoluteUrl(url);
-    const results = await Promise.all(pushTokens.map(async ({ token }) => {
-      const result = await sendToToken(accessToken, account.project_id, token, notification, notificationData, absoluteUrl);
+    const results = await Promise.all(pushTokens.map(async ({ token, userId }) => {
+      const result = await sendToToken(accessToken, account.project_id, token, notification, { ...notificationData, recipientUserId: userId }, absoluteUrl);
       if (!result.response.ok && isInvalidToken(result.response, result.result)) {
         await prisma.appPushToken.deleteMany({ where: { token } });
       }

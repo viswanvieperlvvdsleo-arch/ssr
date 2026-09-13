@@ -8,10 +8,15 @@ function isObjectId(value) {
   return /^[a-f\d]{24}$/i.test(String(value || ''));
 }
 
-async function getStaff(userId) {
+async function getActiveUser(userId) {
   if (!isObjectId(userId)) return null;
   const user = await prisma.appUser.findUnique({ where: { id: userId } });
-  return user && STAFF_ROLES.includes(user.role) && !user.restricted ? user : null;
+  return user && !user.restricted ? user : null;
+}
+
+async function getStaff(userId) {
+  const user = await getActiveUser(userId);
+  return user && STAFF_ROLES.includes(user.role) ? user : null;
 }
 
 function dateParts(value, timezone) {
@@ -172,11 +177,20 @@ async function validateReportInput(body) {
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const actor = await getStaff(searchParams.get('userId'));
-    if (!actor) return NextResponse.json({ error: 'Employee or admin access is required.' }, { status: 403 });
+    const actor = await getActiveUser(searchParams.get('userId'));
+    if (!actor) return NextResponse.json({ error: 'An active account is required.' }, { status: 403 });
     const meetingId = searchParams.get('meetingId');
+    const isStaff = STAFF_ROLES.includes(actor.role);
     const reports = await prisma.appTrainingReport.findMany({
-      where: meetingId ? { meetingId } : {},
+      where: {
+        ...(meetingId ? { meetingId } : {}),
+        ...(!isStaff ? {
+          OR: [
+            { trainerId: actor.id },
+            { memberIds: { has: actor.id } },
+          ],
+        } : {}),
+      },
       orderBy: { updatedAt: 'desc' },
     });
     const hydrated = await hydrateReports(reports);

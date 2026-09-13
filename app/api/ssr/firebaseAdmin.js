@@ -40,8 +40,8 @@ export async function sendPushToTokens(tokens, { title, body }, data = {}) {
       notification: {
         title: title || 'SJ INFO BUSINESS SOLUTIONS',
         body: body || '',
-        icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
-        badge: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
+        icon: '/logo/192.png',
+        badge: '/logo/192.png',
         requireInteraction: true,
       },
       fcmOptions: { link: makeAbsoluteUrl(data.url) },

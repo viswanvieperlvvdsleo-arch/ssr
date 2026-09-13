@@ -52,10 +52,37 @@ function EmployeeReport({ tasks, loading }) {
   </>;
 }
 
-function TrainingReport({ reports, loading, selectedId, onSelect }) {
-  const report = reports.find(item => item.id === selectedId) || reports[0];
+function TrainingReport({ reports, loading, selectedId, onSelect, canManage }) {
   if (loading) return <p className={styles.statusMessage}>Loading live attendance...</p>;
-  if (!report) return <div className={styles.emptyTraining}><strong>No training reports connected</strong><span>Open a meeting, expand its details, and choose Connect to dashboard.</span></div>;
+  if (!reports.length) return <div className={styles.emptyTraining}><strong>No training reports available</strong><span>{canManage ? 'Open a meeting, expand its details, and choose Connect to dashboard.' : 'Your allocated training reports will appear here.'}</span></div>;
+
+  if (!selectedId) {
+    return <div className={styles.trainingOverview}>
+      <div className={styles.overviewHeader}>
+        <div><h3>Training reports</h3><p>Select a training to view attendance and course progress.</p></div>
+        <span className={styles.liveStatus}><i /> {reports.length} training{reports.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className={styles.trainingCards}>
+        {reports.map(item => {
+          const completion = Number(item.completionPercentage || 0);
+          const dateRange = item.meeting.endDate && item.meeting.endDate !== item.meeting.date
+            ? `${displayDate(item.meeting.date)} - ${displayDate(item.meeting.endDate)}`
+            : displayDate(item.meeting.date);
+          return <button type="button" className={styles.trainingCard} key={item.id} onClick={() => onSelect(item.id)}>
+            <span className={styles.cardTopline}><b>{item.meeting.module || 'Training'}</b><i>{completion}%</i></span>
+            <strong>{item.meeting.title}</strong>
+            <span className={styles.cardSchedule}>{dateRange}</span>
+            <span className={styles.cardSchedule}>{item.weekdays.join(', ')} | {item.meeting.time}{item.meeting.endTime ? `-${item.meeting.endTime}` : ''}</span>
+            <span className={styles.cardProgress}><i style={{ width: `${completion}%` }} /></span>
+            <span className={styles.cardFooter}><span>{item.trainer?.name || 'Trainer not assigned'}</span><span>{item.members.length} attendee{item.members.length === 1 ? '' : 's'}</span></span>
+          </button>;
+        })}
+      </div>
+    </div>;
+  }
+
+  const report = reports.find(item => item.id === selectedId);
+  if (!report) return null;
 
   const progressPeople = [
     ...(report.trainer ? [{ ...report.trainer, type: 'Trainer' }] : []),
@@ -64,8 +91,10 @@ function TrainingReport({ reports, loading, selectedId, onSelect }) {
 
   return <>
     <div className={styles.reportToolbar}>
-      <label htmlFor="training-report-select">Training report</label>
-      <select id="training-report-select" value={report.id} onChange={event => onSelect(event.target.value)}>{reports.map(item => <option key={item.id} value={item.id}>{item.meeting.title}</option>)}</select>
+      <button type="button" className={styles.backButton} onClick={() => onSelect('')} aria-label="Back to all training reports" title="Back to all training reports">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg>
+      </button>
+      <div><span>All trainings</span><strong>{report.meeting.title}</strong></div>
       <span className={styles.liveStatus}><i /> Live attendance</span>
     </div>
     <div className={styles.reportHeading}>
@@ -112,6 +141,7 @@ export default function DashboardPanel() {
   const [taskLoading, setTaskLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(true);
   const hasStaffAccess = currentUser && ['Employee', 'Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.restricted;
+  const hasDashboardAccess = currentUser && !currentUser.restricted;
 
   const loadTasks = useCallback(async () => {
     if (!hasStaffAccess) return setTaskLoading(false);
@@ -121,15 +151,19 @@ export default function DashboardPanel() {
   }, [currentUser?.id, hasStaffAccess]);
 
   const loadReports = useCallback(async () => {
-    if (!hasStaffAccess) return setReportLoading(false);
+    if (!hasDashboardAccess) return setReportLoading(false);
     const response = await fetch(`/api/ssr/training-reports?userId=${encodeURIComponent(currentUser.id)}`, { cache: 'no-store' });
     if (response.ok) {
       const data = await response.json();
       setReports(data);
-      setSelectedReportId(previous => data.some(report => report.id === previous) ? previous : data[0]?.id || '');
+      setSelectedReportId(previous => data.some(report => report.id === previous) ? previous : '');
     }
     setReportLoading(false);
-  }, [currentUser?.id, hasStaffAccess]);
+  }, [currentUser?.id, hasDashboardAccess]);
+
+  useEffect(() => {
+    if (hasDashboardAccess && !hasStaffAccess) setTab('training');
+  }, [hasDashboardAccess, hasStaffAccess]);
 
   useEffect(() => {
     loadTasks();
@@ -149,16 +183,20 @@ export default function DashboardPanel() {
     };
   }, [loadReports, tab]);
 
-  if (!hasStaffAccess) return <div className={styles.denied}>Reports are available only to employees and administrators.</div>;
+  if (!hasDashboardAccess) return <div className={styles.denied}>Dashboard access is unavailable for this account.</div>;
+
+  const availableTabs = hasStaffAccess
+    ? [['employee', 'Employee Report'], ['training', 'Training Report']]
+    : [['training', 'Training Report']];
 
   return (
     <main className={styles.dashboard}>
       <div className={styles.pageHeader}><h2>Dashboard</h2><p>Operational and training reports from live app activity.</p></div>
       <div className={styles.tabs} role="tablist">
-        {[['employee', 'Employee Report'], ['training', 'Training Report']].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{label}</button>)}
+        {availableTabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{label}</button>)}
       </div>
       {tab === 'training'
-        ? <TrainingReport reports={reports} loading={reportLoading} selectedId={selectedReportId} onSelect={setSelectedReportId} />
+        ? <TrainingReport reports={reports} loading={reportLoading} selectedId={selectedReportId} onSelect={setSelectedReportId} canManage={hasStaffAccess} />
         : <EmployeeReport tasks={tasks} loading={taskLoading} />}
     </main>
   );

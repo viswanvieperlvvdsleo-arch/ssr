@@ -284,7 +284,7 @@ function TrainingReportDialog({ meeting, existingReport, users, currentUser, onC
   );
 }
 
-export default function MeetingsWorkspace({ currentUser, meetings = [], users = {}, onPlanMeeting, addMeeting, addMeetingParticipants, deleteMeeting }) {
+export default function MeetingsWorkspace({ currentUser, meetings = [], users = {}, initialMeetingId = null, onPlanMeeting, addMeeting, addMeetingParticipants, deleteMeeting }) {
   const router = useRouter();
   const [tab, setTab] = useState('upcoming');
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -325,6 +325,15 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
     if (meeting.participants?.includes(currentUser?.id)) return true;
     return !meeting.participants;
   }), [currentUser?.id, currentUser?.restricted, currentUser?.role, meetings]);
+
+  useEffect(() => {
+    if (!initialMeetingId) return;
+    const targetMeeting = visibleMeetings.find(meeting => meeting.id === initialMeetingId);
+    if (!targetMeeting) return;
+    setSelectedDate('');
+    setTab(isPastMeeting(targetMeeting, new Date()) ? 'previous' : 'upcoming');
+    setExpandedMeetingId(initialMeetingId);
+  }, [initialMeetingId, visibleMeetings]);
 
   const filteredMeetings = useMemo(() => visibleMeetings
     .filter(meeting => (tab === 'previous') === isPastMeeting(meeting, now))

@@ -47,7 +47,7 @@ export default function Navbar() {
       <div className="container">
         <div className="nav-inner">
           <Link href="/" className="nav-logo flex items-center gap-3" onClick={closeMenu}>
-            <img src="/ssrlogo.jpeg" alt="SSR Logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
+            <img src="/SJINFOBUSINESSSOLUTIONSLOGO.png" alt="SJ INFO BUSINESS SOLUTIONS logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
             <div className="logo-text-block">
               <span>SSR Business Solutions</span>
               <span className="hidden sm:block">SAP Authorized Training Center | Placements</span>

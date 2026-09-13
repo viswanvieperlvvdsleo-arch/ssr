@@ -89,9 +89,11 @@ const getLeftNav = (user) => {
     nav.push({ id: 'requests', label: 'Requests' });
   }
   nav.push({ id: 'history', label: 'History' });
+  if (user && !user.restricted) {
+    nav.push({ id: 'dashboard', label: 'Dashboard' });
+  }
   if (user && ['Employee', 'Admin', 'Super Admin'].includes(user.role) && !user.restricted) {
     nav.push({ id: 'task-board', label: 'Task Board' });
-    nav.push({ id: 'dashboard', label: 'Dashboard' });
   }
   return nav;
 };
@@ -2049,7 +2051,8 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
     if (message.status === 'sending') return 'sending';
     const recipientIds = (activeChatSnapshot?.participants || []).filter(id => id !== currentUser?.id);
     if (recipientIds.length === 0) return 'sent';
-    const allSeen = recipientIds.every(id => Number(activeChatSnapshot?.unreadBy?.[id] || 0) === 0);
+    const seenBy = Array.isArray(message.seenBy) ? message.seenBy : [];
+    const allSeen = recipientIds.every(id => seenBy.includes(id));
     if (allSeen) return 'seen';
     return recipientIds.some(id => users[id]?.online) ? 'delivered' : 'sent';
   };
@@ -4205,9 +4208,9 @@ function TrainersPanel() {
 }
 
 
-function MeetingsPanel({ currentUser }) {
+function MeetingsPanel({ currentUser, initialMeetingId }) {
   const { meetings, users, chats, openScheduleMeeting, addMeeting, addMeetingParticipants, deleteMeeting } = useApp();
-  return <MeetingsWorkspace currentUser={currentUser} meetings={meetings} users={users} chats={chats} addMeeting={addMeeting} addMeetingParticipants={addMeetingParticipants} deleteMeeting={deleteMeeting} onPlanMeeting={() => openScheduleMeeting(null)} />;
+  return <MeetingsWorkspace currentUser={currentUser} meetings={meetings} users={users} chats={chats} initialMeetingId={initialMeetingId} addMeeting={addMeeting} addMeetingParticipants={addMeetingParticipants} deleteMeeting={deleteMeeting} onPlanMeeting={() => openScheduleMeeting(null)} />;
 }
 
 function HistoryPanel({ currentUser, onNavigateToChat }) {
@@ -5809,6 +5812,7 @@ function ScheduleMeetingModal() {
   const [inviteSearch, setInviteSearch] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduledMeeting, setScheduledMeeting] = useState(null);
+  const [scheduleError, setScheduleError] = useState('');
   useBackHandler(showScheduleMeeting, () => {
     setScheduledMeeting(null);
     closeScheduleMeeting();
@@ -5832,24 +5836,34 @@ function ScheduleMeetingModal() {
   if (!showScheduleMeeting) return null;
 
   const handleScheduleMeeting = async () => {
-    if (!meetingForm.title || !meetingForm.startDate || !meetingForm.time || !meetingForm.endTime) {
-      alert('Please enter the title, start date, start time, and end time.');
+    const missingFields = [
+      !meetingForm.title.trim() && 'meeting title',
+      !meetingForm.startDate && 'start date',
+      !meetingForm.time && 'start time',
+      !meetingForm.endTime && 'end time',
+    ].filter(Boolean);
+    if (missingFields.length) {
+      const fieldList = missingFields.length === 1
+        ? missingFields[0]
+        : `${missingFields.slice(0, -1).join(', ')} and ${missingFields.at(-1)}`;
+      setScheduleError(`Please enter the ${fieldList}.`);
       return;
     }
     if (meetingForm.recurrence !== 'none' && !meetingForm.endDate) {
-      alert('Please choose an end date for this repeating meeting.');
+      setScheduleError('Please choose an end date for this repeating meeting.');
       return;
     }
 
     if (meetingForm.audienceType === 'group' && !meetingForm.groupId) {
-      alert('Please select a group.');
+      setScheduleError('Please select a group.');
       return;
     }
     if (meetingForm.audienceType === 'individual' && meetingForm.participantIds.length === 0) {
-      alert('Please select at least one person.');
+      setScheduleError('Please select at least one person.');
       return;
     }
     const selectedGroup = availableGroups.find(group => group.id === meetingForm.groupId);
+    setScheduleError('');
     setIsScheduling(true);
     const result = await addMeeting({
       title: meetingForm.title,
@@ -5869,7 +5883,7 @@ function ScheduleMeetingModal() {
     });
     setIsScheduling(false);
     if (!result?.success) {
-      alert(result?.error || 'Could not schedule meeting.');
+      setScheduleError(result?.error || 'Could not schedule meeting.');
       return;
     }
     setScheduledMeeting(result.meeting);
@@ -5878,6 +5892,7 @@ function ScheduleMeetingModal() {
   const finishScheduling = () => {
     setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: [] });
     setInviteSearch('');
+    setScheduleError('');
     setScheduledMeeting(null);
     closeScheduleMeeting();
   };
@@ -5942,7 +5957,7 @@ function ScheduleMeetingModal() {
         <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Title</label>
-            <input type="text" value={meetingForm.title} onChange={e => setMeetingForm({...meetingForm, title: e.target.value})} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+            <input type="text" value={meetingForm.title} onChange={e => { setMeetingForm(previous => ({ ...previous, title: e.target.value })); setScheduleError(''); }} aria-invalid={Boolean(scheduleError && !meetingForm.title.trim())} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: `1px solid ${scheduleError && !meetingForm.title.trim() ? '#DC2626' : '#E2E8F0'}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 7 }}>Invite</label>
@@ -5968,7 +5983,7 @@ function ScheduleMeetingModal() {
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Start Date</label>
-              <input type="date" value={meetingForm.startDate} onChange={e => setMeetingForm({...meetingForm, startDate: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+              <input type="date" value={meetingForm.startDate} onChange={e => { setMeetingForm(previous => ({ ...previous, startDate: e.target.value })); setScheduleError(''); }} aria-invalid={Boolean(scheduleError && !meetingForm.startDate)} style={{ width: '100%', padding: '10px 12px', border: `1px solid ${scheduleError && !meetingForm.startDate ? '#DC2626' : '#E2E8F0'}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>End Date (Optional)</label>
@@ -5978,11 +5993,11 @@ function ScheduleMeetingModal() {
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Time</label>
-              <input type="time" value={meetingForm.time} onChange={e => setMeetingForm({...meetingForm, time: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+              <input type="time" value={meetingForm.time} onChange={e => { setMeetingForm(previous => ({ ...previous, time: e.target.value })); setScheduleError(''); }} aria-invalid={Boolean(scheduleError && !meetingForm.time)} style={{ width: '100%', padding: '10px 12px', border: `1px solid ${scheduleError && !meetingForm.time ? '#DC2626' : '#E2E8F0'}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>End Time</label>
-              <input type="time" value={meetingForm.endTime} onChange={e => setMeetingForm({...meetingForm, endTime: e.target.value})} style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+              <input type="time" value={meetingForm.endTime} onChange={e => { setMeetingForm(previous => ({ ...previous, endTime: e.target.value })); setScheduleError(''); }} aria-invalid={Boolean(scheduleError && !meetingForm.endTime)} style={{ width: '100%', padding: '10px 12px', border: `1px solid ${scheduleError && !meetingForm.endTime ? '#DC2626' : '#E2E8F0'}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -6030,6 +6045,7 @@ function ScheduleMeetingModal() {
 
         </div>
         <div style={{ padding: '20px', borderTop: '1px solid #F1F5F9' }}>
+          {scheduleError && <p role="alert" style={{ margin: '0 0 10px', color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>{scheduleError}</p>}
           <button onClick={handleScheduleMeeting} disabled={isScheduling} style={{ width: '100%', background: isScheduling ? '#94A3B8' : '#10B981', color: '#fff', border: 'none', padding: '12px', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: isScheduling ? 'wait' : 'pointer' }}>{isScheduling ? 'Scheduling...' : meetingForm.audienceType === 'group' ? 'Schedule & notify group' : meetingForm.participantIds.length ? `Schedule & notify ${meetingForm.participantIds.length} people` : 'Schedule & notify people'}</button>
         </div>
         </>)}
@@ -6061,6 +6077,7 @@ export default function HomePage() {
   const [viewRestored, setViewRestored] = useState(false);
   const [randomOffsets, setRandomOffsets] = useState({});
   const [notificationCourseId, setNotificationCourseId] = useState(null);
+  const [notificationMeetingId, setNotificationMeetingId] = useState(null);
 
   const navigateMobile = useCallback((page, { replace = false } = {}) => {
     if (!page) return;
@@ -6142,6 +6159,7 @@ export default function HomePage() {
     const messageId = params.get('messageId');
     const section = params.get('section');
     const courseId = params.get('courseId');
+    const meetingId = params.get('meetingId');
     const notificationAction = params.get('notificationAction');
     const requestedFeed = params.get('feed');
     if (!currentUser) return;
@@ -6153,6 +6171,7 @@ export default function HomePage() {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
+      setNotificationMeetingId(meetingId);
       if (section === 'feed' && requestedFeed === 'internal' && canViewInternalFeed) setFeedTab(INTERNAL_FEED_TAB);
       if (notificationAction === 'like' && section === 'feed' && params.get('postId')) {
         likePost(params.get('postId'));
@@ -6297,7 +6316,7 @@ export default function HomePage() {
         <div style={{ position: 'fixed', top: currentUser?.isImpersonating ? 40 : 0, left: 0, right: 0, height: 58, background: '#fff', borderBottom: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16, zIndex: 400, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210, flexShrink: 0 }}>
-            <img src="/ssrlogo.jpeg" alt="Company logo" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
+            <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
             <span style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', whiteSpace: 'nowrap' }}>SAP Learning Platform</span>
           </div>
 
@@ -6474,7 +6493,7 @@ export default function HomePage() {
 
               {activeNav === 'meetings' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-                  <MeetingsPanel currentUser={currentUser} />
+                  <MeetingsPanel currentUser={currentUser} initialMeetingId={notificationMeetingId} />
                 </div>
               )}
 
@@ -6549,7 +6568,7 @@ export default function HomePage() {
       {/* Mobile Header */}
       <div style={{ position: 'sticky', top: currentUser?.isImpersonating ? 40 : 0, background: '#fff', borderBottom: '1px solid #E8ECF0', padding: '0 16px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="/ssrlogo.jpeg" alt="Company logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
+          <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
             {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard', 'task-board': 'Task Board' })[mobilePage] || mobilePage}
           </span>
@@ -6688,7 +6707,7 @@ export default function HomePage() {
 
       {mobilePage === 'meetings' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          <MeetingsPanel currentUser={currentUser} />
+          <MeetingsPanel currentUser={currentUser} initialMeetingId={notificationMeetingId} />
         </div>
       )}
 
@@ -6725,8 +6744,10 @@ export default function HomePage() {
           { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
           { id: 'history', icon: NavIcons.history, label: 'History' },
-          ...(['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted ? [
+          ...(currentUser && !currentUser.restricted ? [
             { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },
+          ] : []),
+          ...(['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted ? [
             { id: 'task-board', icon: NavIcons['task-board'], label: 'Tasks' },
           ] : []),
         ].map(item => {

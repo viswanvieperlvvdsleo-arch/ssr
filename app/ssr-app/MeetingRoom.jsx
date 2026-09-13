@@ -631,7 +631,8 @@ export default function MeetingRoom({ meetingCode }) {
             x: padding, y: padding, width: mainWidth, height: RECORDING_HEIGHT - (padding * 2),
           }, { featured: true, mirror: featured?.peerId === sessionRef.current?.peerId });
           const visibleOthers = others.slice(0, 4);
-          const tileHeight = (RECORDING_HEIGHT - (padding * 2) - (gap * (visibleOthers.length - 1))) / visibleOthers.length;
+          const availableRailHeight = RECORDING_HEIGHT - (padding * 2) - (gap * (visibleOthers.length - 1));
+          const tileHeight = Math.min(railWidth * (9 / 16), availableRailHeight / visibleOthers.length);
           visibleOthers.forEach((participant, index) => {
             drawRecordingTile(ctx, recordingVideosRef.current.get(participant.peerId)?.video, participant, {
               x: padding + mainWidth + gap,
@@ -802,7 +803,7 @@ export default function MeetingRoom({ meetingCode }) {
   if (!session) {
     return (
       <div className={styles.prejoinPage}>
-        <header><img src="/ssrlogo.jpeg" alt="Company logo"/><strong>SJ Meet</strong><button onClick={() => router.replace('/ssr-app/home?section=meetings')}>{Icons.close}</button></header>
+        <header><img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo"/><strong>SJ Meet</strong><button onClick={() => router.replace('/ssr-app/home?section=meetings')}>{Icons.close}</button></header>
         <main className={styles.prejoin}>
           <div className={styles.previewPane}>
             <div className={styles.prejoinVideo}>
@@ -834,7 +835,7 @@ export default function MeetingRoom({ meetingCode }) {
   return (
     <div className={styles.roomPage}>
       <header className={styles.roomHeader}>
-        <div><img src="/ssrlogo.jpeg" alt="Company logo"/><strong>{meeting.title}</strong></div>
+        <div><img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo"/><strong>{meeting.title}</strong></div>
         <div className={styles.roomHeaderMeta}><span>ID {formatCode(meeting.meetingCode)}{hostPassword ? ` | Password ${hostPassword}` : ''}</span><button onClick={async () => { await navigator.clipboard.writeText([meeting.title, `Join: ${meeting.link}`, `Meeting ID: ${meeting.meetingCode}`, hostPassword ? `Password: ${hostPassword}` : ''].filter(Boolean).join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy meeting invitation">{Icons.copy}{copied ? 'Copied' : 'Copy invitation'}</button></div>
       </header>
       {roomError && <div className={styles.roomNotice}>{roomError}</div>}

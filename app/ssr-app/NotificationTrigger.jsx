@@ -10,13 +10,16 @@ const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
 function actionsForType(type) {
   if (type === 'chat') return [
     { action: 'reply', title: 'Reply' },
-    { action: 'like', title: 'Like' },
+    { action: 'mark-read', title: 'Mark as read' },
   ];
   if (type === 'post') return [
     { action: 'like', title: 'Like' },
     { action: 'open', title: 'View post' },
   ];
-  if (type === 'meeting') return [{ action: 'open', title: 'View meeting' }];
+  if (type === 'meeting' || type === 'meeting-time') return [
+    { action: 'dismiss', title: 'Cancel' },
+    { action: 'start', title: 'Start' },
+  ];
   return [{ action: 'open', title: 'Open' }];
 }
 
@@ -26,6 +29,10 @@ export default function NotificationTrigger() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return undefined;
     const handleNotificationClick = event => {
+      if (event.data?.type === 'sj-chat-marked-read' && event.data.chatId) {
+        window.dispatchEvent(new CustomEvent('sj-chat-marked-read', { detail: { chatId: event.data.chatId } }));
+        return;
+      }
       const url = event.data?.type === 'ssr-notification-click' ? event.data.url : null;
       if (!url) return;
       try {
@@ -66,7 +73,7 @@ export default function NotificationTrigger() {
           return;
         }
 
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=3', { scope: '/firebase-cloud-messaging-push-scope' });
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=4', { scope: '/firebase-cloud-messaging-push-scope' });
         messagingRegistration = registration;
         await registration.update().catch(() => {});
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
@@ -107,10 +114,10 @@ export default function NotificationTrigger() {
         if (registration) {
           await registration.showNotification(title, {
             body,
-            icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
+            icon: '/logo/192.png',
             data: payload.data || {},
             actions: actionsForType(payload.data?.type),
-            tag: payload.data?.notificationTag || payload.messageId || `ssr-${Date.now()}`,
+            tag: payload.data?.notificationTag || payload.messageId || `sj-${Date.now()}`,
             renotify: true,
             silent: false,
             vibrate: [200, 100, 200],

@@ -1,9 +1,11 @@
-const CACHE_NAME = 'sj-info-business-solutions-cache-v1';
+const CACHE_NAME = 'sj-info-business-solutions-cache-v2';
 const URLS_TO_CACHE = [
   '/app-download',
   '/ssr-app',
   '/manifest.json',
-  '/ssrlogo.jpeg'
+  '/logo/192.png',
+  '/logo/512.png',
+  '/SJINFOBUSINESSSOLUTIONSLOGO.png'
 ];
 
 self.addEventListener('install', (event) => {

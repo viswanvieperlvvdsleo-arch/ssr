@@ -19,11 +19,30 @@ const messaging = firebase.messaging();
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification?.data || {};
+  if (event.action === 'dismiss') return;
+  if (event.action === 'mark-read') {
+    event.waitUntil((async () => {
+      if (!data.chatId || !data.recipientUserId) return;
+      const response = await fetch('/api/ssr/chats', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: data.chatId, action: 'markRead', userId: data.recipientUserId }),
+      });
+      if (!response.ok) throw new Error('Could not mark the chat as read.');
+      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      windowClients.forEach(client => client.postMessage({ type: 'sj-chat-marked-read', chatId: data.chatId }));
+    })());
+    return;
+  }
   const targetUrl = data.url;
   if (!targetUrl) return;
   const target = new URL(targetUrl, self.location.origin);
   if (event.action === 'reply' || event.action === 'like') {
     target.searchParams.set('notificationAction', event.action);
+  }
+  if (event.action === 'start' && data.meetingCode) {
+    target.pathname = `/ssr-app/meeting/${encodeURIComponent(data.meetingCode)}`;
+    target.search = '';
   }
   const absoluteTargetUrl = target.toString();
 
@@ -42,13 +61,16 @@ self.addEventListener('notificationclick', (event) => {
 function actionsForType(type) {
   if (type === 'chat') return [
     { action: 'reply', title: 'Reply' },
-    { action: 'like', title: 'Like' },
+    { action: 'mark-read', title: 'Mark as read' },
   ];
   if (type === 'post') return [
     { action: 'like', title: 'Like' },
     { action: 'open', title: 'View post' },
   ];
-  if (type === 'meeting') return [{ action: 'open', title: 'View meeting' }];
+  if (type === 'meeting' || type === 'meeting-time') return [
+    { action: 'dismiss', title: 'Cancel' },
+    { action: 'start', title: 'Start' },
+  ];
   return [{ action: 'open', title: 'Open' }];
 }
 
@@ -60,10 +82,10 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = notification.title || payload.data?.title || 'SJ INFO BUSINESS SOLUTIONS';
   const notificationOptions = {
     body: notification.body || payload.data?.body || 'You have a new notification.',
-    icon: '/logo/SSR_Business_Solutions_192x192_uncropped.png',
+    icon: '/logo/192.png',
     data: payload.data || {},
     actions: actionsForType(payload.data?.type),
-    tag: payload.data?.notificationTag || payload.messageId || `ssr-${Date.now()}`,
+    tag: payload.data?.notificationTag || payload.messageId || `sj-${Date.now()}`,
     renotify: true,
     silent: false,
     vibrate: [200, 100, 200],

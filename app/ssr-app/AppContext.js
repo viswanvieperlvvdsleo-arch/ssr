@@ -190,6 +190,18 @@ export function AppProvider({ children }) {
   const backHandlersRef = useRef([]);
   const sessionGenerationRef = useRef(0);
 
+  useEffect(() => {
+    const handleNotificationRead = event => {
+      const chatId = event.detail?.chatId;
+      if (!chatId || !currentUser?.id) return;
+      setMutableChats(previous => previous.map(chat => chat.id === chatId
+        ? { ...chat, unreadBy: { ...(chat.unreadBy || {}), [currentUser.id]: 0 }, unread: 0 }
+        : chat));
+    };
+    window.addEventListener('sj-chat-marked-read', handleNotificationRead);
+    return () => window.removeEventListener('sj-chat-marked-read', handleNotificationRead);
+  }, [currentUser?.id]);
+
   const registerBackHandler = useCallback((handler) => {
     const entry = { handler };
     backHandlersRef.current.push(entry);
@@ -273,11 +285,12 @@ export function AppProvider({ children }) {
       try {
         const storedUser = readStoredAppUser();
         const currId = storedUser ? storedUser.id : null;
-        const [chatsRes, messagesRes, scheduledMessagesRes, notificationsRes] = await Promise.all([
+        const [chatsRes, messagesRes, scheduledMessagesRes, notificationsRes, usersRes] = await Promise.all([
           fetch('/api/ssr/chats').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/messages').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
+          fetch(currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users').then(r => r.json()).catch(() => ({})),
         ]);
 
         if (requestGeneration !== sessionGenerationRef.current) return;
@@ -309,6 +322,8 @@ export function AppProvider({ children }) {
         }
         if (scheduledMessagesRes && !scheduledMessagesRes.error && Array.isArray(scheduledMessagesRes)) setIfChanged(setScheduledMessages, scheduledMessagesRes);
         if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
+        const normalizedRealtimeUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
+        if (normalizedRealtimeUsers) setIfChanged(setUsers, normalizedRealtimeUsers);
       } catch (e) {
         console.error('Failed to load realtime data:', e);
       } finally {
@@ -318,7 +333,7 @@ export function AppProvider({ children }) {
 
     // Load static data once immediately, then poll only lightweight real-time data
     loadStaticData().then(() => loadRealtimeData());
-    intervalId = setInterval(loadRealtimeData, 5000); // 5s for chats+messages only
+    intervalId = setInterval(loadRealtimeData, 5000);
 
     // Local development has no external scheduler, so run the processor while
     // the app is open. Production calls the protected endpoint externally.
@@ -1016,7 +1031,10 @@ export function AppProvider({ children }) {
           const response = await fetch('/api/ssr/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg), signal });
           const data = await response.json();
           if (!response.ok || !data.id) throw new Error(data.error || 'Could not send the uploaded file');
-          setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? normalizeMessage({ ...data, status: 'delivered' }, currentUser.id) : message) }));
+          setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? normalizeMessage({ ...data, status: 'sent' }, currentUser.id) : message) }));
+          if (data.delivery?.unreadBy) {
+            setMutableChats(prev => prev.map(chat => chat.id === chatId ? { ...chat, unreadBy: data.delivery.unreadBy } : chat));
+          }
           URL.revokeObjectURL(previewUrl);
         } catch (error) {
           URL.revokeObjectURL(previewUrl);
@@ -1090,8 +1108,11 @@ export function AppProvider({ children }) {
       if (data.id) {
         setChatMessages(prev => ({
           ...prev,
-          [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? normalizeMessage({ ...data, status: 'delivered' }, currentUser.id) : message)
+          [chatId]: (prev[chatId] || []).map(message => message.id === tempId ? normalizeMessage({ ...data, status: 'sent' }, currentUser.id) : message)
         }));
+        if (data.delivery?.unreadBy) {
+          setMutableChats(prev => prev.map(chat => chat.id === chatId ? { ...chat, unreadBy: data.delivery.unreadBy } : chat));
+        }
       } else {
         setChatMessages(prev => ({ ...prev, [chatId]: (prev[chatId] || []).filter(message => message.id !== tempId) }));
       }

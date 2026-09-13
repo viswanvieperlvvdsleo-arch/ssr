@@ -227,7 +227,7 @@ export async function POST(req) {
         title: 'New meeting scheduled',
         body: `${newMeeting.title} - ${newMeeting.date} ${newMeeting.time}`,
         url: `/ssr-app/home?section=meetings&meetingId=${encodeURIComponent(newMeeting.id)}`,
-        data: { type: 'meeting', meetingId: newMeeting.id },
+        data: { type: 'meeting', meetingId: newMeeting.id, meetingCode: newMeeting.meetingCode || '' },
       });
     } catch (deliveryError) {
       await prisma.appMeeting.delete({ where: { id: newMeeting.id } }).catch(() => {});
@@ -273,7 +273,7 @@ export async function PATCH(req) {
           title: 'Added to a meeting',
           body: `${updated.title} - ${updated.date} ${updated.time}`,
           url: `/ssr-app/home?section=meetings&meetingId=${encodeURIComponent(updated.id)}`,
-          data: { type: 'meeting', meetingId: updated.id },
+          data: { type: 'meeting', meetingId: updated.id, meetingCode: updated.meetingCode || '' },
         });
       } catch (deliveryError) {
         await prisma.appMeeting.update({ where: { id }, data: { participants: previousParticipants } }).catch(() => {});

@@ -156,9 +156,28 @@ export async function PUT(req) {
 
     if (action === 'markRead') {
       if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 400 });
+      const actor = await prisma.appUser.findUnique({ where: { id: userId } });
+      const canReadSupportChat = chat.type === 'support' && actor && (
+        actor.role === 'Admin' ||
+        actor.role === 'Super Admin' ||
+        hasEmployeePermission(actor, 'view_chats')
+      );
+      if (!actor || (!chat.participants.includes(userId) && !canReadSupportChat)) {
+        return NextResponse.json({ error: 'You are not a member of this chat' }, { status: 403 });
+      }
       const unreadBy = chat.unreadBy && typeof chat.unreadBy === 'object' && !Array.isArray(chat.unreadBy) ? { ...chat.unreadBy } : {};
       unreadBy[userId] = 0;
-      const updatedChat = await prisma.appChat.update({ where: { id }, data: { unreadBy } });
+      const [updatedChat] = await prisma.$transaction([
+        prisma.appChat.update({ where: { id }, data: { unreadBy } }),
+        prisma.appMessage.updateMany({
+          where: {
+            chatId: id,
+            senderId: { not: userId },
+            NOT: { seenBy: { has: userId } },
+          },
+          data: { seenBy: { push: userId } },
+        }),
+      ]);
       return NextResponse.json(updatedChat);
     }
 

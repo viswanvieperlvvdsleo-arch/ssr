@@ -378,6 +378,7 @@ model AppMessage {
   edited               Boolean  @default(false)
   isDeletedForEveryone Boolean  @default(false)
   deletedFor           String[] @default([])
+  seenBy               String[] @default([])
   reactions            Json?
   attachment           Json?
 

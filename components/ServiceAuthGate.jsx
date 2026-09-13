@@ -247,7 +247,7 @@ export default function ServiceAuthGate() {
 
             {/* Header */}
             <div style={{ textAlign: "center", marginBottom: "20px" }}>
-              <img src="/ssrlogo.jpeg" alt="SSR" style={{ height: 40, borderRadius: 8, marginBottom: 8 }} />
+              <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ height: 40, borderRadius: 8, marginBottom: 8 }} />
               <h2 style={{ color: "#fff", fontSize: "1.3rem", fontWeight: 800, margin: "0 0 4px" }}>
                 {modalMode === "register" ? "Create Your Account" : "Welcome Back"}
               </h2>

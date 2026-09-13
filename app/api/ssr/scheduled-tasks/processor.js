@@ -118,7 +118,7 @@ async function processMeetingNotifications(now) {
         title: 'Meeting starting now',
         body: meeting.title || 'Your scheduled meeting is starting now.',
         url: `/ssr-app/home?section=meetings&meetingId=${encodeURIComponent(meeting.id)}`,
-        data: { type: 'meeting-time', meetingId: meeting.id },
+        data: { type: 'meeting-time', meetingId: meeting.id, meetingCode: meeting.meetingCode || '' },
       });
       result.notified += 1;
     } catch (error) {

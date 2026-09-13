@@ -131,7 +131,7 @@ export default function EntryPage() {
 
       {/* Logo */}
       <div style={{ marginBottom: 36, textAlign: 'center' }}>
-        <img src="/ssrlogo.jpeg" alt="Company logo" style={{
+        <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{
           width: 56, height: 56,
           borderRadius: 8,
           margin: '0 auto 14px',

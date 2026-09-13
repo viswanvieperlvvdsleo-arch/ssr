@@ -15,7 +15,7 @@ export default function Footer() {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="f-logo">
-              <img src="/ssrlogo.jpeg" alt="SSR Logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
+              <img src="/SJINFOBUSINESSSOLUTIONSLOGO.png" alt="SJ INFO BUSINESS SOLUTIONS logo" className="h-10 sm:h-12 w-auto object-contain rounded shadow-sm bg-white p-1" />
               <div className="logo-text-block">
                 <span>SSR Business Solutions</span>
                 <span>SAP Authorized Training Center | Placements</span>

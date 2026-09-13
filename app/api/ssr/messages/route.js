@@ -26,6 +26,7 @@ export async function POST(req) {
   try {
     const data = await req.json();
     const newMessage = await prisma.appMessage.create({ data: buildMessageData(data) });
+    let delivery = { recipientIds: [], unreadBy: {} };
     
     // Update the chat's updatedAt so it bubbles up to the top
     const chat = await prisma.appChat.findUnique({ where: { id: data.chatId } });
@@ -39,10 +40,11 @@ export async function POST(req) {
       recipientIds.forEach(id => {
         unreadBy[id] = Number(unreadBy[id] || 0) + 1;
       });
-      await prisma.appChat.update({
+      const updatedChat = await prisma.appChat.update({
         where: { id: data.chatId },
         data: { updatedAt: new Date(), unreadBy }
       });
+      delivery = { recipientIds, unreadBy: updatedChat.unreadBy || unreadBy };
 
       await notifyUsers(recipientIds, {
         title: chat.type === 'group' ? (chat.name || 'New group message') : (newMessage.senderName || 'New message'),
@@ -52,7 +54,7 @@ export async function POST(req) {
       });
     }
 
-    return NextResponse.json(newMessage);
+    return NextResponse.json({ ...newMessage, delivery });
   } catch (error) {
     console.error('Messages POST API Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
