@@ -6236,7 +6236,7 @@ export default function HomePage() {
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
-    if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board'].includes(id)) {
+    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6314,7 +6314,7 @@ export default function HomePage() {
         <ScheduleMeetingModal />
         {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
-        {showCreatePost && isAdmin(currentUser) && (
+        {showCreatePost && hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
           <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
             setShowCreatePost(false);
             if (file) {
@@ -6566,7 +6566,7 @@ export default function HomePage() {
       <ScheduleMeetingModal />
       {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
-      {showCreatePost && isAdmin(currentUser) && (
+      {showCreatePost && hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
         <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
           setShowCreatePost(false);
           if (file) {
