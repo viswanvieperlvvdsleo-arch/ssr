@@ -17,8 +17,10 @@ const CATEGORY_TO_ROLE = {
 export default function EntryPage() {
   const router = useRouter();
   const { login, signup, users, currentUser } = useApp();
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
+    setSessionChecked(true);
     if (currentUser) {
       router.replace('/ssr-app/home');
       return;
@@ -46,6 +48,20 @@ export default function EntryPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  if (!sessionChecked || currentUser) {
+    return (
+      <div aria-label="Loading your feed" style={{ minHeight: '100vh', background: '#F5F7FA' }}>
+        <div style={{ height: 72, background: '#fff', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 6, background: '#E2E8F0' }} />
+          <div style={{ width: 180, height: 18, borderRadius: 4, background: '#E2E8F0' }} />
+        </div>
+        <div style={{ width: 'min(760px, calc(100% - 32px))', margin: '28px auto', display: 'grid', gap: 18 }}>
+          {[0, 1].map(item => <div key={item} style={{ height: item ? 260 : 110, borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0' }} />)}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();

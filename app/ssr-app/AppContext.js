@@ -202,6 +202,40 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener('sj-chat-marked-read', handleNotificationRead);
   }, [currentUser?.id]);
 
+  useEffect(() => {
+    if (!currentUser?.id || typeof window === 'undefined') return undefined;
+
+    const updatePresence = online => {
+      const payload = JSON.stringify({
+        userId: currentUser.id,
+        online,
+        observedAt: new Date().toISOString(),
+      });
+      if (!online && navigator.sendBeacon) {
+        const queued = navigator.sendBeacon('/api/ssr/users/presence', new Blob([payload], { type: 'application/json' }));
+        if (queued) return;
+      }
+      fetch('/api/ssr/users/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: !online,
+      }).catch(() => {});
+    };
+
+    const handleVisibilityChange = () => updatePresence(document.visibilityState === 'visible');
+    const handlePageHide = () => updatePresence(false);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    updatePresence(document.visibilityState === 'visible');
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      updatePresence(false);
+    };
+  }, [currentUser?.id]);
+
   const registerBackHandler = useCallback((handler) => {
     const entry = { handler };
     backHandlersRef.current.push(entry);

@@ -117,9 +117,6 @@ export async function GET(req) {
       const safeMeeting = sanitizeMeeting(meeting);
 
       if (searchParams.get('includeCredentials') === 'true' && userId) {
-        if (!canManageMeeting(viewer, meeting)) {
-          return NextResponse.json({ error: 'Only the host or authorized staff can view the password.' }, { status: 403 });
-        }
         return NextResponse.json({
           ...safeMeeting,
           joinPassword: meeting.passwordEncrypted ? decryptCredential(meeting.passwordEncrypted) : null,

@@ -21,7 +21,12 @@ export default function ChatDetailPage() {
 
   useEffect(() => {
     if (params?.id && chats.some(chat => chat.id === params.id)) {
-      setTargetChat({ chatId: params.id });
+      const query = new URLSearchParams(window.location.search);
+      setTargetChat({
+        chatId: params.id,
+        msgId: query.get('messageId'),
+        action: query.get('notificationAction'),
+      });
     }
   }, [params?.id, chats, setTargetChat]);
 

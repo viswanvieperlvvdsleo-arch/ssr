@@ -73,7 +73,7 @@ export default function NotificationTrigger() {
           return;
         }
 
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=4', { scope: '/firebase-cloud-messaging-push-scope' });
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=5', { scope: '/firebase-cloud-messaging-push-scope' });
         messagingRegistration = registration;
         await registration.update().catch(() => {});
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });

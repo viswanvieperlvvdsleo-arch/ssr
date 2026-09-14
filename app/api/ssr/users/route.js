@@ -34,7 +34,7 @@ export async function GET(req) {
       sharedChats.forEach(chat => (chat.participants || []).forEach(id => sharedChatUserIds.add(id)));
     }
     const users = await prisma.appUser.findMany({ orderBy: { createdAt: 'asc' } });
-    const onlineCutoff = Date.now() - 45 * 1000;
+    const onlineCutoff = Date.now() - 15 * 1000;
     // To match frontend format `{ u1: {...}, u2: {...} }`
     const usersMap = {};
     users.forEach(u => {

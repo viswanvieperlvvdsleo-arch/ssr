@@ -1,20 +1,5 @@
-importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js');
-
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-
-// Initializes the background service setup using your credentials
-firebase.initializeApp({
-  apiKey: "AIzaSyDAJNto-qn6OGybOi9WmGhwFcHIjUthFmA",
-  authDomain: "ssrbs-d41fb.firebaseapp.com",
-  projectId: "ssrbs-d41fb",
-  storageBucket: "ssrbs-d41fb.firebasestorage.app",
-  messagingSenderId: "263500284164",
-  appId: "1:263500284164:web:4aabf9f181dbcd74b0d051"
-});
-
-const messaging = firebase.messaging();
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -37,7 +22,12 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = data.url;
   if (!targetUrl) return;
   const target = new URL(targetUrl, self.location.origin);
-  if (event.action === 'reply' || event.action === 'like') {
+  if (event.action === 'reply' && data.chatId) {
+    target.pathname = `/ssr-app/chat/${encodeURIComponent(data.chatId)}`;
+    target.search = '';
+    if (data.messageId) target.searchParams.set('messageId', data.messageId);
+    target.searchParams.set('notificationAction', 'reply');
+  } else if (event.action === 'like') {
     target.searchParams.set('notificationAction', event.action);
   }
   if (event.action === 'start' && data.meetingCode) {
@@ -73,6 +63,21 @@ function actionsForType(type) {
   ];
   return [{ action: 'open', title: 'Open' }];
 }
+
+// Firebase requires custom click behavior to be registered before its scripts load.
+importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyDAJNto-qn6OGybOi9WmGhwFcHIjUthFmA",
+  authDomain: "ssrbs-d41fb.firebaseapp.com",
+  projectId: "ssrbs-d41fb",
+  storageBucket: "ssrbs-d41fb.firebasestorage.app",
+  messagingSenderId: "263500284164",
+  appId: "1:263500284164:web:4aabf9f181dbcd74b0d051"
+});
+
+const messaging = firebase.messaging();
 
 // Listens and intercepts incoming notifications while the browser tab is closed/minimized
 messaging.onBackgroundMessage((payload) => {

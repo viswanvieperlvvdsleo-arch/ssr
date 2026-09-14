@@ -194,6 +194,9 @@ export default function MeetingRoom({ meetingCode }) {
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { remoteStreamsRef.current = remoteStreams; }, [remoteStreams]);
+  useEffect(() => {
+    if (currentUser?.name) setDisplayName(previous => previous || currentUser.name);
+  }, [currentUser?.name]);
 
   useEffect(() => {
     try {
@@ -224,12 +227,18 @@ export default function MeetingRoom({ meetingCode }) {
   }, [currentUser?.id, meetingCode]);
 
   useEffect(() => {
-    if (!meeting?.id || !currentUser?.id || meeting.hostId !== currentUser.id) return;
+    if (!meeting?.id || !currentUser?.id) return undefined;
+    let active = true;
     fetch(`/api/ssr/meetings?id=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}&includeCredentials=true`, { cache: 'no-store' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (data?.joinPassword) setHostPassword(data.joinPassword); })
+      .then(data => {
+        if (!active || !data?.joinPassword) return;
+        setHostPassword(data.joinPassword);
+        setPassword(previous => previous || data.joinPassword);
+      })
       .catch(() => {});
-  }, [currentUser?.id, meeting?.hostId, meeting?.id]);
+    return () => { active = false; };
+  }, [currentUser?.id, meeting?.id]);
 
   useEffect(() => {
     if (session || !currentUser || loading || loadError) return undefined;
@@ -821,7 +830,8 @@ export default function MeetingRoom({ meetingCode }) {
             <span>SJ MEETING</span>
             <h1>{meeting.title}</h1>
             <div className={styles.meetingFacts}><span>{meeting.date}</span><span>{meeting.time} - {meeting.endTime}</span><span>ID {formatCode(meeting.meetingCode)}</span></div>
-            {meeting.hostId !== currentUser.id && <><label htmlFor="room-password">Meeting password</label><input id="room-password" type="password" value={password} onChange={event => setPassword(event.target.value.toUpperCase())} placeholder="Enter password" autoComplete="off" /></>}
+            <label htmlFor="room-password">Meeting password</label>
+            <input id="room-password" value={password} onChange={event => setPassword(event.target.value.toUpperCase())} placeholder="Enter password" autoComplete="off" />
             <label htmlFor="room-name">Your name</label>
             <input id="room-name" value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={100} />
             {joinError && <p className={styles.error}>{joinError}</p>}
@@ -836,7 +846,11 @@ export default function MeetingRoom({ meetingCode }) {
     <div className={styles.roomPage}>
       <header className={styles.roomHeader}>
         <div><img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo"/><strong>{meeting.title}</strong></div>
-        <div className={styles.roomHeaderMeta}><span>ID {formatCode(meeting.meetingCode)}{hostPassword ? ` | Password ${hostPassword}` : ''}</span><button onClick={async () => { await navigator.clipboard.writeText([meeting.title, `Join: ${meeting.link}`, `Meeting ID: ${meeting.meetingCode}`, hostPassword ? `Password: ${hostPassword}` : ''].filter(Boolean).join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy meeting invitation">{Icons.copy}{copied ? 'Copied' : 'Copy invitation'}</button></div>
+        <div className={styles.roomHeaderActions}>
+          <div className={styles.roomHeaderMeta}><span>ID {formatCode(meeting.meetingCode)}{hostPassword ? ` | Password ${hostPassword}` : ''}</span><button onClick={async () => { await navigator.clipboard.writeText([meeting.title, `Join: ${meeting.link}`, `Meeting ID: ${meeting.meetingCode}`, hostPassword ? `Password: ${hostPassword}` : ''].filter(Boolean).join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy meeting invitation">{Icons.copy}<span>{copied ? 'Copied' : 'Copy invitation'}</span></button></div>
+          {session.participant?.role === 'host' && <button onClick={endMeeting} className={styles.headerEndAll}>End for all</button>}
+          <button onClick={() => leaveMeeting()} className={styles.headerLeave} title="Leave meeting">{Icons.leave}<span>Leave</span></button>
+        </div>
       </header>
       {roomError && <div className={styles.roomNotice}>{roomError}</div>}
       {recording && <div className={styles.recordingPill}><span />REC {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')}</div>}
@@ -866,12 +880,10 @@ export default function MeetingRoom({ meetingCode }) {
           <button onClick={toggleScreenShare} className={screenSharing ? styles.activeTool : ''} title="Share screen">{Icons.screen}<span>{screenSharing ? 'Stop share' : 'Share'}</span></button>
           <button onClick={startRecording} className={recording ? styles.recordingTool : ''} title="Record to this device">{Icons.record}<span>{recording ? 'Stop' : 'Record'}</span></button>
           <button onClick={toggleHand} className={raisedHands[session.peerId] ? styles.activeTool : ''} title="Raise hand">{Icons.hand}<span>Raise</span></button>
-          <button onClick={() => leaveMeeting()} className={styles.hangup} title="Leave meeting">{Icons.leave}<span>Leave</span></button>
         </div>
         <div className={styles.sideTools}>
           <button onClick={() => setSidePanel(sidePanel === 'people' ? null : 'people')} className={sidePanel === 'people' ? styles.activeTool : ''}>{Icons.people}<span>People</span></button>
           <button onClick={() => setSidePanel(sidePanel === 'chat' ? null : 'chat')} className={sidePanel === 'chat' ? styles.activeTool : ''}>{Icons.chat}<span>Chat</span></button>
-          {session.participant?.role === 'host' && <button onClick={endMeeting} className={styles.endForAll}>End for all</button>}
         </div>
       </footer>
     </div>

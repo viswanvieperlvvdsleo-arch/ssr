@@ -1608,6 +1608,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   const router = useRouter();
   const { chats, chatMessages, sendChatMessage, sendChatMediaInBackground, reactToMessage, markChatRead, scheduleMessage, scheduledMessages, cancelScheduledMessage, users, deleteMessages, editMessage, forwardMessages, targetChat, setTargetChat, updateChat, performChatAction, viewUserProfile, viewProfilePic, addMeeting, openScheduleMeeting, startDirectChat, createGroup, canUseStaffChatAccess, openMediaComposer } = useApp();
   const [chatTab, setChatTab] = useState('Chats');
+  const [pageIsActive, setPageIsActive] = useState(false);
 
   const [search, setSearch] = useState('');
   const [activeChat, setActiveChat] = useState(MOCK_CHATS[1]);
@@ -1659,6 +1660,21 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   const recordingPreviewUrlRef = useRef(null);
   const discardRecordingRef = useRef(false);
   const recordingChatIdRef = useRef(null);
+
+  useEffect(() => {
+    const updatePageActivity = () => {
+      setPageIsActive(document.visibilityState === 'visible' && document.hasFocus());
+    };
+    updatePageActivity();
+    document.addEventListener('visibilitychange', updatePageActivity);
+    window.addEventListener('focus', updatePageActivity);
+    window.addEventListener('blur', updatePageActivity);
+    return () => {
+      document.removeEventListener('visibilitychange', updatePageActivity);
+      window.removeEventListener('focus', updatePageActivity);
+      window.removeEventListener('blur', updatePageActivity);
+    };
+  }, []);
   const recordingReplyRef = useRef(null);
   const [highlightMsgId, setHighlightMsgId] = useState(null);
   const highlightTimerRef = useRef(null);
@@ -2083,7 +2099,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
   };
 
   useEffect(() => {
-    const conversationIsVisible = Boolean(activeChat?.id && (conversationOnly || !isMobile || mobileView === 'convo'));
+    const conversationIsVisible = Boolean(pageIsActive && activeChat?.id && (conversationOnly || !isMobile || mobileView === 'convo'));
     if (!conversationIsVisible) {
       lastMarkedReadRef.current = '';
       return;
@@ -2093,7 +2109,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
     if (lastMarkedReadRef.current === readSignature) return;
     lastMarkedReadRef.current = readSignature;
     markChatRead(activeChat.id);
-  }, [activeChat?.id, mobileView, msgs.length, msgs[msgs.length - 1]?.id, isMobile, conversationOnly]);
+  }, [activeChat?.id, mobileView, msgs.length, msgs[msgs.length - 1]?.id, isMobile, conversationOnly, pageIsActive]);
 
   const [showScrollDown, setShowScrollDown] = useState(false);
   const chatScrollRef = useRef(null);
@@ -6078,6 +6094,7 @@ export default function HomePage() {
   const [randomOffsets, setRandomOffsets] = useState({});
   const [notificationCourseId, setNotificationCourseId] = useState(null);
   const [notificationMeetingId, setNotificationMeetingId] = useState(null);
+  const processedDeepLinkRef = useRef(null);
 
   const navigateMobile = useCallback((page, { replace = false } = {}) => {
     if (!page) return;
@@ -6154,6 +6171,10 @@ export default function HomePage() {
   }, [currentUser?.id, activeNav, viewRestored]);
 
   useEffect(() => {
+    if (!currentUser) return;
+    const deepLinkKey = window.location.search;
+    if (processedDeepLinkRef.current === deepLinkKey) return;
+    processedDeepLinkRef.current = deepLinkKey;
     const params = new URLSearchParams(window.location.search);
     const chatId = params.get('chatId');
     const messageId = params.get('messageId');
@@ -6162,7 +6183,6 @@ export default function HomePage() {
     const meetingId = params.get('meetingId');
     const notificationAction = params.get('notificationAction');
     const requestedFeed = params.get('feed');
-    if (!currentUser) return;
     if (chatId) {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
@@ -6211,6 +6231,10 @@ export default function HomePage() {
   });
 
   const handleNavClick = (id) => {
+    const nextUrl = new URL(window.location.href);
+    ['section', 'taskId', 'courseId', 'meetingId', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
+    window.history.replaceState(window.history.state, '', nextUrl);
+    processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
     if (!['feed', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
@@ -6755,6 +6779,7 @@ export default function HomePage() {
           return (
             <button key={item.id} onClick={() => {
               setUserMenuOpen(false);
+              handleNavClick(item.id);
               navigateMobile(item.id);
             }} style={{ flex: '0 0 68px', minWidth: 68, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>
               <span style={{ position: 'relative', fontSize: 20, filter: active ? 'none' : 'grayscale(1) opacity(0.5)' }}>

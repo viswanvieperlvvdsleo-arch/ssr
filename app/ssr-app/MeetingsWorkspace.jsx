@@ -156,6 +156,7 @@ function JoinMeetingDialog({ onClose, onJoin }) {
     const match = input.match(/\/meeting\/([^/?#]+)/i);
     const code = decodeURIComponent(match?.[1] || input.replace(/\s/g, ''));
     if (!code) return setFormError('Enter a meeting link or meeting ID.');
+    if (!password.trim()) return setFormError('Enter the meeting password.');
     onJoin(code, password);
   };
 
@@ -298,6 +299,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const [memberSearch, setMemberSearch] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [meetingActionId, setMeetingActionId] = useState(null);
+  const [joiningMeetingId, setJoiningMeetingId] = useState(null);
   const [meetingActionError, setMeetingActionError] = useState('');
   const [trainingReports, setTrainingReports] = useState({});
   const [reportMeeting, setReportMeeting] = useState(null);
@@ -358,6 +360,31 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
     router.push(`/ssr-app/meeting/${encodeURIComponent(code)}`);
   };
 
+  const loadMeetingCredential = async meeting => {
+    if (meetingCredentials[meeting.id]) return meetingCredentials[meeting.id];
+    try {
+      const response = await fetch(`/api/ssr/meetings?id=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}&includeCredentials=true`, { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.joinPassword) return '';
+      setMeetingCredentials(previous => ({ ...previous, [meeting.id]: data.joinPassword }));
+      return data.joinPassword;
+    } catch {
+      return '';
+    }
+  };
+
+  const joinScheduledMeeting = async meeting => {
+    if (!meeting.meetingCode || joiningMeetingId) return;
+    setJoiningMeetingId(meeting.id);
+    const joinPassword = await loadMeetingCredential(meeting);
+    setJoiningMeetingId(null);
+    if (!joinPassword) {
+      window.alert('The meeting password could not be loaded. Open the meeting details and try again.');
+      return;
+    }
+    openInternalMeeting(meeting.meetingCode, joinPassword);
+  };
+
   const startInstantMeeting = async () => {
     if (!addMeeting || startingMeeting || !canPlan) return;
     const now = new Date();
@@ -387,12 +414,8 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const toggleMeetingDetails = async meeting => {
     const isClosing = expandedMeetingId === meeting.id;
     setExpandedMeetingId(isClosing ? null : meeting.id);
-    if (isClosing || meetingCredentials[meeting.id] || (!canPlan && meeting.hostId !== currentUser?.id)) return;
-    try {
-      const response = await fetch(`/api/ssr/meetings?id=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}&includeCredentials=true`, { cache: 'no-store' });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) setMeetingCredentials(previous => ({ ...previous, [meeting.id]: data.joinPassword || '' }));
-    } catch { /* The room can still be joined if credential details fail to load. */ }
+    if (isClosing || meetingCredentials[meeting.id]) return;
+    await loadMeetingCredential(meeting);
   };
 
   const copyMeetingLink = async meeting => {
@@ -528,7 +551,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                       <p>{meeting.module || 'General'} | Host: {host?.name || 'Instructor'}{meeting.hostId === currentUser?.id ? ' (You)' : ''}</p>
                     </div>
                     <div className={styles.cardActions}>
-                      {tab === 'upcoming' && <button type="button" className={styles.joinButton} onClick={() => openInternalMeeting(meeting.meetingCode)} disabled={!meeting.meetingCode}>Join</button>}
+                      {tab === 'upcoming' && <button type="button" className={styles.joinButton} onClick={() => joinScheduledMeeting(meeting)} disabled={!meeting.meetingCode || joiningMeetingId === meeting.id}>{joiningMeetingId === meeting.id ? 'Loading...' : 'Join'}</button>}
                       {tab === 'upcoming' && canManage && <button type="button" className={styles.iconAction} onClick={() => openMemberPicker(meeting)} aria-label="Add people" title="Add people" disabled={meetingActionId === meeting.id}>{Icons.plus}</button>}
                       {canManage && <button type="button" className={`${styles.iconAction} ${styles.deleteAction}`} onClick={() => removeMeeting(meeting)} aria-label="Delete meeting" title="Delete meeting" disabled={meetingActionId === meeting.id}>{Icons.trash}</button>}
                       <button type="button" className={`${styles.expandButton} ${expanded ? styles.expanded : ''}`} onClick={() => toggleMeetingDetails(meeting)} aria-expanded={expanded} aria-label={expanded ? 'Hide meeting details' : 'Show meeting details'} title={expanded ? 'Hide details' : 'Show details'}>{Icons.chevron}</button>
@@ -539,7 +562,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                       <div className={styles.linkDetail}><span>SJ meeting link</span><strong>{meeting.link || 'Legacy meeting - create a new internal room'}</strong></div>
                       <button type="button" onClick={() => copyMeetingLink(meeting)} disabled={!meeting.link} title="Copy meeting link">{Icons.copy}{copiedId === meeting.id ? 'Copied' : 'Copy link'}</button>
                       <div><span>Meeting ID</span><strong>{meeting.meetingCode ? meeting.meetingCode.replace(/(\d{3})(?=\d)/g, '$1 ') : 'Not generated'}</strong></div>
-                      <div><span>Password</span><strong>{meeting.hostId === currentUser?.id || canPlan ? meetingCredentials[meeting.id] || 'Loading...' : 'Provided by host'}</strong></div>
+                      <div><span>Password</span><strong>{meetingCredentials[meeting.id] || 'Loading...'}</strong></div>
                       <div><span>Ends</span><strong>{meeting.endDate || meeting.date} at {meeting.endTime || 'Not set'}</strong></div>
                       <div><span>Participants</span><strong>{meeting.participants?.length || 0}</strong></div>
                       {(meeting.hostId === currentUser?.id || canPlan) && <button type="button" onClick={() => copyInvitation(meeting)} disabled={!meeting.meetingCode} title="Copy full invitation">{Icons.copy}{copiedId === `invite-${meeting.id}` ? 'Copied' : 'Copy invitation'}</button>}
