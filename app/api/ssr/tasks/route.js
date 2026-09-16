@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { notifyUsers } from '../notify';
+import { bumpRealtimeRevision } from '../realtime';
 
 const STAFF_ROLES = ['Admin', 'Super Admin', 'Employee'];
 
@@ -36,12 +37,29 @@ async function getActor(actorId) {
   return actor;
 }
 
-async function notifyStaff(actorId, notification) {
+async function notifyStaff(actorId, notification, excludedIds = []) {
+  const excluded = [...new Set([actorId, ...excludedIds].filter(Boolean))];
   const recipients = await prisma.appUser.findMany({
-    where: { role: { in: STAFF_ROLES }, id: { not: actorId }, restricted: false },
+    where: { role: { in: STAFF_ROLES }, id: { notIn: excluded }, restricted: false },
     select: { id: true },
   });
   return notifyUsers(recipients.map(user => user.id), notification);
+}
+
+async function notifyProfileStakeholders(task, actorId, notification) {
+  const [workers, admins] = await Promise.all([
+    prisma.appTaskWorker.findMany({ where: { taskId: task.id }, select: { userId: true } }),
+    prisma.appUser.findMany({
+      where: { role: { in: ['Admin', 'Super Admin'] }, restricted: false },
+      select: { id: true },
+    }),
+  ]);
+  const recipientIds = [...new Set([
+    task.createdById,
+    ...workers.map(worker => worker.userId),
+    ...admins.map(admin => admin.id),
+  ].filter(id => id && id !== actorId))];
+  return notifyUsers(recipientIds, notification);
 }
 
 async function ensureTask(post) {
@@ -124,6 +142,7 @@ export async function POST(req) {
       }
       task = await prisma.appRequirementTask.update({ where: { id: task.id }, data: { status: 'in_progress' } });
       await prisma.appPost.update({ where: { id: task.postId }, data: { requirementStatus: 'in_progress' } });
+      await Promise.all([bumpRealtimeRevision('tasks'), bumpRealtimeRevision('posts')]);
       return NextResponse.json(await getHydratedTask(task.id));
     }
 
@@ -145,6 +164,7 @@ export async function POST(req) {
           url: taskUrl,
           data: { type: 'task', taskId: task.id, postId: task.postId },
         });
+        await bumpRealtimeRevision('tasks');
       }
       return NextResponse.json(await getHydratedTask(task.id));
     }
@@ -186,14 +206,77 @@ export async function POST(req) {
       await prisma.appTaskEvent.create({
         data: { taskId: task.id, actorId: actor.id, actorName: actor.name, type: 'profile_added', detail: { profileId: profile.id } },
       });
-      if (mentions.length) {
-        await notifyUsers(mentions, {
-          title: 'You were mentioned in a task',
-          body: `${actor.name} mentioned you in ${task.title}.`,
-          url: taskUrl,
+      const profileUrl = `${taskUrl}&profileId=${encodeURIComponent(profile.id)}`;
+      await Promise.all([
+        notifyStaff(actor.id, {
+          title: actor.name,
+          body: `Added a new profile to ${task.title}.`,
+          url: profileUrl,
+          data: { type: 'task-profile', taskId: task.id, postId: task.postId, profileId: profile.id },
+        }, mentions),
+        ...(mentions.length ? [notifyUsers(mentions, {
+          title: actor.name,
+          body: `Mentioned you in a new profile for ${task.title}.`,
+          url: profileUrl,
           data: { type: 'task-mention', taskId: task.id, postId: task.postId, profileId: profile.id },
-        });
+        })] : []),
+        bumpRealtimeRevision('tasks'),
+      ]);
+      return NextResponse.json(await getHydratedTask(task.id));
+    }
+
+    if (body.action === 'updateProfileStatus') {
+      if (task.status === 'closed') return NextResponse.json({ error: 'Profiles cannot be updated after the requirement is closed' }, { status: 409 });
+      const profileId = String(body.profileId || '');
+      const nextStatus = String(body.profileStatus || '');
+      const labels = { follow_up: 'Follow-up', rejected: 'Rejected', completed: 'Completed' };
+      if (!labels[nextStatus]) return NextResponse.json({ error: 'Choose a valid profile status' }, { status: 400 });
+      const profile = profileId ? await prisma.appTaskProfile.findUnique({ where: { id: profileId } }) : null;
+      if (!profile || profile.taskId !== task.id) return NextResponse.json({ error: 'Candidate profile was not found' }, { status: 404 });
+      const currentStatus = profile.status || 'new';
+      const transitions = {
+        new: ['follow_up', 'rejected'],
+        follow_up: ['rejected', 'completed'],
+        rejected: [],
+        completed: [],
+      };
+      if (currentStatus === nextStatus) return NextResponse.json(await getHydratedTask(task.id));
+      if (!transitions[currentStatus]?.includes(nextStatus)) {
+        return NextResponse.json({ error: `${labels[currentStatus] || 'This status'} cannot be changed to ${labels[nextStatus]}` }, { status: 409 });
       }
+      const updatedAt = new Date();
+      const statusUpdate = await prisma.appTaskProfile.updateMany({
+        where: {
+          id: profile.id,
+          ...(currentStatus === 'new' ? { OR: [{ status: 'new' }, { status: null }] } : { status: currentStatus }),
+        },
+        data: {
+          status: nextStatus,
+          statusUpdatedById: actor.id,
+          statusUpdatedByName: actor.name,
+          statusUpdatedAt: updatedAt,
+        },
+      });
+      if (statusUpdate.count === 0) return NextResponse.json({ error: 'This profile was already updated by another employee' }, { status: 409 });
+      await prisma.appTaskEvent.create({
+        data: {
+          taskId: task.id,
+          actorId: actor.id,
+          actorName: actor.name,
+          type: 'profile_status_updated',
+          detail: { profileId: profile.id, from: currentStatus, to: nextStatus },
+        },
+      });
+      const profileUrl = `${taskUrl}&profileId=${encodeURIComponent(profile.id)}`;
+      await Promise.all([
+        notifyProfileStakeholders(task, actor.id, {
+          title: actor.name,
+          body: `Marked a candidate profile as ${labels[nextStatus]} for ${task.title}.`,
+          url: profileUrl,
+          data: { type: 'task-profile-status', taskId: task.id, postId: task.postId, profileId: profile.id, profileStatus: nextStatus },
+        }),
+        bumpRealtimeRevision('tasks'),
+      ]);
       return NextResponse.json(await getHydratedTask(task.id));
     }
 
@@ -214,6 +297,7 @@ export async function POST(req) {
         url: taskUrl,
         data: { type: 'task', taskId: task.id, postId: task.postId },
       });
+      await Promise.all([bumpRealtimeRevision('tasks'), bumpRealtimeRevision('posts')]);
       return NextResponse.json(await getHydratedTask(task.id));
     }
 

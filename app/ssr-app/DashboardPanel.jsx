@@ -115,7 +115,10 @@ function TrainingReport({ reports, loading, selectedId, onSelect, canManage }) {
         <div className={styles.tableScroll}>
           <table className={styles.attendanceTable}>
             <thead><tr><th>Date</th><th>Day</th><th>Account</th><th>Role</th><th>Joined</th><th>Left</th><th>Duration</th><th>Status</th></tr></thead>
-            <tbody>{report.attendanceRows.length ? report.attendanceRows.map(row => <tr key={`${row.userId}-${row.date}`}><td>{displayDate(row.date)}</td><td>{row.day}</td><td><strong>{row.name}</strong></td><td>{row.role}</td><td>{row.joinTime}</td><td>{row.leaveTime}</td><td>{formatSeconds(row.durationSeconds)}</td><td><span className={row.active ? styles.liveBadge : styles.presentBadge}>{row.active ? 'In meeting' : 'Present'}</span></td></tr>) : <tr><td colSpan="8" className={styles.emptyCell}>Attendance appears when a tracked account joins the meeting.</td></tr>}</tbody>
+            <tbody>{report.attendanceRows.length ? report.attendanceRows.map(row => {
+              const external = row.attendanceSource === 'external-link';
+              return <tr key={`${row.userId}-${row.date}`}><td>{displayDate(row.date)}</td><td>{row.day}</td><td><strong>{row.name}</strong></td><td>{row.role}</td><td>{row.joinTime}</td><td>{row.leaveTime}</td><td>{row.status === 'absent' ? '-' : external ? 'Not tracked' : formatSeconds(row.durationSeconds)}</td><td><span className={row.status === 'absent' ? styles.absentBadge : row.active ? styles.liveBadge : styles.presentBadge}>{row.status === 'absent' ? 'Absent' : row.active ? 'In meeting' : external ? 'Joined external link' : 'Present'}</span></td></tr>;
+            }) : <tr><td colSpan="8" className={styles.emptyCell}>Attendance appears after the first scheduled class ends.</td></tr>}</tbody>
           </table>
         </div>
         <div className={styles.memberSummary}>

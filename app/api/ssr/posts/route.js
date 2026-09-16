@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildPostData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
+import { bumpRealtimeRevision } from '../realtime';
 
 export async function GET(req) {
   try {
@@ -55,6 +56,10 @@ export async function POST(req) {
       url: `/ssr-app/home?section=feed&postId=${encodeURIComponent(newPost.id)}${newPost.visibility === 'internal' ? '&feed=internal' : ''}`,
       data: { type: 'post', postId: newPost.id },
     });
+    await Promise.all([
+      bumpRealtimeRevision('posts'),
+      ...(newPost.isRequirement ? [bumpRealtimeRevision('tasks')] : []),
+    ]);
     return NextResponse.json(newPost);
   } catch (error) {
     console.error('Posts POST API Error:', error);
@@ -96,6 +101,7 @@ export async function PUT(req) {
           data: { type: 'like', postId: post.id },
         });
       }
+      await bumpRealtimeRevision('posts');
       return NextResponse.json(updatedPost);
     }
 
@@ -131,6 +137,7 @@ export async function PUT(req) {
           data: { type: 'comment', postId: post.id },
         });
       }
+      await bumpRealtimeRevision('posts');
       return NextResponse.json(updatedPost);
     }
 
@@ -154,6 +161,7 @@ export async function PUT(req) {
           comments: newCommentsList.length
         }
       });
+      await bumpRealtimeRevision('posts');
       return NextResponse.json(updatedPost);
     }
 
@@ -187,6 +195,10 @@ export async function DELETE(req) {
       await prisma.appRequirementTask.delete({ where: { id: task.id } });
     }
     await prisma.appPost.delete({ where: { id } });
+    await Promise.all([
+      bumpRealtimeRevision('posts'),
+      ...(task ? [bumpRealtimeRevision('tasks')] : []),
+    ]);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Posts DELETE API Error:', error);

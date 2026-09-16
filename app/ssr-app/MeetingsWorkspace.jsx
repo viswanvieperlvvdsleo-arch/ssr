@@ -361,21 +361,43 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   };
 
   const loadMeetingCredential = async meeting => {
-    if (meetingCredentials[meeting.id]) return meetingCredentials[meeting.id];
+    if (Object.prototype.hasOwnProperty.call(meetingCredentials, meeting.id)) return meetingCredentials[meeting.id];
     try {
       const response = await fetch(`/api/ssr/meetings?id=${encodeURIComponent(meeting.id)}&userId=${encodeURIComponent(currentUser.id)}&includeCredentials=true`, { cache: 'no-store' });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.joinPassword) return '';
-      setMeetingCredentials(previous => ({ ...previous, [meeting.id]: data.joinPassword }));
-      return data.joinPassword;
+      if (!response.ok) return '';
+      const credential = data.joinPassword || '';
+      setMeetingCredentials(previous => ({ ...previous, [meeting.id]: credential }));
+      return credential;
     } catch {
       return '';
     }
   };
 
   const joinScheduledMeeting = async meeting => {
-    if (!meeting.meetingCode || joiningMeetingId) return;
+    if (joiningMeetingId) return;
     setJoiningMeetingId(meeting.id);
+    if (meeting.meetingType === 'external') {
+      try {
+        const response = await fetch('/api/ssr/meetings/external-join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meetingId: meeting.id, userId: currentUser.id }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.link) throw new Error(data.error || 'Could not open the external meeting.');
+        window.location.assign(data.link);
+      } catch (error) {
+        window.alert(error.message || 'Could not open the external meeting.');
+      } finally {
+        setJoiningMeetingId(null);
+      }
+      return;
+    }
+    if (!meeting.meetingCode) {
+      setJoiningMeetingId(null);
+      return;
+    }
     const joinPassword = await loadMeetingCredential(meeting);
     setJoiningMeetingId(null);
     if (!joinPassword) {
@@ -401,6 +423,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
       duration: '1 hour',
       status: 'upcoming',
       recurrence: 'none',
+      meetingType: 'internal',
       participants: Object.keys(users).filter(id => id !== currentUser?.id),
     });
     setStartingMeeting(false);
@@ -414,7 +437,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const toggleMeetingDetails = async meeting => {
     const isClosing = expandedMeetingId === meeting.id;
     setExpandedMeetingId(isClosing ? null : meeting.id);
-    if (isClosing || meetingCredentials[meeting.id]) return;
+    if (isClosing || Object.prototype.hasOwnProperty.call(meetingCredentials, meeting.id)) return;
     await loadMeetingCredential(meeting);
   };
 
@@ -434,7 +457,8 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
       meeting.title,
       `${meeting.date} ${meeting.time} - ${meeting.endTime || ''}`,
       `Join: ${meeting.link}`,
-      `Meeting ID: ${meeting.meetingCode}`,
+      `Meeting type: ${meeting.meetingType === 'external' ? meeting.externalProvider || 'External' : 'SJ Internal'}`,
+      `Meeting ID: ${meeting.meetingType === 'external' ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
       credential ? `Password: ${credential}` : '',
     ].filter(Boolean).join('\n');
     try {
@@ -551,7 +575,7 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                       <p>{meeting.module || 'General'} | Host: {host?.name || 'Instructor'}{meeting.hostId === currentUser?.id ? ' (You)' : ''}</p>
                     </div>
                     <div className={styles.cardActions}>
-                      {tab === 'upcoming' && <button type="button" className={styles.joinButton} onClick={() => joinScheduledMeeting(meeting)} disabled={!meeting.meetingCode || joiningMeetingId === meeting.id}>{joiningMeetingId === meeting.id ? 'Loading...' : 'Join'}</button>}
+                      {tab === 'upcoming' && <button type="button" className={styles.joinButton} onClick={() => joinScheduledMeeting(meeting)} disabled={meeting.meetingType === 'external' ? !meeting.link || joiningMeetingId === meeting.id : !meeting.meetingCode || joiningMeetingId === meeting.id}>{joiningMeetingId === meeting.id ? 'Opening...' : 'Join'}</button>}
                       {tab === 'upcoming' && canManage && <button type="button" className={styles.iconAction} onClick={() => openMemberPicker(meeting)} aria-label="Add people" title="Add people" disabled={meetingActionId === meeting.id}>{Icons.plus}</button>}
                       {canManage && <button type="button" className={`${styles.iconAction} ${styles.deleteAction}`} onClick={() => removeMeeting(meeting)} aria-label="Delete meeting" title="Delete meeting" disabled={meetingActionId === meeting.id}>{Icons.trash}</button>}
                       <button type="button" className={`${styles.expandButton} ${expanded ? styles.expanded : ''}`} onClick={() => toggleMeetingDetails(meeting)} aria-expanded={expanded} aria-label={expanded ? 'Hide meeting details' : 'Show meeting details'} title={expanded ? 'Hide details' : 'Show details'}>{Icons.chevron}</button>
@@ -559,13 +583,13 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
                   </div>
                   {expanded && (
                     <div className={styles.meetingDetails}>
-                      <div className={styles.linkDetail}><span>SJ meeting link</span><strong>{meeting.link || 'Legacy meeting - create a new internal room'}</strong></div>
+                      <div className={styles.linkDetail}><span>{meeting.meetingType === 'external' ? `${meeting.externalProvider || 'External'} meeting link` : 'SJ meeting link'}</span><strong>{meeting.link || 'Meeting link unavailable'}</strong></div>
                       <button type="button" onClick={() => copyMeetingLink(meeting)} disabled={!meeting.link} title="Copy meeting link">{Icons.copy}{copiedId === meeting.id ? 'Copied' : 'Copy link'}</button>
-                      <div><span>Meeting ID</span><strong>{meeting.meetingCode ? meeting.meetingCode.replace(/(\d{3})(?=\d)/g, '$1 ') : 'Not generated'}</strong></div>
-                      <div><span>Password</span><strong>{meetingCredentials[meeting.id] || 'Loading...'}</strong></div>
+                      <div><span>Meeting ID</span><strong>{meeting.meetingType === 'external' ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode ? meeting.meetingCode.replace(/(\d{3})(?=\d)/g, '$1 ') : 'Not generated'}</strong></div>
+                      <div><span>Password</span><strong>{Object.prototype.hasOwnProperty.call(meetingCredentials, meeting.id) ? meetingCredentials[meeting.id] || 'Not required' : 'Loading...'}</strong></div>
                       <div><span>Ends</span><strong>{meeting.endDate || meeting.date} at {meeting.endTime || 'Not set'}</strong></div>
                       <div><span>Participants</span><strong>{meeting.participants?.length || 0}</strong></div>
-                      {(meeting.hostId === currentUser?.id || canPlan) && <button type="button" onClick={() => copyInvitation(meeting)} disabled={!meeting.meetingCode} title="Copy full invitation">{Icons.copy}{copiedId === `invite-${meeting.id}` ? 'Copied' : 'Copy invitation'}</button>}
+                      {(meeting.hostId === currentUser?.id || canPlan) && <button type="button" onClick={() => copyInvitation(meeting)} disabled={!meeting.link} title="Copy full invitation">{Icons.copy}{copiedId === `invite-${meeting.id}` ? 'Copied' : 'Copy invitation'}</button>}
                       {canUseTrainingReports && <button type="button" className={styles.dashboardReportButton} onClick={() => setReportMeeting(meeting)} title={trainingReports[meeting.id] ? 'Edit training report' : 'Connect meeting to training dashboard'}>{Icons.chart}{trainingReports[meeting.id] ? 'Edit dashboard report' : 'Connect to dashboard'}</button>}
                       {memberMeetingId === meeting.id && <div className={styles.memberPicker}>
                         <div className={styles.memberPickerHeader}><strong>Add people</strong><button type="button" onClick={() => setMemberMeetingId(null)} aria-label="Close member picker" title="Close">{Icons.close}</button></div>

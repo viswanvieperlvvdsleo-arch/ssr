@@ -56,8 +56,9 @@
 .attendanceTable th:last-child, .attendanceTable td:last-child { border-right: 0; }
 .attendanceTable th { background: #edf2f7; color: #334155; font-weight: 800; text-transform: uppercase; }
 .attendanceTable tbody tr:last-child td { border-bottom: 0; }
-.presentBadge, .liveBadge { display: inline-block; border-radius: 4px; padding: 3px 6px; color: #087a55; background: #e8f6ef; font-weight: 800; }
+.presentBadge, .liveBadge, .absentBadge { display: inline-block; border-radius: 4px; padding: 3px 6px; color: #087a55; background: #e8f6ef; font-weight: 800; }
 .liveBadge { color: #0a6ed1; background: #eaf3ff; }
+.absentBadge { color: #b42318; background: #feeceb; }
 .emptyCell { height: 90px; color: #94a3b8; text-align: center !important; }
 .memberSummary { margin-top: 22px; }
 .summaryTable { overflow-x: auto; border: 1px solid #cbd5e1; background: #ffffff; }

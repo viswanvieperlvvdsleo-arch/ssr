@@ -503,8 +503,10 @@ function NotificationsPanel({ onOpenNotification = null }) {
                 {iconFor(n.type)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
+                {n.title && <p style={{ margin: 0, fontSize: 13, color: '#0F172A', fontWeight: 800, lineHeight: 1.35 }}>{n.title}</p>}
                 <p style={{ margin: 0, fontSize: 14, color: '#0F172A', fontWeight: n.read ? 400 : 600, lineHeight: 1.5 }}>{n.body}</p>
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94A3B8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
+                {n.url && <button type="button" onClick={(e) => { e.stopPropagation(); markNotificationRead(n.id); if (onOpenNotification) onOpenNotification(n); else router.push(n.url); }} style={{ marginTop: 8, minHeight: 32, padding: '5px 12px', border: '1px solid #BFDBFE', borderRadius: 6, background: '#EFF6FF', color: '#0A6ED1', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>View</button>}
               </div>
               <button onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CBD5E1', display: 'flex', alignItems: 'center', padding: 4, flexShrink: 0 }}>
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -5078,6 +5080,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
   const [newTeamName, setNewTeamName] = useState('');
   const [teamError, setTeamError] = useState('');
   const [teamBusy, setTeamBusy] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
 
   const loadTeams = useCallback(async () => {
     const response = await fetch('/api/ssr/teams', { cache: 'no-store' });
@@ -5118,6 +5121,17 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
   const trainers = allUsers.filter(u => u.role === 'Trainer');
   const employees = allUsers.filter(u => u.role === 'Employee');
   const restricted = allUsers.filter(u => u.restricted);
+  const normalizedAccountSearch = accountSearch.trim().toLowerCase();
+  const matchesAccountSearch = user => {
+    if (!normalizedAccountSearch) return true;
+    const teamName = teams.find(team => team.id === user.teamId)?.name || '';
+    return [user.name, user.email, user.role, teamName]
+      .some(value => String(value || '').toLowerCase().includes(normalizedAccountSearch));
+  };
+  const visibleAccounts = allUsers.filter(matchesAccountSearch);
+  const visibleParticipants = participants.filter(matchesAccountSearch);
+  const visibleTrainers = trainers.filter(matchesAccountSearch);
+  const visibleEmployees = employees.filter(matchesAccountSearch);
 
   const PERMS = [
     { id: 'view_users', label: 'View User/Trainer Accounts' },
@@ -5199,6 +5213,13 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
         ))}
       </div>
 
+      <label style={{ position: 'relative', display: 'block', marginBottom: 18 }}>
+        <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 18, height: 18, color: '#64748B', pointerEvents: 'none' }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </span>
+        <input type="search" value={accountSearch} onChange={event => setAccountSearch(event.target.value)} placeholder="Search accounts by name, email, role, or team" aria-label="Search accounts" style={{ width: '100%', height: 42, boxSizing: 'border-box', border: '1px solid #CBD5E1', borderRadius: 7, background: '#fff', padding: '0 14px 0 42px', color: '#0F172A', fontSize: 13, outline: 'none' }} />
+      </label>
+
       {/* Dashboard */}
       {tab === 'dashboard' && (
         <div>
@@ -5229,9 +5250,10 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0F172A' }}>All Accounts</h3>
-              <span style={{ fontSize: 13, color: '#64748B' }}>{allUsers.length} total</span>
+              <span style={{ fontSize: 13, color: '#64748B' }}>{visibleAccounts.length} shown</span>
             </div>
-            {allUsers.map(u => {
+            {visibleAccounts.length === 0 && <p style={{ padding: '24px', color: '#94A3B8', textAlign: 'center' }}>No matching accounts</p>}
+            {visibleAccounts.map(u => {
               const rc = roleColor(u.role);
               return (
                 <div key={u.id} style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -5254,10 +5276,10 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
       {tab === 'users' && (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', background: '#F8FAFC', display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{participants.length} Users (Participants)</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{visibleParticipants.length} Users (Participants)</span>
           </div>
-          {participants.length === 0 && <p style={{ padding: '24px', color: '#94A3B8', textAlign: 'center' }}>No users found</p>}
-          {participants.map(u => (
+          {visibleParticipants.length === 0 && <p style={{ padding: '24px', color: '#94A3B8', textAlign: 'center' }}>No matching users</p>}
+          {visibleParticipants.map(u => (
             <UserRow key={u.id} u={u} actions={<>
               {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
               {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
@@ -5273,10 +5295,10 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
       {tab === 'trainers' && (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', background: '#F8FAFC' }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{trainers.length} Trainers</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{visibleTrainers.length} Trainers</span>
           </div>
-          {trainers.length === 0 && <p style={{ padding: '24px', color: '#94A3B8', textAlign: 'center' }}>No trainers found</p>}
-          {trainers.map(u => (
+          {visibleTrainers.length === 0 && <p style={{ padding: '24px', color: '#94A3B8', textAlign: 'center' }}>No matching trainers</p>}
+          {visibleTrainers.map(u => (
             <UserRow key={u.id} u={u} actions={<>
               {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
               {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
@@ -5350,15 +5372,15 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
 
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E8ECF0', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', background: '#F8FAFC' }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{employees.length} Employees</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{visibleEmployees.length} Employees</span>
             </div>
-            {employees.length === 0 && (
+            {visibleEmployees.length === 0 && (
               <div style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>🏢</div>
-                <p style={{ fontWeight: 600 }}>No employees yet. Create the first employee ID above.</p>
+                <p style={{ fontWeight: 600 }}>{employees.length ? 'No matching employees.' : 'No employees yet. Create the first employee ID above.'}</p>
               </div>
             )}
-            {employees.map(u => {
+            {visibleEmployees.map(u => {
               const isEditingThis = editingPermsFor === u.id;
               return (
                 <div key={u.id}>
@@ -5823,7 +5845,8 @@ function ScheduleMeetingModal() {
   const { showScheduleMeeting, closeScheduleMeeting, activeChatForMeeting, addMeeting, currentUser, users, chats } = useApp();
   const [meetingForm, setMeetingForm] = useState({
     title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour',
-    recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: []
+    recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: [],
+    meetingType: 'internal', externalProvider: 'Zoom', externalLink: '', externalMeetingId: '', externalPassword: ''
   });
   const [inviteSearch, setInviteSearch] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
@@ -5878,6 +5901,15 @@ function ScheduleMeetingModal() {
       setScheduleError('Please select at least one person.');
       return;
     }
+    if (meetingForm.meetingType === 'external') {
+      try {
+        const externalUrl = new URL(meetingForm.externalLink.trim());
+        if (!['http:', 'https:'].includes(externalUrl.protocol)) throw new Error('Invalid protocol');
+      } catch {
+        setScheduleError('Please enter a valid external meeting link.');
+        return;
+      }
+    }
     const selectedGroup = availableGroups.find(group => group.id === meetingForm.groupId);
     setScheduleError('');
     setIsScheduling(true);
@@ -5894,6 +5926,11 @@ function ScheduleMeetingModal() {
       recurrence: meetingForm.recurrence,
       weekdays: meetingForm.weekdays,
       monthlyDates: meetingForm.monthlyDates,
+      meetingType: meetingForm.meetingType,
+      externalProvider: meetingForm.meetingType === 'external' ? meetingForm.externalProvider : null,
+      externalLink: meetingForm.meetingType === 'external' ? meetingForm.externalLink.trim() : null,
+      externalMeetingId: meetingForm.meetingType === 'external' ? meetingForm.externalMeetingId.trim() : null,
+      externalPassword: meetingForm.meetingType === 'external' ? meetingForm.externalPassword.trim() : null,
       chatId: meetingForm.audienceType === 'group' ? meetingForm.groupId : null,
       participants: meetingForm.audienceType === 'individual' ? meetingForm.participantIds : [],
     });
@@ -5906,7 +5943,7 @@ function ScheduleMeetingModal() {
   };
 
   const finishScheduling = () => {
-    setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: [] });
+    setMeetingForm({ title: '', startDate: '', endDate: '', time: '', endTime: '', duration: '1 hour', recurrence: 'none', weekdays: [], monthlyDates: '', audienceType: 'group', groupId: '', participantIds: [], meetingType: 'internal', externalProvider: 'Zoom', externalLink: '', externalMeetingId: '', externalPassword: '' });
     setInviteSearch('');
     setScheduleError('');
     setScheduledMeeting(null);
@@ -5919,9 +5956,14 @@ function ScheduleMeetingModal() {
       scheduledMeeting.title,
       `${scheduledMeeting.date} ${scheduledMeeting.time}-${scheduledMeeting.endTime}`,
       `Join: ${scheduledMeeting.link}`,
-      `Meeting ID: ${scheduledMeeting.meetingCode}`,
-      `Password: ${scheduledMeeting.joinPassword}`,
-    ].join('\n'));
+      scheduledMeeting.meetingType === 'external'
+        ? `Provider: ${scheduledMeeting.externalProvider || 'External'}`
+        : `Meeting ID: ${scheduledMeeting.meetingCode}`,
+      scheduledMeeting.meetingType === 'external' && scheduledMeeting.externalMeetingId
+        ? `Meeting ID: ${scheduledMeeting.externalMeetingId}`
+        : '',
+      scheduledMeeting.joinPassword ? `Password: ${scheduledMeeting.joinPassword}` : '',
+    ].filter(Boolean).join('\n'));
   };
 
   const toggleWeekday = (day) => {
@@ -5954,9 +5996,9 @@ function ScheduleMeetingModal() {
             <div style={{ color: '#067647', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Meeting scheduled</div>
             <h4 style={{ margin: '0 0 18px', fontSize: 19 }}>{scheduledMeeting.title}</h4>
             {[
-              ['SJ meeting link', scheduledMeeting.link],
-              ['Meeting ID', String(scheduledMeeting.meetingCode || '').replace(/(\d{3})(?=\d)/g, '$1 ')],
-              ['Password', scheduledMeeting.joinPassword],
+              [scheduledMeeting.meetingType === 'external' ? `${scheduledMeeting.externalProvider || 'External'} meeting link` : 'SJ meeting link', scheduledMeeting.link],
+              ['Meeting ID', scheduledMeeting.meetingType === 'external' ? scheduledMeeting.externalMeetingId || 'Provided by host' : String(scheduledMeeting.meetingCode || '').replace(/(\d{3})(?=\d)/g, '$1 ')],
+              ['Password', scheduledMeeting.joinPassword || 'Not required'],
               ['Available until', `${scheduledMeeting.endDate || scheduledMeeting.date} at ${scheduledMeeting.endTime}`],
             ].map(([label, value]) => (
               <div key={label} style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: 12, padding: '10px 0', borderBottom: '1px solid #E2E8F0' }}>
@@ -5975,6 +6017,18 @@ function ScheduleMeetingModal() {
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Meeting Title</label>
             <input type="text" value={meetingForm.title} onChange={e => { setMeetingForm(previous => ({ ...previous, title: e.target.value })); setScheduleError(''); }} aria-invalid={Boolean(scheduleError && !meetingForm.title.trim())} placeholder="e.g. Weekly Sync" style={{ width: '100%', padding: '10px 12px', border: `1px solid ${scheduleError && !meetingForm.title.trim() ? '#DC2626' : '#E2E8F0'}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
           </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 7 }}>Meeting Type</label>
+            <div role="group" aria-label="Meeting type" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>
+              {[['internal', 'SJ Internal'], ['external', 'External Link']].map(([id, label]) => <button key={id} type="button" aria-pressed={meetingForm.meetingType === id} onClick={() => { setMeetingForm(previous => ({ ...previous, meetingType: id })); setScheduleError(''); }} style={{ border: 0, borderRight: id === 'internal' ? '1px solid #CBD5E1' : 0, background: meetingForm.meetingType === id ? '#EAF3FF' : '#fff', color: meetingForm.meetingType === id ? '#0A6ED1' : '#475569', padding: '10px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{label}</button>)}
+            </div>
+          </div>
+          {meetingForm.meetingType === 'external' && <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 0.7fr) minmax(0, 1.3fr)', gap: 12 }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}>Provider<select value={meetingForm.externalProvider} onChange={event => setMeetingForm(previous => ({ ...previous, externalProvider: event.target.value }))} style={{ minHeight: 42, padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 7, background: '#fff', color: '#334155' }}><option>Zoom</option><option>JioMeet</option><option>Google Meet</option><option>Microsoft Teams</option><option>Other</option></select></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}>Meeting Link<input type="url" value={meetingForm.externalLink} onChange={event => { setMeetingForm(previous => ({ ...previous, externalLink: event.target.value })); setScheduleError(''); }} placeholder="https://..." style={{ minHeight: 42, padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 7, boxSizing: 'border-box' }} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}>Meeting ID (Optional)<input value={meetingForm.externalMeetingId} onChange={event => setMeetingForm(previous => ({ ...previous, externalMeetingId: event.target.value }))} placeholder="Provider meeting ID" style={{ minHeight: 42, padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 7, boxSizing: 'border-box' }} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}>Password (Optional)<input value={meetingForm.externalPassword} onChange={event => setMeetingForm(previous => ({ ...previous, externalPassword: event.target.value }))} placeholder="Provider password" style={{ minHeight: 42, padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 7, boxSizing: 'border-box' }} /></label>
+          </div>}
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 7 }}>Invite</label>
             <div role="group" aria-label="Meeting audience" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden', marginBottom: 10 }}>
@@ -6109,9 +6163,13 @@ export default function HomePage() {
   useEffect(() => {
     const openTaskBoard = event => {
       const taskId = event.detail?.taskId;
+      const profileId = event.detail?.profileId;
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.set('section', 'task-board');
       if (taskId) nextUrl.searchParams.set('taskId', taskId);
+      else nextUrl.searchParams.delete('taskId');
+      if (profileId) nextUrl.searchParams.set('profileId', profileId);
+      else nextUrl.searchParams.delete('profileId');
       window.history.replaceState(window.history.state, '', nextUrl);
       setActiveNav('task-board');
       navigateMobile('task-board');
@@ -6232,7 +6290,7 @@ export default function HomePage() {
 
   const handleNavClick = (id) => {
     const nextUrl = new URL(window.location.href);
-    ['section', 'taskId', 'courseId', 'meetingId', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
+    ['section', 'taskId', 'profileId', 'courseId', 'meetingId', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
@@ -6259,11 +6317,20 @@ export default function HomePage() {
       return;
     }
     if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board'].includes(section)) {
+      window.history.replaceState(window.history.state, '', `${destination.pathname}${destination.search}${destination.hash}`);
+      processedDeepLinkRef.current = destination.search;
+      setActiveNav(section);
       setNotificationCourseId(destination.searchParams.get('courseId'));
       if (notificationAction === 'like' && section === 'feed' && destination.searchParams.get('postId')) {
         likePost(destination.searchParams.get('postId'));
       }
       navigateMobile(section);
+      if (section === 'task-board') {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('sj-open-task-board', { detail: {
+          taskId: destination.searchParams.get('taskId'),
+          profileId: destination.searchParams.get('profileId'),
+        } })), 0);
+      }
       return;
     }
     router.push(notification.url);
@@ -6511,7 +6578,7 @@ export default function HomePage() {
 
               {activeNav === 'notifications' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-                  <NotificationsPanel />
+                  <NotificationsPanel onOpenNotification={handleMobileNotificationOpen} />
                 </div>
               )}
 

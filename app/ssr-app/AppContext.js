@@ -253,7 +253,10 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     let intervalId;
+    let contentIntervalId;
     let isLoading = false;
+    let isCheckingContent = false;
+    const contentRevision = { posts: null, tasks: null };
 
     async function loadStaticData() {
       // Load slow-changing data only once on mount
@@ -365,9 +368,47 @@ export function AppProvider({ children }) {
       }
     }
 
+    async function syncContentChanges(event = null) {
+      if (document.visibilityState === 'hidden' || isCheckingContent) return;
+      const storedUser = readStoredAppUser();
+      const currId = storedUser?.id;
+      if (!currId) return;
+      isCheckingContent = true;
+      try {
+        const response = await fetch(`/api/ssr/realtime?userId=${encodeURIComponent(currId)}`, { cache: 'no-store' });
+        const revision = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+
+        const firstCheck = contentRevision.posts === null || contentRevision.tasks === null;
+        const eventType = event?.detail?.type || '';
+        const postsChanged = firstCheck ? revision.posts > 0 : revision.posts !== contentRevision.posts;
+        const tasksChanged = firstCheck ? revision.tasks > 0 : revision.tasks !== contentRevision.tasks;
+        const forcePosts = ['post', 'like', 'comment'].includes(eventType);
+        const forceTasks = eventType === 'task' || eventType.startsWith('task-');
+        contentRevision.posts = revision.posts;
+        contentRevision.tasks = revision.tasks;
+
+        if (postsChanged || forcePosts) {
+          const postsResponse = await fetch(`/api/ssr/posts?viewerId=${encodeURIComponent(currId)}`, { cache: 'no-store' });
+          const postsResult = await postsResponse.json().catch(() => []);
+          if (postsResponse.ok && Array.isArray(postsResult)) setIfChanged(setPosts, postsResult.map(normalizePost));
+        }
+        if (tasksChanged || forceTasks) {
+          window.dispatchEvent(new CustomEvent('sj-task-updated', { detail: { source: 'realtime' } }));
+        }
+      } catch (error) {
+        console.error('Failed to check content updates:', error);
+      } finally {
+        isCheckingContent = false;
+      }
+    }
+
     // Load static data once immediately, then poll only lightweight real-time data
-    loadStaticData().then(() => loadRealtimeData());
+    loadStaticData().then(() => Promise.all([loadRealtimeData(), syncContentChanges()]));
     intervalId = setInterval(loadRealtimeData, 5000);
+    contentIntervalId = setInterval(syncContentChanges, 4000);
+    const onLiveSync = event => syncContentChanges(event);
+    window.addEventListener('sj-live-sync', onLiveSync);
 
     // Local development has no external scheduler, so run the processor while
     // the app is open. Production calls the protected endpoint externally.
@@ -380,13 +421,18 @@ export function AppProvider({ children }) {
 
     // Pause polling when tab/app goes to background, resume when visible
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') loadRealtimeData();
+      if (document.visibilityState === 'visible') {
+        loadRealtimeData();
+        syncContentChanges();
+      }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       clearInterval(intervalId);
+      clearInterval(contentIntervalId);
       if (localScheduleIntervalId) clearInterval(localScheduleIntervalId);
+      window.removeEventListener('sj-live-sync', onLiveSync);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);

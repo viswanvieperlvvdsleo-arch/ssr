@@ -133,6 +133,13 @@ model AppNotification {
   @@index([userId, createdAt])
 }
 
+model AppRealtimeRevision {
+  id        String   @id @map("_id")
+  posts     Int      @default(0)
+  tasks     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 model AppCourse {
   id               String   @id @default(auto()) @map("_id") @db.ObjectId
   title            String
@@ -307,15 +314,19 @@ model AppTaskWorker {
 }
 
 model AppTaskProfile {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  taskId      String
-  workerId    String?
-  addedById   String
-  addedByName String
-  text        String
-  attachment  Json?
-  mentions    String[] @default([])
-  createdAt   DateTime @default(now())
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  taskId              String
+  workerId            String?
+  addedById           String
+  addedByName         String
+  text                String
+  attachment          Json?
+  mentions            String[]  @default([])
+  status              String?   @default("new")
+  statusUpdatedById   String?
+  statusUpdatedByName String?
+  statusUpdatedAt     DateTime?
+  createdAt           DateTime  @default(now())
 
   @@index([taskId, createdAt])
 }
@@ -410,6 +421,9 @@ model AppMeeting {
   title              String
   module             String
   hostId             String
+  meetingType        String?   @default("internal")
+  externalProvider   String?
+  externalMeetingId  String?
   date               String
   endDate            String?
   time               String

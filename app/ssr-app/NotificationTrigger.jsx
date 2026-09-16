@@ -20,6 +20,9 @@ function actionsForType(type) {
     { action: 'dismiss', title: 'Cancel' },
     { action: 'start', title: 'Start' },
   ];
+  if (type === 'task' || type === 'task-profile' || type === 'task-mention' || type === 'task-profile-status') {
+    return [{ action: 'open', title: 'View' }];
+  }
   return [{ action: 'open', title: 'Open' }];
 }
 
@@ -105,6 +108,7 @@ export default function NotificationTrigger() {
     if (Notification.permission === 'granted') requestPermissionAndRegisterToken(false);
 
     unsubscribe = onMessage(messaging, async payload => {
+      window.dispatchEvent(new CustomEvent('sj-live-sync', { detail: payload.data || {} }));
       if (Notification.permission !== 'granted') return;
       const notification = payload.notification || {};
       const title = notification.title || payload.data?.title;

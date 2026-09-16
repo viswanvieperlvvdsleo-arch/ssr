@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
+import { localDateTimeToUtc, parseScheduleDate } from '../schedule';
 
 const STAFF_ROLES = ['Employee', 'Admin', 'Super Admin'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function isObjectId(value) {
   return /^[a-f\d]{24}$/i.test(String(value || ''));
@@ -43,6 +45,70 @@ function timeLabel(value, timezone) {
   }).format(value);
 }
 
+function scheduleDateString(value) {
+  return `${String(value.getUTCFullYear()).padStart(4, '0')}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
+}
+
+function completedScheduleDates(meeting, report, timezone, now) {
+  const start = parseScheduleDate(meeting.date);
+  if (!start) return [];
+  const today = dateParts(now, timezone).date;
+  const lastDate = [meeting.endDate || today, today].sort()[0];
+  if (lastDate < meeting.date) return [];
+
+  const recurrence = meeting.recurrence || 'none';
+  const reportWeekdays = new Set(report.weekdays || []);
+  const monthlyDates = new Set(String(meeting.monthlyDates || '')
+    .split(',')
+    .map(value => Number(value.trim()))
+    .filter(value => Number.isInteger(value) && value >= 1 && value <= 31));
+  const startDate = new Date(Date.UTC(start.year, start.month - 1, start.day));
+  const result = [];
+
+  for (let offset = 0; offset < 5000 && result.length < report.totalDays; offset += 1) {
+    const candidate = new Date(startDate);
+    candidate.setUTCDate(startDate.getUTCDate() + offset);
+    const date = scheduleDateString(candidate);
+    if (date > lastDate) break;
+
+    const weekday = CALENDAR_WEEKDAYS[candidate.getUTCDay()];
+    const scheduled = recurrence === 'none'
+      ? offset === 0
+      : recurrence === 'monthly'
+        ? (monthlyDates.size ? monthlyDates.has(candidate.getUTCDate()) : candidate.getUTCDate() === start.day)
+        : reportWeekdays.has(weekday);
+    if (!scheduled) continue;
+
+    const endsAt = localDateTimeToUtc(date, meeting.endTime || meeting.time, timezone);
+    if (endsAt && endsAt <= now) result.push({ date, day: weekday });
+    if (recurrence === 'none') break;
+  }
+  return result;
+}
+
+function includeAbsences(person, completedDates) {
+  if (!person) return null;
+  const attendedDates = new Set(person.attendance.map(row => row.date));
+  const absences = completedDates
+    .filter(item => !attendedDates.has(item.date))
+    .map(item => ({
+      ...item,
+      firstJoin: null,
+      lastLeave: null,
+      joinTime: '-',
+      leaveTime: '-',
+      durationSeconds: 0,
+      sessions: 0,
+      active: false,
+      status: 'absent',
+    }));
+  return {
+    ...person,
+    attendance: [...person.attendance.map(row => ({ ...row, status: 'present' })), ...absences]
+      .sort((left, right) => right.date.localeCompare(left.date)),
+  };
+}
+
 function aggregatePerson(user, sessions, totalDays, timezone, now) {
   const daily = new Map();
   for (const session of sessions) {
@@ -60,12 +126,16 @@ function aggregatePerson(user, sessions, totalDays, timezone, now) {
       durationSeconds: 0,
       sessions: 0,
       active: false,
+      hasInternalSession: false,
+      hasExternalJoin: false,
     };
     if (joinedAt < existing.firstJoin) existing.firstJoin = joinedAt;
     if (leftAt > existing.lastLeave) existing.lastLeave = leftAt;
     existing.durationSeconds += seconds;
     existing.sessions += 1;
     existing.active = existing.active || active;
+    existing.hasInternalSession = existing.hasInternalSession || session.role !== 'external';
+    existing.hasExternalJoin = existing.hasExternalJoin || session.role === 'external';
     daily.set(key.date, existing);
   }
 
@@ -76,7 +146,8 @@ function aggregatePerson(user, sessions, totalDays, timezone, now) {
       firstJoin: row.firstJoin.toISOString(),
       lastLeave: row.lastLeave.toISOString(),
       joinTime: timeLabel(row.firstJoin, timezone),
-      leaveTime: row.active ? 'In meeting' : timeLabel(row.lastLeave, timezone),
+      leaveTime: !row.hasInternalSession && row.hasExternalJoin ? 'Not tracked' : row.active ? 'In meeting' : timeLabel(row.lastLeave, timezone),
+      attendanceSource: !row.hasInternalSession && row.hasExternalJoin ? 'external-link' : 'internal',
     }));
   const attendedDays = attendance.length;
   return {
@@ -110,16 +181,19 @@ async function hydrateReports(reports) {
     if (!meeting) return [];
     const timezone = meeting.timezone || 'Asia/Kolkata';
     const reportSessions = attendance.filter(item => item.meetingId === report.meetingId);
-    const trainer = report.trainerId
+    const completedDates = completedScheduleDates(meeting, report, timezone, now);
+    const trainerAttendance = report.trainerId
       ? aggregatePerson(userMap[report.trainerId], reportSessions.filter(item => item.userId === report.trainerId), report.totalDays, timezone, now)
       : null;
-    const members = report.memberIds.map(memberId => aggregatePerson(
+    const memberAttendance = report.memberIds.map(memberId => aggregatePerson(
       userMap[memberId],
       reportSessions.filter(item => item.userId === memberId),
       report.totalDays,
       timezone,
       now,
     ));
+    const trainer = includeAbsences(trainerAttendance, completedDates);
+    const members = memberAttendance.map(member => includeAbsences(member, completedDates));
     const attendanceRows = [
       ...(trainer ? trainer.attendance.map(row => ({ ...row, userId: trainer.id, name: trainer.name, role: 'Trainer' })) : []),
       ...members.flatMap(member => member.attendance.map(row => ({
@@ -129,9 +203,7 @@ async function hydrateReports(reports) {
         role: member.role,
       }))),
     ].sort((left, right) => right.date.localeCompare(left.date) || left.name.localeCompare(right.name));
-    const completedDays = trainer
-      ? trainer.attendedDays
-      : new Set(attendanceRows.map(row => row.date)).size;
+    const completedDays = completedDates.length;
 
     return [{
       ...report,

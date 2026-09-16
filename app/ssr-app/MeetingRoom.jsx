@@ -34,6 +34,7 @@ const RECORDING_HEIGHT = 720;
 const RECORDING_FPS = 25;
 const RECORDING_VIDEO_BITS_PER_SECOND = 1_450_000;
 const RECORDING_AUDIO_BITS_PER_SECOND = 96_000;
+const CAMERA_CONSTRAINTS = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } };
 
 function recordingMimeType() {
   return [
@@ -149,6 +150,7 @@ export default function MeetingRoom({ meetingCode }) {
   const screenStreamRef = useRef(null);
   const sessionRef = useRef(null);
   const peerConnectionsRef = useRef(new Map());
+  const outboundSendersRef = useRef(new Map());
   const dataChannelsRef = useRef(new Map());
   const pendingCandidatesRef = useRef(new Map());
   const seenSignalsRef = useRef(new Set());
@@ -243,7 +245,7 @@ export default function MeetingRoom({ meetingCode }) {
   useEffect(() => {
     if (session || !currentUser || loading || loadError) return undefined;
     let cancelled = false;
-    navigator.mediaDevices?.getUserMedia({ video: true, audio: true })
+    navigator.mediaDevices?.getUserMedia({ video: CAMERA_CONSTRAINTS, audio: true })
       .then(stream => {
         if (cancelled) return stream.getTracks().forEach(track => track.stop());
         previewStreamRef.current = stream;
@@ -301,7 +303,17 @@ export default function MeetingRoom({ meetingCode }) {
 
     const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     peerConnectionsRef.current.set(remotePeerId, connection);
-    localStreamRef.current?.getTracks().forEach(track => connection.addTrack(track, localStreamRef.current));
+    const outboundSenders = {};
+    const localStream = localStreamRef.current;
+    const audioTrack = localStream?.getAudioTracks().find(track => track.readyState === 'live');
+    const cameraTrack = localStream?.getVideoTracks().find(track => track.readyState === 'live');
+    const screenTrack = screenStreamRef.current?.getVideoTracks().find(track => track.readyState === 'live');
+    if (audioTrack) outboundSenders.audio = connection.addTrack(audioTrack, localStream);
+    if (screenTrack || cameraTrack) {
+      const videoTrack = screenTrack || cameraTrack;
+      outboundSenders.video = connection.addTrack(videoTrack, screenTrack ? screenStreamRef.current : localStream);
+    }
+    outboundSendersRef.current.set(remotePeerId, outboundSenders);
     connection.ontrack = event => {
       const stream = event.streams[0] || new MediaStream([event.track]);
       setRemoteStreams(previous => ({ ...previous, [remotePeerId]: stream }));
@@ -313,6 +325,7 @@ export default function MeetingRoom({ meetingCode }) {
     connection.onconnectionstatechange = () => {
       if (['failed', 'closed'].includes(connection.connectionState)) {
         peerConnectionsRef.current.delete(remotePeerId);
+        outboundSendersRef.current.delete(remotePeerId);
         dataChannelsRef.current.delete(remotePeerId);
         setRemoteStreams(previous => {
           const next = { ...previous };
@@ -382,6 +395,7 @@ export default function MeetingRoom({ meetingCode }) {
           if (!activePeers.has(peerId)) {
             connection.close();
             peerConnectionsRef.current.delete(peerId);
+            outboundSendersRef.current.delete(peerId);
             dataChannelsRef.current.delete(peerId);
             setRemoteStreams(previous => { const next = { ...previous }; delete next[peerId]; return next; });
           }
@@ -412,6 +426,7 @@ export default function MeetingRoom({ meetingCode }) {
   const closeConnections = useCallback(() => {
     for (const connection of peerConnectionsRef.current.values()) connection.close();
     peerConnectionsRef.current.clear();
+    outboundSendersRef.current.clear();
     dataChannelsRef.current.clear();
     setRemoteStreams({});
   }, []);
@@ -470,47 +485,148 @@ export default function MeetingRoom({ meetingCode }) {
     }
   };
 
-  const updatePresence = values => api('PATCH', values).catch(() => null);
-  const toggleMic = () => {
-    const next = !micOn;
-    localStreamRef.current?.getAudioTracks().forEach(track => { track.enabled = next; });
-    setMicOn(next);
-    if (session) updatePresence({ micOn: next });
+  const updatePresence = useCallback(values => api('PATCH', values).catch(() => null), [api]);
+
+  const replacePublishedTrack = useCallback(async (kind, track, stream = localStreamRef.current) => {
+    let firstError = null;
+    for (const [peerId, connection] of peerConnectionsRef.current.entries()) {
+      try {
+        const senders = outboundSendersRef.current.get(peerId) || {};
+        let sender = senders[kind];
+        if (sender) {
+          await sender.replaceTrack(track || null);
+        } else if (track && connection.connectionState !== 'closed') {
+          sender = connection.addTrack(track, stream);
+          senders[kind] = sender;
+          outboundSendersRef.current.set(peerId, senders);
+          if (connection.signalingState === 'stable') {
+            const offer = await connection.createOffer();
+            await connection.setLocalDescription(offer);
+            await sendSignal(peerId, 'offer', offer);
+          }
+        }
+      } catch (error) {
+        firstError ||= error;
+      }
+    }
+    if (firstError) throw firstError;
+  }, [sendSignal]);
+
+  const refreshLocalPreview = useCallback(() => {
+    previewStreamRef.current = localStreamRef.current;
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+  }, []);
+
+  const stopLocalTrack = useCallback(async kind => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const shouldUnpublish = !(kind === 'video' && screenStreamRef.current);
+    const tracks = kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks();
+    tracks.forEach(track => {
+      stream.removeTrack(track);
+      track.stop();
+    });
+    refreshLocalPreview();
+    if (shouldUnpublish) await replacePublishedTrack(kind, null);
+  }, [refreshLocalPreview, replacePublishedTrack]);
+
+  const acquireLocalTrack = useCallback(async kind => {
+    const deviceStream = await navigator.mediaDevices.getUserMedia(kind === 'audio'
+      ? { audio: true, video: false }
+      : { audio: false, video: CAMERA_CONSTRAINTS });
+    const track = kind === 'audio' ? deviceStream.getAudioTracks()[0] : deviceStream.getVideoTracks()[0];
+    if (!track) throw new Error(`${kind === 'audio' ? 'Microphone' : 'Camera'} is unavailable.`);
+    const stream = localStreamRef.current || new MediaStream();
+    const oldTracks = kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks();
+    oldTracks.forEach(oldTrack => {
+      stream.removeTrack(oldTrack);
+      oldTrack.stop();
+    });
+    stream.addTrack(track);
+    localStreamRef.current = stream;
+    refreshLocalPreview();
+    if (!(kind === 'video' && screenStreamRef.current)) await replacePublishedTrack(kind, track, stream);
+    return track;
+  }, [refreshLocalPreview, replacePublishedTrack]);
+
+  const toggleMic = async () => {
+    if (micOn) {
+      setMicOn(false);
+      if (session) updatePresence({ micOn: false });
+      await stopLocalTrack('audio').catch(() => setRoomError('Microphone stopped, but one participant connection needs to reconnect.'));
+      return;
+    }
+    try {
+      await acquireLocalTrack('audio');
+      setMicOn(true);
+      setDeviceError('');
+      if (session) updatePresence({ micOn: true });
+    } catch (error) {
+      setDeviceError(error.message || 'Microphone access is blocked.');
+    }
   };
-  const toggleCamera = () => {
-    const next = !cameraOn;
-    localStreamRef.current?.getVideoTracks().forEach(track => { track.enabled = next; });
-    setCameraOn(next);
-    if (session) updatePresence({ cameraOn: next });
+
+  const toggleCamera = async () => {
+    if (cameraOn) {
+      setCameraOn(false);
+      if (session) updatePresence({ cameraOn: false });
+      await stopLocalTrack('video').catch(() => setRoomError('Camera stopped, but one participant connection needs to reconnect.'));
+      return;
+    }
+    try {
+      await acquireLocalTrack('video');
+      setCameraOn(true);
+      setDeviceError('');
+      if (session) updatePresence({ cameraOn: true });
+    } catch (error) {
+      setDeviceError(error.message || 'Camera access is blocked.');
+    }
   };
 
   const stopScreenShare = useCallback(async () => {
-    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-    for (const connection of peerConnectionsRef.current.values()) {
-      const sender = connection.getSenders().find(item => item.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(cameraTrack || null);
-    }
-    screenStreamRef.current?.getTracks().forEach(track => track.stop());
+    const cameraTrack = localStreamRef.current?.getVideoTracks().find(track => track.readyState === 'live');
+    const screenStream = screenStreamRef.current;
     screenStreamRef.current = null;
+    screenStream?.getTracks().forEach(track => {
+      track.onended = null;
+      track.stop();
+    });
     setScreenSharing(false);
     updatePresence({ screenSharing: false });
-  }, []);
+    await replacePublishedTrack('video', cameraTrack || null, localStreamRef.current);
+  }, [replacePublishedTrack, updatePresence]);
 
   const toggleScreenShare = async () => {
     if (screenSharing) return stopScreenShare();
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+        audio: false,
+      });
       const track = stream.getVideoTracks()[0];
+      if ('contentHint' in track) track.contentHint = 'detail';
       screenStreamRef.current = stream;
-      track.onended = stopScreenShare;
-      for (const connection of peerConnectionsRef.current.values()) {
-        const sender = connection.getSenders().find(item => item.track?.kind === 'video');
-        if (sender) await sender.replaceTrack(track);
-        else connection.addTrack(track, stream);
+      track.onended = () => { stopScreenShare().catch(() => setRoomError('Screen sharing stopped, but one participant connection needs to reconnect.')); };
+      await replacePublishedTrack('video', track, stream);
+      for (const senders of outboundSendersRef.current.values()) {
+        const sender = senders.video;
+        if (!sender) continue;
+        try {
+          const parameters = sender.getParameters();
+          if (parameters.encodings?.length) {
+            parameters.encodings[0].maxBitrate = 2_500_000;
+            parameters.encodings[0].maxFramerate = 30;
+          }
+          if ('degradationPreference' in parameters) parameters.degradationPreference = 'maintain-framerate';
+          await sender.setParameters(parameters);
+        } catch { /* Some browsers do not expose outbound encoding controls. */ }
       }
       setScreenSharing(true);
       updatePresence({ screenSharing: true });
-    } catch { /* The user cancelled the browser's sharing picker. */ }
+    } catch (error) {
+      if (screenStreamRef.current) await stopScreenShare().catch(() => null);
+      if (error?.name !== 'AbortError' && error?.name !== 'NotAllowedError') setRoomError('Could not start screen sharing. Try again.');
+    }
   };
 
   const stopRecording = () => {
@@ -568,20 +684,31 @@ export default function MeetingRoom({ meetingCode }) {
       recordingCanvasRef.current = canvas;
 
       const syncRecordingMedia = () => {
-        const currentParticipants = participantsRef.current.length ? participantsRef.current : [{
+        const fallbackSelf = {
           peerId: sessionRef.current?.peerId,
           name: displayName,
           role: sessionRef.current?.participant?.role,
           cameraOn,
           micOn,
           screenSharing,
-        }];
+        };
+        const sourceParticipants = participantsRef.current.length ? participantsRef.current : [fallbackSelf];
+        const hasSelf = sourceParticipants.some(participant => participant.peerId === sessionRef.current?.peerId);
+        const currentParticipants = [...sourceParticipants, ...(hasSelf ? [] : [fallbackSelf])].map(participant => {
+          if (participant.peerId !== sessionRef.current?.peerId) return participant;
+          return {
+            ...participant,
+            cameraOn: Boolean(localStreamRef.current?.getVideoTracks().some(track => track.readyState === 'live')),
+            micOn: Boolean(localStreamRef.current?.getAudioTracks().some(track => track.readyState === 'live')),
+            screenSharing: Boolean(screenStreamRef.current?.getVideoTracks().some(track => track.readyState === 'live')),
+          };
+        });
         const activeVideoKeys = new Set();
 
         for (const participant of currentParticipants) {
           const isSelf = participant.peerId === sessionRef.current?.peerId;
           const stream = isSelf
-            ? (participant.screenSharing ? screenStreamRef.current : localStreamRef.current)
+            ? (screenStreamRef.current || localStreamRef.current)
             : remoteStreamsRef.current[participant.peerId];
           if (!stream) continue;
           activeVideoKeys.add(participant.peerId);
@@ -604,19 +731,20 @@ export default function MeetingRoom({ meetingCode }) {
           recordingVideosRef.current.delete(peerId);
         }
 
-        const meetingAudioStreams = [localStreamRef.current, ...Object.values(remoteStreamsRef.current)]
-          .filter(stream => stream?.getAudioTracks().some(track => track.readyState === 'live'));
-        const activeAudioKeys = new Set(meetingAudioStreams.map(stream => stream.id));
-        for (const stream of meetingAudioStreams) {
-          if (recordingAudioSourcesRef.current.has(stream.id)) continue;
-          const source = audioContext.createMediaStreamSource(stream);
+        const meetingAudioTracks = [localStreamRef.current, ...Object.values(remoteStreamsRef.current)]
+          .map(stream => stream?.getAudioTracks().find(track => track.readyState === 'live'))
+          .filter(Boolean);
+        const activeAudioKeys = new Set(meetingAudioTracks.map(track => track.id));
+        for (const track of meetingAudioTracks) {
+          if (recordingAudioSourcesRef.current.has(track.id)) continue;
+          const source = audioContext.createMediaStreamSource(new MediaStream([track]));
           source.connect(destination);
-          recordingAudioSourcesRef.current.set(stream.id, source);
+          recordingAudioSourcesRef.current.set(track.id, source);
         }
-        for (const [streamId, source] of recordingAudioSourcesRef.current.entries()) {
-          if (activeAudioKeys.has(streamId)) continue;
+        for (const [trackId, source] of recordingAudioSourcesRef.current.entries()) {
+          if (activeAudioKeys.has(trackId)) continue;
           source.disconnect();
-          recordingAudioSourcesRef.current.delete(streamId);
+          recordingAudioSourcesRef.current.delete(trackId);
         }
         return currentParticipants;
       };
@@ -663,9 +791,9 @@ export default function MeetingRoom({ meetingCode }) {
             x: 16, y: 16, width: RECORDING_WIDTH - 32, height: RECORDING_HEIGHT - 32,
           }, { featured: true, mirror: featured?.peerId === sessionRef.current?.peerId });
         }
-        recordingAnimationRef.current = window.requestAnimationFrame(drawFrame);
       };
       drawFrame();
+      recordingAnimationRef.current = window.setInterval(drawFrame, Math.round(1000 / RECORDING_FPS));
 
       const canvasStream = canvas.captureStream(RECORDING_FPS);
       const outputStream = new MediaStream([
@@ -701,7 +829,7 @@ export default function MeetingRoom({ meetingCode }) {
         recordingWriteErrorRef.current = event.error || new Error('The browser could not continue recording.');
       };
       recorder.onstop = async () => {
-        window.cancelAnimationFrame(recordingAnimationRef.current);
+        window.clearInterval(recordingAnimationRef.current);
         await recordingWriteChainRef.current.catch(() => {});
         if (sink.writable) await sink.writable.close().catch(error => { recordingWriteErrorRef.current ||= error; });
 
@@ -751,7 +879,7 @@ export default function MeetingRoom({ meetingCode }) {
       setRecording(true);
       setRecordingSeconds(0);
     } catch (error) {
-      window.cancelAnimationFrame(recordingAnimationRef.current);
+      window.clearInterval(recordingAnimationRef.current);
       if (sink.writable) await sink.writable.abort?.().catch(() => {});
       if (sink.mode === 'opfs') await sink.root.removeEntry(sink.temporaryName).catch(() => {});
       for (const { video } of recordingVideosRef.current.values()) {

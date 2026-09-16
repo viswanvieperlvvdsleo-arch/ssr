@@ -61,6 +61,9 @@ function actionsForType(type) {
     { action: 'dismiss', title: 'Cancel' },
     { action: 'start', title: 'Start' },
   ];
+  if (type === 'task' || type === 'task-profile' || type === 'task-mention' || type === 'task-profile-status') {
+    return [{ action: 'open', title: 'View' }];
+  }
   return [{ action: 'open', title: 'Open' }];
 }
 

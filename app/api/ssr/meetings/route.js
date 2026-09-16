@@ -35,14 +35,24 @@ function internalMeetingLink(req, meetingCode) {
   return new URL(`/ssr-app/meeting/${meetingCode}`, req.url).toString();
 }
 
+function externalMeetingLink(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
 function invitationText(meeting, joinPassword) {
   const recurrence = meeting.recurrence && meeting.recurrence !== 'none' ? ` (${meeting.recurrence})` : '';
+  const external = meeting.meetingType === 'external';
   return [
     `**Meeting Scheduled: ${meeting.title}**${recurrence}`,
     `${meeting.date} ${meeting.time}-${meeting.endTime || ''}`,
-    `[Join SJ Meeting](${meeting.link})`,
-    `Meeting ID: ${meeting.meetingCode}`,
-    `Password: ${joinPassword}`,
+    `[Join ${external ? meeting.externalProvider || 'External' : 'SJ'} Meeting](${meeting.link})`,
+    `Meeting ID: ${external ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
+    joinPassword ? `Password: ${joinPassword}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -185,27 +195,39 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Meeting end date and time must be in the future.' }, { status: 400 });
     }
 
-    const joinPassword = generateMeetingPassword();
-    const password = hashMeetingPassword(joinPassword);
+    const meetingType = data.meetingType === 'external' ? 'external' : 'internal';
+    const externalLink = meetingType === 'external' ? externalMeetingLink(data.externalLink || data.link) : '';
+    if (meetingType === 'external' && !externalLink) {
+      return NextResponse.json({ error: 'Enter a valid external meeting link beginning with http:// or https://.' }, { status: 400 });
+    }
+    const joinPassword = meetingType === 'external'
+      ? String(data.externalPassword || '').trim().slice(0, 100)
+      : generateMeetingPassword();
+    const password = meetingType === 'internal' ? hashMeetingPassword(joinPassword) : { hash: null, salt: null };
     let newMeeting = null;
 
-    for (let attempt = 0; attempt < 5 && !newMeeting; attempt += 1) {
-      const meetingCode = generateMeetingCode();
-      const existing = await prisma.appMeeting.findFirst({ where: { meetingCode }, select: { id: true } });
-      if (existing) continue;
+    for (let attempt = 0; attempt < (meetingType === 'internal' ? 5 : 1) && !newMeeting; attempt += 1) {
+      const meetingCode = meetingType === 'internal' ? generateMeetingCode() : null;
+      if (meetingCode) {
+        const existing = await prisma.appMeeting.findFirst({ where: { meetingCode }, select: { id: true } });
+        if (existing) continue;
+      }
       newMeeting = await prisma.appMeeting.create({
         data: buildMeetingData({
           ...data,
+          meetingType,
+          externalProvider: meetingType === 'external' ? String(data.externalProvider || 'External').trim().slice(0, 50) : null,
+          externalMeetingId: meetingType === 'external' ? String(data.externalMeetingId || '').trim().slice(0, 100) || null : null,
           module: groupChat?.name || data.module || 'General',
           chatId: groupChat?.id || null,
           participants: participantIds,
           endDate: data.endDate || data.date,
           endTime,
           meetingCode,
-          link: internalMeetingLink(req, meetingCode),
+          link: meetingType === 'external' ? externalLink : internalMeetingLink(req, meetingCode),
           passwordHash: password.hash,
           passwordSalt: password.salt,
-          passwordEncrypted: encryptCredential(joinPassword),
+          passwordEncrypted: joinPassword ? encryptCredential(joinPassword) : null,
           expiresAt,
         }),
       });
@@ -224,7 +246,7 @@ export async function POST(req) {
         title: 'New meeting scheduled',
         body: `${newMeeting.title} - ${newMeeting.date} ${newMeeting.time}`,
         url: `/ssr-app/home?section=meetings&meetingId=${encodeURIComponent(newMeeting.id)}`,
-        data: { type: 'meeting', meetingId: newMeeting.id, meetingCode: newMeeting.meetingCode || '' },
+        data: { type: 'meeting', meetingId: newMeeting.id, meetingCode: newMeeting.meetingCode || '', meetingType },
       });
     } catch (deliveryError) {
       await prisma.appMeeting.delete({ where: { id: newMeeting.id } }).catch(() => {});
