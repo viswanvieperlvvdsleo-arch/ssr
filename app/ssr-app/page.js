@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from './AppContext';
 
-const CATEGORIES = ['User', 'Trainer', 'Employee'];
+const CATEGORIES = ['User', 'Trainer', 'Employee', 'Admin'];
 
 
 // Map category selection to mock user key
@@ -12,27 +12,30 @@ const CATEGORY_TO_ROLE = {
   'User': 'participant',
   'Trainer': 'trainer',
   'Employee': 'employee',
+  'Admin': 'admin',
 };
 
 export default function EntryPage() {
   const router = useRouter();
-  const { login, signup, users, currentUser } = useApp();
+  const { login, signup, users, currentUser, logout } = useApp();
   const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
-    setSessionChecked(true);
-    if (currentUser) {
-      router.replace('/ssr-app/home');
+    let cancelled = false;
+    if (!currentUser) {
+      setSessionChecked(true);
       return;
     }
-
-    try {
-      const saved = localStorage.getItem('ssr_app_user') || sessionStorage.getItem('ssr_app_user');
-      if (saved) router.replace('/ssr-app/home');
-    } catch {
-      // Storage may be unavailable in a privacy-restricted browser.
-    }
-  }, [currentUser, router]);
+    fetch('/api/ssr/auth', { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null)
+      .then(result => {
+        if (cancelled) return;
+        if (result?.user) router.replace(result.user.companyId ? '/ssr-app/company' : '/ssr-app/home');
+        else { logout(); setSessionChecked(true); }
+      })
+      .catch(() => { if (!cancelled) setSessionChecked(true); });
+    return () => { cancelled = true; };
+  }, [currentUser?.id, router]);
 
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
@@ -125,7 +128,7 @@ export default function EntryPage() {
     } else {
       const result = await login(email.trim().toLowerCase(), password.trim(), CATEGORY_TO_ROLE[category]);
       if (result && result.success) {
-        router.push('/ssr-app/home');
+        router.push(result.user?.companyId ? '/ssr-app/company' : '/ssr-app/home');
       } else {
         setError(`Login failed: ${result?.error || 'Invalid email or password.'}`);
         setLoading(false);
@@ -146,7 +149,7 @@ export default function EntryPage() {
     }}>
 
       {/* Logo */}
-      <div style={{ marginBottom: 36, textAlign: 'center' }}>
+      <div style={{ marginBottom: 36, textAlign: 'center', width: '100%', maxWidth: 440 }}>
         <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{
           width: 56, height: 56,
           borderRadius: 8,
@@ -154,8 +157,8 @@ export default function EntryPage() {
           objectFit: 'contain',
           display: 'block'
         }} />
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.02em' }}>
-          SAP Learning Platform
+        <h1 style={{ margin: 0, fontSize: 20, lineHeight: 1.3, fontWeight: 800, color: '#0F172A' }}>
+          SAP IT TRAINING / IT STAFFING / IT CONSULTING
         </h1>
         <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748B' }}>
           {tab === 'login' ? 'Welcome back! Sign in to continue.' : 'Create your account to get started.'}
@@ -383,8 +386,8 @@ export default function EntryPage() {
           {/* Category */}
           <div style={{ marginBottom: 26 }}>
             <label style={labelStyle}>Category</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {CATEGORIES.filter(c => tab === 'signup' ? c !== 'Employee' : true).map(cat => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {CATEGORIES.filter(c => tab === 'signup' ? !['Employee', 'Admin'].includes(c) : true).map(cat => (
                 <button
                   key={cat}
                   type="button"

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
+import { getSessionActor } from '../../session';
 
 export async function POST(req) {
   try {
     const { userId, online, observedAt } = await req.json();
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId || actor.companyId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     if (!/^[a-f\d]{24}$/i.test(String(userId || ''))) {
       return NextResponse.json({ error: 'A valid user is required.' }, { status: 400 });
     }

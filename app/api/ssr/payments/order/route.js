@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { getRazorpayConfig, razorpayRequest } from '../razorpay';
 import { decryptCredential } from '../../server-credentials/credentials';
+import { getSessionActor } from '../../session';
 
 export const runtime = 'nodejs';
 
@@ -52,6 +53,8 @@ export async function POST(req) {
   let reservationId = null;
   try {
     const { courseId, userId, months } = await req.json();
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     if (!courseId || !userId || !Number.isInteger(Number(months))) {
       return NextResponse.json({ error: 'Invalid payment details' }, { status: 400 });
     }
@@ -128,6 +131,8 @@ export async function POST(req) {
 export async function DELETE(req) {
   try {
     const { orderId, userId, reason } = await req.json();
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     if (!orderId || !userId) return NextResponse.json({ error: 'Invalid cancellation details' }, { status: 400 });
     const payment = await prisma.appServerPayment.findUnique({ where: { razorpayOrderId: orderId } });
     if (!payment || payment.userId !== userId) return NextResponse.json({ error: 'Payment order not found' }, { status: 404 });

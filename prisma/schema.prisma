@@ -102,9 +102,20 @@ model AppUser {
   permissions String[] @default([])
   restricted  Boolean  @default(false)
   teamId      String?
+  companyId   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AppCompany {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  name             String
+  slug             String   @unique
+  requirementEmail String?
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model AppPushToken {
@@ -268,6 +279,7 @@ model AppPost {
   visibility        String   @default("public")
   isRequirement     Boolean  @default(false)
   requirementStatus String   @default("none")
+  companyId         String?
 
   createdAt DateTime @default(now())
 }
@@ -289,6 +301,7 @@ model AppRequirementTask {
   createdById   String
   createdByName String
   teamId        String?
+  companyId     String?
   status        String    @default("open")
   closedById    String?
   closedByName  String?
@@ -297,6 +310,22 @@ model AppRequirementTask {
   updatedAt     DateTime  @updatedAt
 
   @@index([status, createdAt])
+}
+
+model AppRequirementSubmission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  token       String   @unique
+  taskId      String   @unique
+  companyId   String?
+  senderId    String
+  fromEmail   String
+  cc          String[] @default([])
+  signature   String?
+  emailStatus String   @default("pending")
+  emailError  String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
 }
 
 model AppTaskWorker {
@@ -515,4 +544,29 @@ model AppScheduledMessage {
   lastSentAt   DateTime?
 
   createdAt DateTime @default(now())
+}
+
+// ==========================================
+// Direct WebRTC Call Models
+// ==========================================
+
+model AppDirectCall {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  callerId    String
+  calleeId    String
+  callerName  String
+  calleeName  String
+  status      String    @default("ringing") // ringing | accepted | declined | ended | missed | busy
+  type        String    @default("audio")   // audio | video
+  peerId      String    @unique             // signalling peer ID for caller
+  calleePeerId String?                      // signalling peer ID for callee (set on accept)
+  token       String?                       // room access token for caller
+  calleeToken String?                       // room access token for callee
+  startedAt   DateTime?
+  endedAt     DateTime?
+  duration    Int?                          // seconds
+  createdAt   DateTime  @default(now())
+
+  @@index([callerId, createdAt])
+  @@index([calleeId, status, createdAt])
 }

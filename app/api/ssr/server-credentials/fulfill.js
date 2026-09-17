@@ -2,6 +2,7 @@ import { prisma } from '../prisma';
 import { initialsFor, colorFor } from '../defaults';
 import { notifyUsers } from '../notify';
 import { decryptCredential } from './credentials';
+import { SJ_USER_FILTER } from '../session';
 
 export async function fulfillServerPayment(payment) {
   const existingBooking = await prisma.appServerBooking.findFirst({
@@ -33,7 +34,7 @@ export async function fulfillServerPayment(payment) {
     const [course, credential, admin] = await Promise.all([
       prisma.appCourse.findUnique({ where: { id: payment.courseId }, select: { id: true, title: true } }),
       prisma.appServerCredential.findUnique({ where: { id: payment.credentialId }, select: { credential: true } }),
-      prisma.appUser.findFirst({ where: { role: { in: ['Admin', 'Super Admin'] } }, select: { id: true, name: true, initials: true, color: true } }),
+      prisma.appUser.findFirst({ where: { ...SJ_USER_FILTER, role: { in: ['Admin', 'Super Admin'] } }, select: { id: true, name: true, initials: true, color: true } }),
     ]);
     if (!course || !credential) throw new Error('Server service or credential was not found');
     if (!admin) throw new Error('No administrator is available for credential delivery');
@@ -85,7 +86,7 @@ export async function fulfillServerPayment(payment) {
     await notifyUsers([payment.userId], {
       title: 'Server payment confirmed',
       body: `${course.title} login details are ready in your admin chat.`,
-      url: `/ssr-app/home?section=chat&chatId=${encodeURIComponent(chat.id)}`,
+      url: `/ssr-app/company?section=history`,
       data: { type: 'server-access', chatId: chat.id, bookingId: booking.id },
     });
     return { bookingId: booking.id, chatId: chat.id, availableCount };

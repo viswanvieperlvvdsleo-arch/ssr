@@ -22,7 +22,7 @@ export default function PaymentHistory({ currentUser, onNavigateToChat, showHead
   const [confirmingOrderId, setConfirmingOrderId] = useState(null);
   const [filter, setFilter] = useState('all');
   const [lastUpdated, setLastUpdated] = useState(null);
-  const isAdminView = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
+  const isAdminView = !currentUser?.companyId && (currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin');
 
   const loadPayments = useCallback(async ({ silent = false } = {}) => {
     if (!currentUser?.id) return;
@@ -82,7 +82,7 @@ export default function PaymentHistory({ currentUser, onNavigateToChat, showHead
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) throw new Error(data.error || 'Could not finish login delivery');
       await loadPayments();
-      if (data.chatId) onNavigateToChat?.(data.chatId);
+      if (data.chatId || data.bookingId) onNavigateToChat?.(currentUser?.companyId ? data.bookingId : data.chatId);
     } catch (deliveryError) {
       setError(deliveryError.message || 'Could not finish login delivery');
     } finally {
@@ -159,7 +159,8 @@ export default function PaymentHistory({ currentUser, onNavigateToChat, showHead
                 <span style={{ display: 'block', marginTop: 3, color: '#94A3B8', fontSize: 10, overflowWrap: 'anywhere' }}>Order {payment.razorpayOrderId}</span>
                 {payment.razorpayPaymentId && <span style={{ display: 'block', marginTop: 2, color: '#94A3B8', fontSize: 10, overflowWrap: 'anywhere' }}>Payment {payment.razorpayPaymentId}</span>}
               </div>
-              {payment.status === 'completed' && payment.chatId && <button type="button" onClick={() => onNavigateToChat?.(payment.chatId)} style={actionButtonStyle}>Open login chat</button>}
+              {payment.status === 'completed' && payment.chatId && !currentUser?.companyId && <button type="button" onClick={() => onNavigateToChat?.(payment.chatId)} style={actionButtonStyle}>Open login chat</button>}
+              {payment.status === 'completed' && currentUser?.companyId && <button type="button" onClick={() => onNavigateToChat?.(payment.bookingId)} style={actionButtonStyle}>View server access</button>}
               {canRetry && <button type="button" onClick={() => finishDelivery(payment)} disabled={confirmingOrderId === payment.razorpayOrderId} style={{ ...actionButtonStyle, background: '#0A6ED1', color: '#fff', cursor: confirmingOrderId ? 'wait' : 'pointer' }}>{confirmingOrderId === payment.razorpayOrderId ? 'Confirming...' : 'Finish delivery'}</button>}
             </div>
           </div>

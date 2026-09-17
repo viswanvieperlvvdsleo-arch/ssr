@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 import { prisma } from './prisma';
+import { SJ_USER_FILTER } from './session';
 
 let cachedAccessToken = null;
 let cachedAccessTokenExpiresAt = 0;
@@ -184,11 +185,11 @@ export async function getSupportRecipientIds(senderId) {
   const [supportUsers, sender] = await Promise.all([
     prisma.appUser.findMany({
       where: {
-        OR: [
+        AND: [SJ_USER_FILTER, { OR: [
           { role: { in: ['Admin', 'Super Admin'] } },
           { role: 'Employee', permissions: { has: 'all_access' } },
           { role: 'Employee', permissions: { has: 'view_chats' } },
-        ],
+        ] }],
       },
       select: { id: true },
     }),

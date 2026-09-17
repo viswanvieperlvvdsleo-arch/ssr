@@ -76,9 +76,35 @@ export default function NotificationTrigger() {
           return;
         }
 
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=5', { scope: '/firebase-cloud-messaging-push-scope' });
+        // Wait for an existing controlling SW or register a fresh one
+        let registration = await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
+        if (!registration) {
+          registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: '/firebase-cloud-messaging-push-scope',
+          });
+        }
         messagingRegistration = registration;
-        await registration.update().catch(() => {});
+
+        // Ensure the SW is fully active before subscribing (fixes AbortError)
+        if (registration.installing || registration.waiting) {
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Service worker activation timed out')), 10000);
+            const sw = registration.installing || registration.waiting;
+            sw.addEventListener('statechange', function onStateChange() {
+              if (sw.state === 'activated') {
+                clearTimeout(timeout);
+                sw.removeEventListener('statechange', onStateChange);
+                resolve();
+              } else if (sw.state === 'redundant') {
+                clearTimeout(timeout);
+                sw.removeEventListener('statechange', onStateChange);
+                reject(new Error('Service worker became redundant'));
+              }
+            });
+          });
+        }
+
+        if (cancelled) return;
         const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
         if (!token || cancelled) {
           console.error('FCM did not return a device token. Check the Firebase Web Push certificate and VAPID key.');

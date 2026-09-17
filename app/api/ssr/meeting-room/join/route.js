@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
+import { getSessionActor } from '../../session';
 import {
   createRoomToken,
   meetingExpiry,
@@ -28,10 +29,10 @@ export async function POST(req) {
       : await prisma.appMeeting.findFirst({ where: { meetingCode } });
     if (!meeting) return NextResponse.json({ error: 'Meeting ID or link is invalid.' }, { status: 404 });
 
-    const user = await prisma.appUser.findUnique({ where: { id: userId } });
-    if (!user) return NextResponse.json({ error: 'Sign in to join this meeting.' }, { status: 401 });
+    const user = await getSessionActor(req);
+    if (user?.id !== userId) return NextResponse.json({ error: 'Sign in to join this meeting.' }, { status: 401 });
     const canJoin = !user.restricted && (
-      ['Employee', 'Admin', 'Super Admin'].includes(user.role) ||
+      (!user.companyId && ['Employee', 'Admin', 'Super Admin'].includes(user.role)) ||
       meeting.hostId === user.id ||
       (meeting.participants || []).includes(user.id)
     );

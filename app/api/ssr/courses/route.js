@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildCourseData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
+import { getSessionActor, isSjStaff } from '../session';
+
+function canPublish(actor) {
+  return isSjStaff(actor) && hasEmployeePermission(actor, 'post_services');
+}
 
 export async function GET(req) {
   try {
@@ -15,6 +20,8 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!canPublish(actor)) return NextResponse.json({ error: 'Only SJ staff can publish services' }, { status: 403 });
     const data = await req.json();
     const newCourse = await prisma.appCourse.create({ data: buildCourseData(data) });
     const recipients = await prisma.appUser.findMany({
@@ -36,6 +43,8 @@ export async function POST(req) {
 
 export async function PUT(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!actor) return NextResponse.json({ error: 'Please sign in again' }, { status: 401 });
     const payload = await req.json();
     const { action, id, userId } = payload;
     if (!id) {
@@ -45,8 +54,7 @@ export async function PUT(req) {
     if (!course) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
 
     if (action === 'update') {
-      const editor = userId ? await prisma.appUser.findUnique({ where: { id: userId }, select: { role: true, permissions: true } }) : null;
-      if (!editor || !hasEmployeePermission(editor, 'post_services')) {
+      if (!canPublish(actor)) {
         return NextResponse.json({ error: 'You do not have permission to edit services' }, { status: 403 });
       }
       const updatedCourse = await prisma.appCourse.update({
@@ -56,7 +64,7 @@ export async function PUT(req) {
       return NextResponse.json(updatedCourse);
     }
 
-    if (action !== 'toggleSave' || !userId) {
+    if (action !== 'toggleSave' || !userId || userId !== actor.id) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
     const savedBy = Array.isArray(course.savedBy) ? course.savedBy : [];
@@ -74,6 +82,8 @@ export async function PUT(req) {
 
 export async function DELETE(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!canPublish(actor)) return NextResponse.json({ error: 'Only SJ staff can delete services' }, { status: 403 });
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     await prisma.appCourse.delete({ where: { id } });

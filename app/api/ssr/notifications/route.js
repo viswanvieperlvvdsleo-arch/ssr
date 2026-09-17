@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
+import { getSessionActor } from '../session';
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
     if (!userId) return NextResponse.json([]);
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
 
     const notifications = await prisma.appNotification.findMany({
       where: { userId, type: { not: 'chat' } },
@@ -23,6 +26,8 @@ export async function PUT(req) {
   try {
     const { userId, id, action } = await req.json();
     if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 400 });
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
 
     if (action === 'markAllRead') {
       await prisma.appNotification.updateMany({ where: { userId, read: false }, data: { read: true } });
@@ -43,6 +48,8 @@ export async function DELETE(req) {
   try {
     const { userId, id, action } = await req.json();
     if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 400 });
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
 
     if (action === 'deleteAll') {
       await prisma.appNotification.deleteMany({ where: { userId } });

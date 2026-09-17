@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { notifyUsers } from '../notify';
 import { bumpRealtimeRevision } from '../realtime';
+import { getSessionActor, SJ_USER_FILTER } from '../session';
 
 const STAFF_ROLES = ['Admin', 'Super Admin', 'Employee'];
 
@@ -30,17 +31,17 @@ async function getHydratedTask(taskId) {
   return (await hydrateTasks(task))[0] || null;
 }
 
-async function getActor(actorId) {
-  if (!actorId) return null;
-  const actor = await prisma.appUser.findUnique({ where: { id: actorId } });
-  if (!actor || !STAFF_ROLES.includes(actor.role) || actor.restricted) return null;
+async function getActor(request, actorId) {
+  const actor = await getSessionActor(request);
+  if (actorId && actor?.id !== actorId) return null;
+  if (!actor || actor.companyId || !STAFF_ROLES.includes(actor.role) || actor.restricted) return null;
   return actor;
 }
 
 async function notifyStaff(actorId, notification, excludedIds = []) {
   const excluded = [...new Set([actorId, ...excludedIds].filter(Boolean))];
   const recipients = await prisma.appUser.findMany({
-    where: { role: { in: STAFF_ROLES }, id: { notIn: excluded }, restricted: false },
+    where: { ...SJ_USER_FILTER, role: { in: STAFF_ROLES }, id: { notIn: excluded }, restricted: false },
     select: { id: true },
   });
   return notifyUsers(recipients.map(user => user.id), notification);
@@ -50,16 +51,36 @@ async function notifyProfileStakeholders(task, actorId, notification) {
   const [workers, admins] = await Promise.all([
     prisma.appTaskWorker.findMany({ where: { taskId: task.id }, select: { userId: true } }),
     prisma.appUser.findMany({
-      where: { role: { in: ['Admin', 'Super Admin'] }, restricted: false },
+      where: { ...SJ_USER_FILTER, role: { in: ['Admin', 'Super Admin'] }, restricted: false },
       select: { id: true },
     }),
   ]);
   const recipientIds = [...new Set([
-    task.createdById,
+    ...(task.companyId ? [] : [task.createdById]),
     ...workers.map(worker => worker.userId),
     ...admins.map(admin => admin.id),
   ].filter(id => id && id !== actorId))];
   return notifyUsers(recipientIds, notification);
+}
+
+async function notifyCompany(task, title, body) {
+  if (!task.companyId) {
+    const submission = await prisma.appRequirementSubmission.findUnique({ where: { taskId: task.id } });
+    if (!submission) return;
+    await notifyUsers([submission.senderId], {
+      title, body,
+      url: `/ssr-app/home?section=tokens&token=${encodeURIComponent(submission.token)}`,
+      data: { type: 'requirement-progress', taskId: task.id, token: submission.token },
+    });
+    return;
+  }
+  const recipients = await prisma.appUser.findMany({ where: { companyId: task.companyId, restricted: false }, select: { id: true } });
+  await notifyUsers(recipients.map(user => user.id), {
+    title,
+    body,
+    url: '/ssr-app/company?section=tasks',
+    data: { type: 'company-task', taskId: task.id },
+  });
 }
 
 async function ensureTask(post) {
@@ -79,7 +100,7 @@ async function ensureTask(post) {
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const actor = await getActor(searchParams.get('userId'));
+    const actor = await getActor(req, searchParams.get('userId'));
     if (!actor) return NextResponse.json({ error: 'Employee or admin access is required' }, { status: 403 });
     const postId = searchParams.get('postId');
     if (postId) {
@@ -100,7 +121,7 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json();
-    const actor = await getActor(body.actorId);
+    const actor = await getActor(req, body.actorId);
     if (!actor) return NextResponse.json({ error: 'Employee or admin access is required' }, { status: 403 });
 
     const post = body.postId ? await prisma.appPost.findUnique({ where: { id: body.postId } }) : null;
@@ -139,6 +160,7 @@ export async function POST(req) {
           url: taskUrl,
           data: { type: 'task', taskId: task.id, postId: task.postId },
         });
+        await notifyCompany(task, 'Requirement in sourcing', `${actor.name} started working on ${task.title}.`).catch(error => console.error('Company task notification failed:', error));
       }
       task = await prisma.appRequirementTask.update({ where: { id: task.id }, data: { status: 'in_progress' } });
       await prisma.appPost.update({ where: { id: task.postId }, data: { requirementStatus: 'in_progress' } });
@@ -165,6 +187,7 @@ export async function POST(req) {
           data: { type: 'task', taskId: task.id, postId: task.postId },
         });
         await bumpRealtimeRevision('tasks');
+        await notifyCompany(task, 'Sourcing work completed', `${actor.name} completed their work on ${task.title}.`).catch(error => console.error('Client notification failed:', error));
       }
       return NextResponse.json(await getHydratedTask(task.id));
     }
@@ -188,7 +211,7 @@ export async function POST(req) {
       }
       const requestedMentions = [...new Set((Array.isArray(body.mentions) ? body.mentions : []).map(String))].filter(id => id !== actor.id);
       const mentionedUsers = requestedMentions.length ? await prisma.appUser.findMany({
-        where: { id: { in: requestedMentions }, role: { in: STAFF_ROLES } },
+        where: { id: { in: requestedMentions }, ...SJ_USER_FILTER, role: { in: STAFF_ROLES } },
         select: { id: true },
       }) : [];
       const mentions = mentionedUsers.map(user => user.id);
@@ -208,6 +231,7 @@ export async function POST(req) {
       });
       const profileUrl = `${taskUrl}&profileId=${encodeURIComponent(profile.id)}`;
       await Promise.all([
+        notifyCompany(task, 'New profile added', `${actor.name} added a profile to ${task.title}.`).catch(error => console.error('Client notification failed:', error)),
         notifyStaff(actor.id, {
           title: actor.name,
           body: `Added a new profile to ${task.title}.`,
@@ -269,6 +293,7 @@ export async function POST(req) {
       });
       const profileUrl = `${taskUrl}&profileId=${encodeURIComponent(profile.id)}`;
       await Promise.all([
+        notifyCompany(task, 'Profile status updated', `A profile for ${task.title} is now ${labels[nextStatus]}.`).catch(error => console.error('Client notification failed:', error)),
         notifyProfileStakeholders(task, actor.id, {
           title: actor.name,
           body: `Marked a candidate profile as ${labels[nextStatus]} for ${task.title}.`,
@@ -297,6 +322,7 @@ export async function POST(req) {
         url: taskUrl,
         data: { type: 'task', taskId: task.id, postId: task.postId },
       });
+      await notifyCompany(task, 'Requirement completed', `${task.title} has been closed.`).catch(error => console.error('Company task notification failed:', error));
       await Promise.all([bumpRealtimeRevision('tasks'), bumpRealtimeRevision('posts')]);
       return NextResponse.json(await getHydratedTask(task.id));
     }

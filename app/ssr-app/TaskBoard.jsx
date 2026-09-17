@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from './AppContext';
 import styles from './task-board.module.css';
+import { CallButton } from './DirectCall';
+
 
 const TASK_EVENT = 'sj-task-updated';
 const staffRole = role => ['Employee', 'Admin', 'Super Admin'].includes(role);
@@ -15,13 +17,18 @@ function elapsed(start, end = Date.now()) {
   return `${Math.floor(minutes / 60)} hr${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
 }
 
-function WorkerColumn({ worker, task, selected, onSelect }) {
+function WorkerColumn({ worker, task, selected, onSelect, currentUser }) {
   const profiles = task.profiles.filter(profile => profile.addedById === worker.userId);
   return (
     <button type="button" data-worker-id={worker.userId} aria-pressed={selected} className={`${styles.workerCard} ${selected ? styles.workerCardSelected : ''}`} style={{ '--worker-color': worker.status === 'completed' ? '#16A34A' : '#EAB308' }} onClick={onSelect}>
       <span className={styles.workerIdentity}>
         <span className={styles.avatar}>{initials(worker.userName)}</span>
         <span className={styles.workerNameWrap}><strong>{worker.userName}</strong><small>Joined #{task.workers.findIndex(item => item.id === worker.id) + 1}{worker.teamName ? ` | ${worker.teamName}` : ''}</small></span>
+        {currentUser && worker.userId !== currentUser.id && (
+          <span onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto' }}>
+            <CallButton targetUserId={worker.userId} targetUserName={worker.userName} callType="audio" currentUser={currentUser} />
+          </span>
+        )}
       </span>
       <span className={styles.workerStats}><span>Profiles<strong>{profiles.length}</strong></span><span>Time<strong>{elapsed(worker.joinedAt, worker.completedAt || Date.now())}</strong></span></span>
       <span className={worker.status === 'completed' ? styles.completeText : styles.workingText}>{worker.status === 'completed' ? 'Completed' : 'Working'}</span>
@@ -182,7 +189,8 @@ function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, initia
         {task.description && <p className={styles.description}>{task.description}</p>}
         <section className={styles.section}>
           <div className={styles.sectionHeading}><strong>Sourcing order ({task.workers.length})</strong>{task.workers.length > 0 && <div className={styles.arrowControls}><button type="button" aria-label="Previous employee" onClick={() => moveSelection(-1)}>{'<'}</button><button type="button" aria-label="Next employee" onClick={() => moveSelection(1)}>{'>'}</button></div>}</div>
-          {task.workers.length === 0 ? <p className={styles.empty}>No employee has joined this requirement yet.</p> : <div ref={workerStrip} onScroll={handleWorkerScroll} className={styles.workerStrip}>{task.workers.map(worker => <WorkerColumn key={worker.id} worker={worker} task={task} selected={worker.userId === selectedWorkerId} onSelect={() => selectWorker(worker.userId)} />)}</div>}
+          {task.workers.length === 0 ? <p className={styles.empty}>No employee has joined this requirement yet.</p> : <div ref={workerStrip} onScroll={handleWorkerScroll} className={styles.workerStrip}>{task.workers.map(worker => <WorkerColumn key={worker.id} worker={worker} task={task} selected={worker.userId === selectedWorkerId} onSelect={() => selectWorker(worker.userId)} currentUser={currentUser} />)}</div>}
+
         </section>
 
         <section className={`${styles.section} ${styles.profileSection}`}>

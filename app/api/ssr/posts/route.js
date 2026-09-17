@@ -3,14 +3,16 @@ import { prisma } from '../prisma';
 import { buildPostData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
 import { bumpRealtimeRevision } from '../realtime';
+import { getSessionActor, SJ_USER_FILTER } from '../session';
 
 export async function GET(req) {
   try {
     const viewerId = new URL(req.url).searchParams.get('viewerId');
-    const viewer = viewerId ? await prisma.appUser.findUnique({ where: { id: viewerId } }) : null;
-    const canViewInternal = viewer && ['Employee', 'Admin', 'Super Admin'].includes(viewer.role) && !viewer.restricted;
+    const viewer = await getSessionActor(req);
+    if (viewerId && viewerId !== viewer?.id) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
+    const canViewInternal = viewer && !viewer.companyId && ['Employee', 'Admin', 'Super Admin'].includes(viewer.role) && !viewer.restricted;
     const posts = await prisma.appPost.findMany({
-      where: canViewInternal ? {} : { visibility: 'public' },
+      where: canViewInternal ? { OR: [SJ_USER_FILTER, { companyId: { not: null }, isRequirement: true }] } : { visibility: 'public' },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(posts);
@@ -23,13 +25,13 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const data = await req.json();
-    const author = data.authorId ? await prisma.appUser.findUnique({ where: { id: data.authorId } }) : null;
-    if (!author || !hasEmployeePermission(author, 'post_feeds') || author.restricted) {
+    const author = await getSessionActor(req);
+    if (!author || author.companyId || author.id !== data.authorId || !hasEmployeePermission(author, 'post_feeds') || author.restricted) {
       return NextResponse.json({ error: 'You do not have permission to publish posts' }, { status: 403 });
     }
     data.visibility = data.visibility === 'internal' ? 'internal' : 'public';
     data.isRequirement = data.visibility === 'internal' && Boolean(data.isRequirement);
-    const newPost = await prisma.appPost.create({ data: buildPostData(data) });
+    const newPost = await prisma.appPost.create({ data: buildPostData({ ...data, authorName: author.name, authorRole: author.role, companyId: null }) });
     if (newPost.isRequirement) {
       await prisma.appRequirementTask.create({
         data: {
@@ -46,7 +48,7 @@ export async function POST(req) {
       where: {
         id: { not: newPost.authorId },
         restricted: false,
-        ...(newPost.visibility === 'internal' ? { role: { in: ['Employee', 'Admin', 'Super Admin'] } } : {}),
+        ...(newPost.visibility === 'internal' ? { ...SJ_USER_FILTER, role: { in: ['Employee', 'Admin', 'Super Admin'] } } : {}),
       },
       select: { id: true },
     });
@@ -70,10 +72,17 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const { id, action, userId, comment } = await req.json();
+    const sessionActor = await getSessionActor(req);
+    if (!sessionActor || sessionActor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     const guardedPost = await prisma.appPost.findUnique({ where: { id } });
     if (!guardedPost) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (sessionActor.companyId) {
+      const isPublicSjPost = guardedPost.visibility === 'public' && !guardedPost.companyId;
+      const isOwnCompanyPost = guardedPost.companyId === sessionActor.companyId;
+      if (!isPublicSjPost && !isOwnCompanyPost) return NextResponse.json({ error: 'Post access denied' }, { status: 403 });
+    }
     if (guardedPost.visibility === 'internal') {
-      const actor = userId ? await prisma.appUser.findUnique({ where: { id: userId } }) : null;
+      const actor = sessionActor;
       const canAccessInternal = actor && ['Employee', 'Admin', 'Super Admin'].includes(actor.role) && !actor.restricted;
       if (!canAccessInternal) {
         return NextResponse.json({ error: 'You do not have permission to access this post' }, { status: 403 });
@@ -93,7 +102,7 @@ export async function PUT(req) {
         }
       });
       if (!hasLiked && post.authorId !== userId) {
-        const actor = await prisma.appUser.findUnique({ where: { id: userId }, select: { name: true } });
+        const actor = sessionActor;
         await notifyUsers([post.authorId], {
           title: 'New like on your post',
           body: `${actor?.name || 'Someone'} liked your post.`,
@@ -121,14 +130,17 @@ export async function PUT(req) {
     if (action === 'addComment') {
       const post = await prisma.appPost.findUnique({ where: { id } });
       if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      const text = String(comment?.text || '').trim().slice(0, 2000);
+      if (!text) return NextResponse.json({ error: 'Comment text is required' }, { status: 400 });
+      const safeComment = { id: String(comment?.id || `c${Date.now()}`), authorId: sessionActor.id, authorName: sessionActor.name, authorInitials: sessionActor.initials, authorColor: sessionActor.color, time: 'Just now', text };
       const updatedPost = await prisma.appPost.update({
         where: { id },
         data: {
-          commentsList: { push: comment },
+          commentsList: { push: safeComment },
           comments: { increment: 1 }
         }
       });
-      const commentAuthorId = comment?.authorId || comment?.userId;
+      const commentAuthorId = sessionActor.id;
       if (commentAuthorId && post.authorId !== commentAuthorId) {
         await notifyUsers([post.authorId], {
           title: 'New comment on your post',
@@ -146,7 +158,7 @@ export async function PUT(req) {
       if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
       const targetComment = (post.commentsList || []).find(item => item.id === comment?.id);
       if (!targetComment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
-      const actor = userId ? await prisma.appUser.findUnique({ where: { id: userId } }) : null;
+      const actor = sessionActor;
       const isAdmin = actor?.role === 'Admin' || actor?.role === 'Super Admin';
       const canModerate = isAdmin || hasEmployeePermission(actor, 'post_feeds');
       const isAuthor = targetComment.authorId === userId || targetComment.userId === userId;
@@ -179,13 +191,16 @@ export async function DELETE(req) {
     const userId = searchParams.get('userId');
     const [post, actor] = await Promise.all([
       id ? prisma.appPost.findUnique({ where: { id } }) : null,
-      userId ? prisma.appUser.findUnique({ where: { id: userId } }) : null,
+      getSessionActor(req),
     ]);
     if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (!actor || !['Admin', 'Super Admin'].includes(actor.role) || actor.restricted) {
+    if (!actor || actor.id !== userId || actor.companyId || !['Admin', 'Super Admin'].includes(actor.role) || actor.restricted) {
       return NextResponse.json({ error: 'You do not have permission to delete this post' }, { status: 403 });
     }
     const task = await prisma.appRequirementTask.findUnique({ where: { postId: id } });
+    if (task && await prisma.appRequirementSubmission.findUnique({ where: { taskId: task.id } })) {
+      return NextResponse.json({ error: 'Submitted client requirements cannot be deleted here' }, { status: 409 });
+    }
     if (task) {
       await Promise.all([
         prisma.appTaskWorker.deleteMany({ where: { taskId: task.id } }),

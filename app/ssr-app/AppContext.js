@@ -203,7 +203,7 @@ export function AppProvider({ children }) {
   }, [currentUser?.id]);
 
   useEffect(() => {
-    if (!currentUser?.id || typeof window === 'undefined') return undefined;
+    if (!currentUser?.id || currentUser.companyId || typeof window === 'undefined') return undefined;
 
     const updatePresence = online => {
       const payload = JSON.stringify({
@@ -261,6 +261,10 @@ export function AppProvider({ children }) {
     async function loadStaticData() {
       // Load slow-changing data only once on mount
       const storedUser = readStoredAppUser();
+      if (storedUser?.companyId) {
+        setInitialDataLoading(false);
+        return;
+      }
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
@@ -316,6 +320,7 @@ export function AppProvider({ children }) {
     async function loadRealtimeData() {
       // Only poll chats + messages (the real-time stuff) — skip if tab hidden
       if (document.visibilityState === 'hidden') return;
+      if (readStoredAppUser()?.companyId) return;
       if (isLoading) return;
       isLoading = true;
       const requestGeneration = sessionGenerationRef.current;
@@ -371,6 +376,7 @@ export function AppProvider({ children }) {
     async function syncContentChanges(event = null) {
       if (document.visibilityState === 'hidden' || isCheckingContent) return;
       const storedUser = readStoredAppUser();
+      if (storedUser?.companyId) return;
       const currId = storedUser?.id;
       if (!currId) return;
       isCheckingContent = true;
@@ -619,7 +625,7 @@ export function AppProvider({ children }) {
         setCurrentUser(user);
         setSelectedRole(user.role);
         persistAppUser(user);
-        return { success: true };
+        return { success: true, user };
       } else {
         return { success: false, error: data.error };
       }
@@ -686,12 +692,14 @@ export function AppProvider({ children }) {
   const updateUserProfile = async (userId, updates) => {
     const previousUser = users[userId];
     const previousCurrentUser = currentUser;
+    const safeUpdates = { ...updates };
+    delete safeUpdates.password;
     setUsers(prev => ({
       ...prev,
-      [userId]: { ...prev[userId], ...updates }
+      [userId]: { ...prev[userId], ...safeUpdates }
     }));
     if (currentUser?.id === userId) {
-      const updatedUser = { ...currentUser, ...updates };
+      const updatedUser = { ...currentUser, ...safeUpdates };
       setCurrentUser(updatedUser);
       persistAppUser(updatedUser);
     }
@@ -750,6 +758,12 @@ export function AppProvider({ children }) {
     setCurrentUser(null);
     setSelectedRole(null);
     clearStoredAppUser();
+    fetch('/api/ssr/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'logout' }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   const toggleLike = async (postId) => {

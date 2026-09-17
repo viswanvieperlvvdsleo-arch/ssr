@@ -2,17 +2,22 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildMessageData } from '../defaults';
 import { getSupportRecipientIds, notifyUsers } from '../notify';
+import { accessibleChats } from '../chatAccess';
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const chatId = searchParams.get('chatId');
+    const { actor, chats } = await accessibleChats(req);
+    if (!actor) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
+    const allowedIds = chats.map(chat => chat.id);
+    if (chatId && !allowedIds.includes(chatId)) return NextResponse.json({ error: 'Chat access denied' }, { status: 403 });
     
     let messages;
     if (chatId) {
       messages = await prisma.appMessage.findMany({ where: { chatId }, orderBy: { createdAt: 'asc' } });
     } else {
-      messages = await prisma.appMessage.findMany({ orderBy: { createdAt: 'asc' } });
+      messages = await prisma.appMessage.findMany({ where: { chatId: { in: allowedIds } }, orderBy: { createdAt: 'asc' } });
     }
     
     return NextResponse.json(messages);
@@ -24,8 +29,10 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const { actor, chats } = await accessibleChats(req);
     const data = await req.json();
-    const newMessage = await prisma.appMessage.create({ data: buildMessageData(data) });
+    if (!actor || actor.id !== data.senderId || !chats.some(chat => chat.id === data.chatId)) return NextResponse.json({ error: 'Chat access denied' }, { status: 403 });
+    const newMessage = await prisma.appMessage.create({ data: buildMessageData({ ...data, senderId: actor.id, senderName: actor.name, senderInitials: actor.initials, senderColor: actor.color, senderAvatar: actor.avatar }) });
     let delivery = { recipientIds: [], unreadBy: {} };
     
     // Update the chat's updatedAt so it bubbles up to the top
@@ -63,8 +70,14 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const { action, msgIds, chatId, userId, content, forEveryone, deleteFromCloud, emoji } = await req.json();
+    const { actor, chats } = await accessibleChats(req);
+    if (!actor || (userId && userId !== actor.id) || !chats.some(chat => chat.id === chatId)) return NextResponse.json({ error: 'Chat access denied' }, { status: 403 });
+    if (!Array.isArray(msgIds) || !msgIds.length) return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    const selectedMessages = await prisma.appMessage.findMany({ where: { id: { in: msgIds }, chatId } });
+    if (selectedMessages.length !== new Set(msgIds).size) return NextResponse.json({ error: 'Message is not in this chat' }, { status: 403 });
 
     if (action === 'edit') {
+      if (selectedMessages[0].senderId !== actor.id) return NextResponse.json({ error: 'Only the sender can edit this message' }, { status: 403 });
       const msg = await prisma.appMessage.update({
         where: { id: msgIds[0] },
         data: { content, edited: true }
@@ -102,6 +115,7 @@ export async function PUT(req) {
 
     if (action === 'delete') {
       if (forEveryone) {
+        if (selectedMessages.some(message => message.senderId !== actor.id) && !['Admin', 'Super Admin'].includes(actor.role)) return NextResponse.json({ error: 'Only the sender can delete for everyone' }, { status: 403 });
         await prisma.appMessage.updateMany({
           where: { id: { in: msgIds } },
           data: { isDeletedForEveryone: true, content: 'This message was deleted', attachment: null }
@@ -127,6 +141,7 @@ export async function PUT(req) {
       if (!message?.attachment || !userId) {
         return NextResponse.json({ error: 'Media message not found' }, { status: 404 });
       }
+      if (deleteFromCloud && message.senderId !== actor.id && !['Admin', 'Super Admin'].includes(actor.role)) return NextResponse.json({ error: 'Only the sender can delete this file' }, { status: 403 });
       const attachment = typeof message.attachment === 'object' ? message.attachment : {};
       const deletedFor = Array.isArray(attachment.deletedFor) ? attachment.deletedFor : [];
       const updatedAttachment = {

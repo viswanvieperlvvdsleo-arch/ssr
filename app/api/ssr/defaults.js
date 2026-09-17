@@ -59,6 +59,7 @@ export function buildUserData(data = {}) {
     permissions: Array.isArray(data.permissions) ? data.permissions : [],
     restricted: Boolean(data.restricted),
     teamId: data.teamId || null,
+    companyId: data.companyId || null,
   };
 }
 
@@ -89,6 +90,7 @@ export function buildPostData(data = {}) {
     visibility,
     isRequirement: visibility === 'internal' && Boolean(data.isRequirement),
     requirementStatus: visibility === 'internal' && data.isRequirement ? (data.requirementStatus || 'open') : 'none',
+    companyId: data.companyId || null,
   };
 }
 

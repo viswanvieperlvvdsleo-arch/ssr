@@ -53,7 +53,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'External meeting not found.' }, { status: 404 });
     }
     const canJoin = user && !user.restricted && (
-      STAFF_ROLES.includes(user.role) || meeting.hostId === user.id || (meeting.participants || []).includes(user.id)
+      (!user.companyId && STAFF_ROLES.includes(user.role)) || meeting.hostId === user.id || (meeting.participants || []).includes(user.id)
     );
     if (!canJoin) {
       return NextResponse.json({ error: 'This meeting was not shared with your account.' }, { status: 403 });

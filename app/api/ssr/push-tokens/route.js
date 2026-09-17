@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
+import { getSessionActor } from '../session';
 
 export async function POST(req) {
   try {
@@ -7,6 +8,8 @@ export async function POST(req) {
     if (!userId || !token) {
       return NextResponse.json({ error: 'User and notification token are required' }, { status: 400 });
     }
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
 
     const user = await prisma.appUser.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -28,7 +31,9 @@ export async function DELETE(req) {
   try {
     const { token } = await req.json();
     if (!token) return NextResponse.json({ error: 'Notification token is required' }, { status: 400 });
-    await prisma.appPushToken.deleteMany({ where: { token } });
+    const actor = await getSessionActor(req);
+    if (!actor) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
+    await prisma.appPushToken.deleteMany({ where: { token, userId: actor.id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Push token DELETE API Error:', error);

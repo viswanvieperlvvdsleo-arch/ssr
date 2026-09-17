@@ -10,6 +10,7 @@ import MeetingsWorkspace from '../MeetingsWorkspace';
 import DashboardPanel from '../DashboardPanel';
 import TaskBoard from '../TaskBoard';
 import RequirementStatus from '../RequirementStatus';
+import { CompaniesPanel, TokensPanel } from '../VendorPanels';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -52,6 +53,7 @@ function chatDayLabel(value) {
 /* ─── constants ───────────────────────────────────── */
 const FEED_TABS = ['All', 'Announcements', 'Training Updates', 'Discussions', 'Videos'];
 const INTERNAL_FEED_TAB = 'Internal Feed';
+const REQUIREMENTS_FEED_TAB = 'Requirements';
 
 // Monochrome SVG icons for nav
 const NavIcons = {
@@ -62,6 +64,8 @@ const NavIcons = {
   history:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.1 13a9 9 0 1 0 2.1-5.9L3 8"/><path d="M12 7v5l3 2"/></svg>,
   dashboard: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   'task-board': <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M7 10h10M7 14h6"/></svg>,
+  tokens: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg>,
+  companies: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 21h18M5 21V6l7-3 7 3v15M9 9v2M15 9v2M9 15v2M15 15v2"/></svg>,
   bookmarks: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
   settings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
   accounts:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
@@ -85,6 +89,9 @@ const getLeftNav = (user) => {
     nav.push({ id: 'accounts', label: 'Account Management' });
     nav.push({ id: 'data-management', label: 'Data Management' });
   }
+  if (user?.role === 'Super Admin' && !user.isImpersonating) nav.push({ id: 'companies', label: 'Companies' });
+  if (user && ['Super Admin', 'Admin', 'Employee'].includes(user.role) && !user.companyId && !user.restricted) nav.push({ id: 'tokens', label: 'Tokens' });
+  if (user?.role === 'Participant' && !user.restricted) nav.push({ id: 'tokens', label: 'Your Requirements' });
   if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
     nav.push({ id: 'requests', label: 'Requests' });
   }
@@ -4826,7 +4833,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
 }
 
 function DataManagementPanel({ currentUser, onNavigateToChat, onNavigateToFeed }) {
-  const [records, setRecords] = useState({ stats: {}, media: [], messages: [] });
+  const [records, setRecords] = useState({ stats: {}, media: [], messages: [], companyInternalPosts: [] });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
@@ -4985,6 +4992,11 @@ function DataManagementPanel({ currentUser, onNavigateToChat, onNavigateToFeed }
           </div>
         ))}
       </div>
+
+      {currentUser.role === 'Super Admin' && <section style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
+        <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0' }}><h3 style={{ margin: 0, fontSize: 16, color: '#0F172A' }}>Company Internal Feeds</h3><p style={{ margin: '5px 0 0', fontSize: 12, color: '#64748B' }}>Private posts from company workspaces. Only Super Admin can review these.</p></div>
+        {loading ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>Loading company posts...</p> : records.companyInternalPosts.length === 0 ? <p style={{ padding: 16, color: '#64748B', fontSize: 13 }}>No company internal posts.</p> : <div style={{ maxHeight: 340, overflowY: 'auto' }}>{records.companyInternalPosts.map(post => <article key={post.id} style={{ padding: 16, borderBottom: '1px solid #F1F5F9' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: '#64748B', fontSize: 11 }}><strong style={{ color: '#0A6ED1' }}>{post.companyName}</strong><span>{formatDate(post.createdAt)}</span></div><h4 style={{ margin: '8px 0 5px', color: '#0F172A', fontSize: 14 }}>{post.title}</h4><p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{post.content}</p><small style={{ display: 'block', marginTop: 7, color: '#94A3B8' }}>Posted by {post.authorName || 'Company account'}</small></article>)}</div>}
+      </section>}
 
       <section style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
         <div style={{ padding: 16, borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -5386,7 +5398,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                 <div key={u.id}>
                   <UserRow u={u} actions={<>
                     {onViewEmployeeChats && btnSm('View Chats', () => onViewEmployeeChats(u), '#0A6ED1', '#EFF6FF')}
-                    <button onClick={() => { setEditingPermsFor(isEditingThis ? null : u.id); setEditPerms(u.permissions || []); setEditPassword(u.password || ''); setEditName(u.name || ''); setEditTeamId(u.teamId || ''); }} style={{ padding: '6px 12px', background: isEditingThis ? '#EFF6FF' : '#F1F5F9', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, color: isEditingThis ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>Edit Access</button>
+                    <button onClick={() => { setEditingPermsFor(isEditingThis ? null : u.id); setEditPerms(u.permissions || []); setEditPassword(''); setEditName(u.name || ''); setEditTeamId(u.teamId || ''); }} style={{ padding: '6px 12px', background: isEditingThis ? '#EFF6FF' : '#F1F5F9', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, color: isEditingThis ? '#0A6ED1' : '#475569', cursor: 'pointer' }}>Edit Access</button>
                     {btnSm(u.restricted ? 'Unrestrict' : 'Restrict', () => restrictUser(u.id), u.restricted ? '#16A34A' : '#D97706', u.restricted ? '#F0FDF4' : '#FFF7ED')}
                     {btnSm('Delete', () => setDeleteTarget(u), '#DC2626', '#FEF2F2')}
                   </>} />
@@ -5418,7 +5430,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => { updateEmployeeProfile(u.id, { permissions: editPerms, password: editPassword, name: editName, teamId: editTeamId || null }); setEditingPermsFor(null); }} style={{ padding: '7px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save Changes</button>
+                        <button onClick={() => { updateEmployeeProfile(u.id, { permissions: editPerms, ...(editPassword ? { password: editPassword } : {}), name: editName, teamId: editTeamId || null }); setEditingPermsFor(null); }} style={{ padding: '7px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save Changes</button>
                         <button onClick={() => setEditingPermsFor(null)} style={{ padding: '7px 16px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                       </div>
                     </div>
@@ -6132,7 +6144,7 @@ export default function HomePage() {
   const isDesktop = width >= 1100;
   const unreadChatCount = (chats || []).reduce((total, chat) => total + Number(chat.unreadBy?.[currentUser?.id] || 0), 0);
   const canViewInternalFeed = Boolean(currentUser && ['Employee', 'Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.restricted);
-  const availableFeedTabs = canViewInternalFeed ? ['All', INTERNAL_FEED_TAB, ...FEED_TABS.slice(1)] : FEED_TABS;
+  const availableFeedTabs = canViewInternalFeed ? ['All', INTERNAL_FEED_TAB, REQUIREMENTS_FEED_TAB, ...FEED_TABS.slice(1)] : FEED_TABS;
 
   const [activeNav, setActiveNav] = useState('feed');
   const [feedTab, setFeedTab] = useState('All');
@@ -6148,6 +6160,7 @@ export default function HomePage() {
   const [randomOffsets, setRandomOffsets] = useState({});
   const [notificationCourseId, setNotificationCourseId] = useState(null);
   const [notificationMeetingId, setNotificationMeetingId] = useState(null);
+  const [notificationToken, setNotificationToken] = useState(null);
   const processedDeepLinkRef = useRef(null);
 
   const navigateMobile = useCallback((page, { replace = false } = {}) => {
@@ -6245,11 +6258,12 @@ export default function HomePage() {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       navigateMobile('chat');
-    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(section)) {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
       setNotificationMeetingId(meetingId);
+      setNotificationToken(params.get('token'));
       if (section === 'feed' && requestedFeed === 'internal' && canViewInternalFeed) setFeedTab(INTERNAL_FEED_TAB);
       if (notificationAction === 'like' && section === 'feed' && params.get('postId')) {
         likePost(params.get('postId'));
@@ -6275,6 +6289,7 @@ export default function HomePage() {
   const filteredPosts = [...posts].filter(p => {
     const isInternalPost = p.visibility === 'internal';
     if (feedTab === INTERNAL_FEED_TAB) return canViewInternalFeed && isInternalPost;
+    if (feedTab === REQUIREMENTS_FEED_TAB) return canViewInternalFeed && isInternalPost && p.isRequirement;
     if (isInternalPost) return false;
     if (feedTab === 'All') return true;
     return p.category === feedTab;
@@ -6290,11 +6305,11 @@ export default function HomePage() {
 
   const handleNavClick = (id) => {
     const nextUrl = new URL(window.location.href);
-    ['section', 'taskId', 'profileId', 'courseId', 'meetingId', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
+    ['section', 'taskId', 'profileId', 'courseId', 'meetingId', 'token', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
-    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board'].includes(id)) {
+    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6559,6 +6574,8 @@ export default function HomePage() {
                   <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
                 </div>
               )}
+              {activeNav === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><CompaniesPanel /></div>}
+              {activeNav === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { setActiveNav('task-board'); const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); }} /></div>}
 
               {activeNav === 'data-management' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
@@ -6661,7 +6678,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard', 'task-board': 'Task Board' })[mobilePage] || mobilePage}
+            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard', 'task-board': 'Task Board', tokens: 'Tokens', companies: 'Companies' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -6698,6 +6715,8 @@ export default function HomePage() {
                   <span style={{ color: '#64748B' }}>{NavIcons.data}</span>Data Management
                 </button>
               )}
+              {currentUser?.role === 'Super Admin' && !currentUser.isImpersonating && <button onClick={() => { navigateMobile('companies'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}><span>{NavIcons.companies}</span>Companies</button>}
+              {['Super Admin', 'Admin', 'Employee'].includes(currentUser?.role) && !currentUser.companyId && <button onClick={() => { navigateMobile('tokens'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}><span>{NavIcons.tokens}</span>Tokens</button>}
               {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
                 <button onClick={() => { navigateMobile('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests
@@ -6764,6 +6783,8 @@ export default function HomePage() {
           <AccountManagementPanel currentUser={currentUser} onViewEmployeeChats={viewEmployeeChats} />
         </div>
       )}
+      {mobilePage === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ height: 'calc(100vh - 116px)', overflowY: 'auto' }}><CompaniesPanel /></div>}
+      {mobilePage === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ height: 'calc(100dvh - 116px)', overflowY: 'auto' }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); navigateMobile('task-board'); }} /></div>}
 
       {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.isImpersonating && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -6835,11 +6856,13 @@ export default function HomePage() {
           { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
           { id: 'history', icon: NavIcons.history, label: 'History' },
+          ...(currentUser?.role === 'Participant' && !currentUser.restricted ? [{ id: 'tokens', icon: NavIcons.tokens, label: 'Requirements' }] : []),
           ...(currentUser && !currentUser.restricted ? [
             { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },
           ] : []),
           ...(['Employee', 'Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.restricted ? [
             { id: 'task-board', icon: NavIcons['task-board'], label: 'Tasks' },
+            { id: 'tokens', icon: NavIcons.tokens, label: 'Tokens' },
           ] : []),
         ].map(item => {
           const active = mobilePage === item.id;

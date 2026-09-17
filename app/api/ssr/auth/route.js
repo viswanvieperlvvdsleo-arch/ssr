@@ -1,39 +1,62 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildChatData, buildMessageData, buildUserData, normalizeRole } from '../defaults';
+import { attachSession, getSessionActor, publicAccount, SESSION_COOKIE } from '../session';
+import { hashPassword, verifyPassword } from '../passwords';
+
+export async function GET(request) {
+  const actor = await getSessionActor(request);
+  if (!actor) return NextResponse.json({ error: 'Session expired' }, { status: 401 });
+  return NextResponse.json({ user: publicAccount(actor) });
+}
 
 export async function POST(req) {
   try {
     const { action, email, password, name, role, category, ...extraData } = await req.json();
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    if (action === 'logout') {
+      const response = NextResponse.json({ success: true });
+      response.cookies.delete(SESSION_COOKIE);
+      return response;
+    }
 
     if (action === 'deleteAccount') {
-      const user = await prisma.appUser.findUnique({ where: { email } });
-      if (!user || user.password !== password) {
+      const user = await prisma.appUser.findUnique({ where: { email: normalizedEmail } });
+      if (!user || !verifyPassword(password, user.password)) {
         return NextResponse.json({ error: 'Incorrect password' }, { status: 401 });
       }
       await prisma.appUser.delete({ where: { id: user.id } });
-      return NextResponse.json({ success: true });
+      const response = NextResponse.json({ success: true });
+      response.cookies.delete(SESSION_COOKIE);
+      return response;
     }
 
     if (action === 'login') {
-      const user = await prisma.appUser.findUnique({ where: { email } });
-      if (!user || user.password !== password) {
+      const user = await prisma.appUser.findUnique({ where: { email: normalizedEmail } });
+      if (!user || !verifyPassword(password, user.password)) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
+      if (user.restricted) return NextResponse.json({ error: 'This account is restricted' }, { status: 403 });
       if (category) {
         const requestedRole = normalizeRole(category);
-        const isPrivilegedAccount = user.role === 'Admin' || user.role === 'Super Admin';
-        if (!isPrivilegedAccount && requestedRole !== user.role) {
+        if (user.role !== 'Super Admin' && requestedRole !== user.role) {
           return NextResponse.json({
             error: `This account is registered as ${user.role}. Please choose ${user.role} and try again.`,
           }, { status: 403 });
         }
       }
-      return NextResponse.json({ user });
+      if (!user.password.startsWith('scrypt-v1$')) {
+        await prisma.appUser.update({ where: { id: user.id }, data: { password: hashPassword(password) } });
+      }
+      return attachSession(NextResponse.json({ user: publicAccount(user) }), user);
     }
 
     if (action === 'signup') {
-      const existingUser = await prisma.appUser.findUnique({ where: { email } });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || String(password || '').length < 6 || !name) {
+        return NextResponse.json({ error: 'Enter a valid email, name, and password of at least 6 characters' }, { status: 400 });
+      }
+      const existingUser = await prisma.appUser.findUnique({ where: { email: normalizedEmail } });
       if (existingUser) {
         return NextResponse.json({ error: 'Email already exists' }, { status: 400 });
       }
@@ -43,17 +66,19 @@ export async function POST(req) {
       const isFirstUser = totalUsersCount === 0;
 
       // Map User -> Participant. First user gets Super Admin automatically.
-      let assignedRole = normalizeRole(role || category);
+      let assignedRole = normalizeRole(category || role);
       if (isFirstUser) {
         assignedRole = 'Super Admin';
+      } else if (!['Participant', 'Trainer'].includes(assignedRole)) {
+        return NextResponse.json({ error: 'Staff accounts are created by an administrator' }, { status: 403 });
       }
       
       const parsedExtra = extraData?.extraData || extraData || {};
       const userData = buildUserData({
         ...parsedExtra,
-        email,
+        email: normalizedEmail,
         name,
-        password,
+        password: hashPassword(password),
         role: assignedRole,
       });
 
@@ -74,21 +99,7 @@ export async function POST(req) {
       let admin = await prisma.appUser.findFirst({ where: { role: 'Super Admin' } });
       if (!admin) admin = await prisma.appUser.findFirst({ where: { role: 'Admin' } });
       
-      // Auto-create a default admin if none exists so the chat works!
-      if (!admin) {
-         admin = await prisma.appUser.create({
-           data: buildUserData({
-             email: 'admin.system@ssr.com',
-             name: 'System Admin',
-             password: 'adminpassword123',
-             role: 'Super Admin',
-             initials: 'SA',
-             color: '#0A6ED1'
-           })
-         });
-      }
-
-      await prisma.appMessage.create({
+      if (admin) await prisma.appMessage.create({
         data: buildMessageData({
           chatId: welcomeChat.id,
           senderId: admin.id,
@@ -110,7 +121,7 @@ export async function POST(req) {
         });
       }
 
-      return NextResponse.json({ user: newUser });
+      return attachSession(NextResponse.json({ user: publicAccount(newUser) }), newUser);
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

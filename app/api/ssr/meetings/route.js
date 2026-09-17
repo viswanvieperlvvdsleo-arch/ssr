@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildChatData, buildMeetingData, buildMessageData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
+import { getSessionActor } from '../session';
 import { parseScheduleTime, validateScheduleFields } from '../schedule';
 import { decryptCredential, encryptCredential } from '../server-credentials/credentials';
 import {
@@ -27,6 +28,7 @@ function canPlanMeeting(user) {
 
 function canViewMeeting(user, meeting) {
   if (!user || user.restricted) return false;
+  if (user.companyId) return user.id === meeting.hostId || (meeting.participants || []).includes(user.id);
   if (['Employee', 'Admin', 'Super Admin'].includes(user.role)) return true;
   return user.id === meeting.hostId || (meeting.participants || []).includes(user.id);
 }
@@ -98,11 +100,11 @@ async function sendMeetingInvitations({ meeting, host, joinPassword, groupChat =
   }
 }
 
-async function validInvitees(ids, hostId) {
+async function validInvitees(ids, hostId, companyId = null) {
   const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).map(value => String(value || '').trim()).filter(id => id && id !== hostId))];
   if (!uniqueIds.length) return [];
   const users = await prisma.appUser.findMany({
-    where: { id: { in: uniqueIds }, restricted: false },
+    where: { id: { in: uniqueIds }, restricted: false, ...(companyId ? { companyId } : {}) },
     select: { id: true },
   });
   return users.map(user => user.id);
@@ -114,7 +116,9 @@ export async function GET(req) {
     const id = searchParams.get('id');
     const code = searchParams.get('code');
     const userId = searchParams.get('userId');
-    const viewer = userId ? await prisma.appUser.findUnique({ where: { id: userId } }) : null;
+    const actor = await getSessionActor(req);
+    if (!actor || !userId || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
+    const viewer = actor;
 
     if (id || code) {
       const meeting = id
@@ -137,7 +141,7 @@ export async function GET(req) {
 
     if (!viewer || viewer.restricted) return NextResponse.json([]);
     const meetings = await prisma.appMeeting.findMany({
-      where: ['Employee', 'Admin', 'Super Admin'].includes(viewer.role)
+      where: !viewer.companyId && ['Employee', 'Admin', 'Super Admin'].includes(viewer.role)
         ? {}
         : { OR: [{ hostId: viewer.id }, { participants: { has: viewer.id } }] },
       orderBy: { createdAt: 'desc' },
@@ -155,7 +159,8 @@ export async function POST(req) {
     if (!data.hostId || !String(data.title || '').trim()) {
       return NextResponse.json({ error: 'Host and meeting title are required.' }, { status: 400 });
     }
-    const host = await prisma.appUser.findUnique({ where: { id: data.hostId } });
+    const host = await getSessionActor(req);
+    if (!host || host.id !== data.hostId) return NextResponse.json({ error: 'Account access denied.' }, { status: 403 });
     if (!canPlanMeeting(host)) {
       return NextResponse.json({ error: 'You do not have permission to schedule meetings.' }, { status: 403 });
     }
@@ -171,7 +176,7 @@ export async function POST(req) {
       if (!canUseGroup) return NextResponse.json({ error: 'You are not a member of this group.' }, { status: 403 });
       participantIds = await validInvitees(groupChat.participants, host.id);
     } else {
-      participantIds = await validInvitees(data.participants, host.id);
+      participantIds = await validInvitees(data.participants, host.id, host.companyId || null);
       if (!participantIds.length) {
         return NextResponse.json({ error: 'Select at least one person for the meeting.' }, { status: 400 });
       }
@@ -240,7 +245,7 @@ export async function POST(req) {
         host,
         joinPassword,
         groupChat,
-        directRecipientIds: groupChat ? [] : participantIds,
+        directRecipientIds: groupChat || host.companyId ? [] : participantIds,
       });
       await notifyUsers(participantIds, {
         title: 'New meeting scheduled',
@@ -265,9 +270,11 @@ export async function PATCH(req) {
     if (!id || !userId || !['end', 'addParticipants'].includes(action)) {
       return NextResponse.json({ error: 'Meeting, user, and a valid action are required.' }, { status: 400 });
     }
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied.' }, { status: 403 });
     const [meeting, user] = await Promise.all([
       prisma.appMeeting.findUnique({ where: { id } }),
-      prisma.appUser.findUnique({ where: { id: userId } }),
+      Promise.resolve(actor),
     ]);
     if (!meeting) return NextResponse.json({ error: 'Meeting not found.' }, { status: 404 });
     if (!canManageMeeting(user, meeting)) return NextResponse.json({ error: 'Only the host or authorized staff can manage this meeting.' }, { status: 403 });
@@ -276,7 +283,7 @@ export async function PATCH(req) {
       if (meeting.status === 'completed' || meeting.endedAt || (meeting.expiresAt && meeting.expiresAt <= new Date())) {
         return NextResponse.json({ error: 'People cannot be added after the meeting has ended.' }, { status: 409 });
       }
-      const requestedIds = await validInvitees(participantIds, meeting.hostId);
+      const requestedIds = await validInvitees(participantIds, meeting.hostId, user.companyId || null);
       const newIds = requestedIds.filter(participantId => !meeting.participants.includes(participantId));
       if (!newIds.length) return NextResponse.json({ error: 'Select at least one person who is not already invited.' }, { status: 400 });
       const previousParticipants = meeting.participants || [];
@@ -324,9 +331,11 @@ export async function DELETE(req) {
     const id = searchParams.get('id');
     const userId = searchParams.get('userId');
     if (!id || !userId) return NextResponse.json({ error: 'Meeting and user are required.' }, { status: 400 });
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied.' }, { status: 403 });
     const [meeting, user] = await Promise.all([
       prisma.appMeeting.findUnique({ where: { id } }),
-      prisma.appUser.findUnique({ where: { id: userId } }),
+      Promise.resolve(actor),
     ]);
     if (!meeting) return NextResponse.json({ error: 'Meeting not found.' }, { status: 404 });
     if (!canManageMeeting(user, meeting)) {

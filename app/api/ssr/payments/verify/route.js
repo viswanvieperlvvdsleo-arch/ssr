@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { fulfillServerPayment } from '../../server-credentials/fulfill';
 import { isValidPaymentSignature, razorpayRequest } from '../razorpay';
+import { getSessionActor } from '../../session';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,8 @@ export async function POST(req) {
   let paymentRecord = null;
   try {
     const { userId, razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = await req.json();
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     if (!userId || !orderId || !paymentId || !signature) {
       return NextResponse.json({ error: 'Incomplete payment verification details' }, { status: 400 });
     }

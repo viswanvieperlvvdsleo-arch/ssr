@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
+import { getSessionActor, SJ_USER_FILTER } from '../session';
 
 const isAdmin = (user) => user?.role === 'Admin' || user?.role === 'Super Admin';
 
@@ -15,23 +16,24 @@ function getMediaIdFromUrl(url) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-async function requireAdmin(adminId) {
-  if (!adminId) return null;
-  const admin = await prisma.appUser.findUnique({ where: { id: adminId } });
-  return isAdmin(admin) ? admin : null;
+async function requireAdmin(request, adminId) {
+  const admin = await getSessionActor(request);
+  return admin?.id === adminId && !admin.companyId && isAdmin(admin) ? admin : null;
 }
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const admin = await requireAdmin(searchParams.get('adminId'));
+    const admin = await requireAdmin(req, searchParams.get('adminId'));
     if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
-    const [media, messages, chats, posts] = await Promise.all([
+    const [media, messages, chats, posts, companyPosts, companies] = await Promise.all([
       prisma.appMedia.findMany({ orderBy: { createdAt: 'desc' } }),
       prisma.appMessage.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 }),
       prisma.appChat.findMany({ select: { id: true, name: true, type: true } }),
-      prisma.appPost.findMany({ select: { id: true, title: true, image: true }, orderBy: { createdAt: 'desc' } }),
+      prisma.appPost.findMany({ where: admin.role === 'Super Admin' ? {} : SJ_USER_FILTER, select: { id: true, title: true, image: true }, orderBy: { createdAt: 'desc' } }),
+      admin.role === 'Super Admin' ? prisma.appPost.findMany({ where: { companyId: { not: null }, visibility: 'internal', isRequirement: false }, select: { id: true, companyId: true, title: true, content: true, authorName: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 500 }) : Promise.resolve([]),
+      admin.role === 'Super Admin' ? prisma.appCompany.findMany({ select: { id: true, name: true } }) : Promise.resolve([]),
     ]);
     const chatNames = Object.fromEntries(chats.map(chat => [chat.id, chat.name || chat.type || 'Chat']));
     const mediaUsage = Object.fromEntries(media.map(item => [item.id, 0]));
@@ -101,6 +103,7 @@ export async function GET(req) {
         locations: mediaLocations[item.id] || [],
       })),
       messages: messageRecords,
+      companyInternalPosts: companyPosts.map(post => ({ ...post, companyName: companies.find(company => company.id === post.companyId)?.name || 'Company' })),
     });
   } catch (error) {
     console.error('Data Management GET API Error:', error);
@@ -111,7 +114,7 @@ export async function GET(req) {
 export async function DELETE(req) {
   try {
     const { adminId, action = 'deleteMedia', mediaId, mediaIds, messageId } = await req.json();
-    const admin = await requireAdmin(adminId);
+    const admin = await requireAdmin(req, adminId);
     if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     if (action === 'deleteMedia') {

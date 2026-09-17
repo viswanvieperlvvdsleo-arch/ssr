@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
+import { getSessionActor, isSjStaff } from '../../session';
 
 export const runtime = 'nodejs';
 
@@ -9,10 +10,9 @@ export async function GET(req) {
     const userId = params.get('userId');
     const requestedAllPayments = params.get('scope') === 'all';
     if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-
-    const user = await prisma.appUser.findUnique({ where: { id: userId }, select: { id: true, role: true } });
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    const canViewAllPayments = user.role === 'Admin' || user.role === 'Super Admin';
+    const actor = await getSessionActor(req);
+    if (!actor || actor.id !== userId) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
+    const canViewAllPayments = isSjStaff(actor) && (actor.role === 'Admin' || actor.role === 'Super Admin');
     if (requestedAllPayments && !canViewAllPayments) {
       return NextResponse.json({ error: 'Admin access is required' }, { status: 403 });
     }

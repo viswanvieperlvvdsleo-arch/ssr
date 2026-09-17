@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { hasEmployeePermission } from '../defaults';
 import { encryptCredential, splitCredentials } from './credentials';
+import { getSessionActor, isSjStaff } from '../session';
 
 async function findManager(userId) {
   if (!userId) return null;
@@ -13,11 +14,14 @@ async function findManager(userId) {
 
 export async function GET(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!actor) return NextResponse.json({ error: 'Please sign in again' }, { status: 401 });
     const params = new URL(req.url).searchParams;
     const courseId = params.get('courseId');
     const userId = params.get('userId');
     const managerId = params.get('managerId');
     if (userId && !managerId) {
+      if (userId !== actor.id) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       const bookings = await prisma.appServerBooking.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
@@ -33,8 +37,7 @@ export async function GET(req) {
     const availableCount = await prisma.appServerCredential.count({ where: { courseId, status: 'available' } });
     await prisma.appCourse.update({ where: { id: courseId }, data: { credentialCount: availableCount, orderEnabled: true } }).catch(() => null);
     if (managerId) {
-      const manager = await findManager(managerId);
-      if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+      if (managerId !== actor.id || !isSjStaff(actor) || !hasEmployeePermission(actor, 'post_services')) {
         return NextResponse.json({ error: 'You do not have permission to manage server credentials' }, { status: 403 });
       }
       const credentials = await prisma.appServerCredential.findMany({
@@ -53,12 +56,13 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!isSjStaff(actor) || !hasEmployeePermission(actor, 'post_services')) return NextResponse.json({ error: 'Only SJ staff can add server credentials' }, { status: 403 });
     const { courseId, userId, credentials } = await req.json();
     if (!process.env.SERVER_CREDENTIAL_ENCRYPTION_KEY) {
       return NextResponse.json({ error: 'Server credential encryption is not configured' }, { status: 503 });
     }
-    const manager = await findManager(userId);
-    if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+    if (userId !== actor.id) {
       return NextResponse.json({ error: 'You do not have permission to add server credentials' }, { status: 403 });
     }
     const course = courseId ? await prisma.appCourse.findUnique({ where: { id: courseId }, select: { id: true, serviceType: true } }) : null;
@@ -83,10 +87,11 @@ export async function PUT() {
 
 export async function DELETE(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!isSjStaff(actor) || !hasEmployeePermission(actor, 'post_services')) return NextResponse.json({ error: 'Only SJ staff can delete server credentials' }, { status: 403 });
     const { courseId, userId, credentialId } = await req.json();
     if (!courseId || !credentialId) return NextResponse.json({ error: 'Invalid credential details' }, { status: 400 });
-    const manager = await findManager(userId);
-    if (!manager || !hasEmployeePermission(manager, 'post_services')) {
+    if (userId !== actor.id) {
       return NextResponse.json({ error: 'You do not have permission to delete server credentials' }, { status: 403 });
     }
 

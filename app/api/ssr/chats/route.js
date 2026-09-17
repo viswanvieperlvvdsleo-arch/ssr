@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../prisma';
 import { buildChatData, hasEmployeePermission } from '../defaults';
+import { getSessionActor, isSjStaff, SJ_USER_FILTER } from '../session';
+import { accessibleChats } from '../chatAccess';
 
 export async function GET(req) {
   try {
-    const chats = await prisma.appChat.findMany({ orderBy: { updatedAt: 'desc' } });
+    const { chats } = await accessibleChats(req);
     return NextResponse.json(chats);
   } catch (error) {
     console.error('Chats GET API Error:', error);
@@ -14,7 +16,28 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const actor = await getSessionActor(req);
+    if (!actor) return NextResponse.json({ error: 'Account access required' }, { status: 403 });
     const data = await req.json();
+    if (!['direct', 'group', 'support'].includes(data.type) || data.createdBy !== actor.id || !Array.isArray(data.participants) || !data.participants.includes(actor.id)) {
+      return NextResponse.json({ error: 'Invalid chat participants' }, { status: 403 });
+    }
+    if (data.type === 'support') {
+      if (!actor.companyId || data.participants.length !== 1 || data.participants[0] !== actor.id) {
+        return NextResponse.json({ error: 'Company support chats are created for the signed-in company account only' }, { status: 403 });
+      }
+      const existing = await prisma.appChat.findFirst({ where: { type: 'support', participants: { has: actor.id } } });
+      if (existing) return NextResponse.json(existing);
+      const chat = await prisma.appChat.create({ data: buildChatData({ type: 'support', name: 'Admin Service', participants: [actor.id], createdBy: actor.id }) });
+      return NextResponse.json(chat, { status: 201 });
+    }
+    const targets = await prisma.appUser.findMany({ where: { id: { in: data.participants } }, select: { id: true, companyId: true, role: true, restricted: true } });
+    const canUseStaffAccount = user => !user.companyId && ['Super Admin', 'Admin', 'Employee'].includes(user.role) && !user.restricted;
+    const isStaffTarget = user => !user.companyId && ['Super Admin', 'Admin', 'Employee'].includes(user.role) && !user.restricted;
+    const validParticipants = actor.companyId
+      ? targets.every(user => user.companyId === actor.companyId || canUseStaffAccount(user))
+      : isSjStaff(actor) && targets.every(user => isStaffTarget(user) || (data.type === 'direct' && Boolean(user.companyId)));
+    if (targets.length !== new Set(data.participants).size || !validParticipants) return NextResponse.json({ error: 'Chat participants are not available' }, { status: 403 });
     if (data.type === 'direct' && data.createdBy) {
       const creator = await prisma.appUser.findUnique({ where: { id: data.createdBy } });
       const targetId = Array.isArray(data.participants) ? data.participants.find(id => id !== data.createdBy) : null;
@@ -23,14 +46,14 @@ export async function POST(req) {
       const sharedGroups = creator && targetId ? await prisma.appChat.findMany({ where: { type: 'group', participants: { hasEvery: [creator.id, targetId] } } }) : [];
       const sharedPrivateChatEnabled = sharedGroups.some(group => group.privateChatEnabled !== false);
       const isGroupAdmin = sharedGroups.some(group => group.createdBy === creator?.id || group.admins?.includes(creator?.id));
-      const isAllowed = isStaff || target?.role === 'Admin' || target?.role === 'Super Admin' || isGroupAdmin || sharedPrivateChatEnabled;
+      const isAllowed = Boolean(actor.companyId) || isStaff || (isSjStaff(actor) && Boolean(target?.companyId)) || target?.role === 'Admin' || target?.role === 'Super Admin' || isGroupAdmin || sharedPrivateChatEnabled;
       if (!isAllowed) return NextResponse.json({ error: 'Private chat is disabled for this group' }, { status: 403 });
     }
     if (data.type === 'group') {
       const creatorId = data.createdBy;
       const creator = creatorId ? await prisma.appUser.findUnique({ where: { id: creatorId } }) : null;
       const canCreateGroup = creator && (
-        creator.role === 'Admin' ||
+        Boolean(creator.companyId) || creator.role === 'Admin' ||
         creator.role === 'Super Admin' ||
         hasEmployeePermission(creator, 'view_chats')
       );
@@ -72,13 +95,13 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const { id, action, muted, userId, ...data } = await req.json();
+    const { actor, chats: allowedChats } = await accessibleChats(req);
+    if (!actor || actor.id !== userId || !allowedChats.some(item => item.id === id)) return NextResponse.json({ error: 'Chat access denied' }, { status: 403 });
     const chat = await prisma.appChat.findUnique({ where: { id } });
     if (!chat) return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
 
     if (['addParticipants', 'removeParticipant', 'leave', 'deleteChat', 'exitAndDelete', 'togglePin'].includes(action)) {
       if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 400 });
-      const actor = await prisma.appUser.findUnique({ where: { id: userId } });
-      if (!actor) return NextResponse.json({ error: 'User not found' }, { status: 404 });
       const isAdmin = actor.role === 'Admin' || actor.role === 'Super Admin';
       const isGroupAdmin = chat.type === 'group' && (chat.createdBy === userId || chat.admins?.includes(userId));
       const deletedFor = Array.isArray(chat.deletedFor) ? chat.deletedFor : [];
@@ -91,8 +114,9 @@ export async function PUT(req) {
         const requestedIds = Array.isArray(data.targetUserId) ? data.targetUserId : [data.targetUserId];
         const targetIds = [...new Set(requestedIds.map(value => String(value || '').trim()).filter(Boolean))];
         const validUsers = targetIds.length > 0
-          ? await prisma.appUser.findMany({ where: { id: { in: targetIds } }, select: { id: true } })
+          ? await prisma.appUser.findMany({ where: { id: { in: targetIds } }, select: { id: true, companyId: true } })
           : [];
+        if (validUsers.some(user => actor.companyId ? (user.companyId !== actor.companyId && !['Super Admin', 'Admin', 'Employee'].includes(user.role)) : user.companyId)) return NextResponse.json({ error: 'Members must belong to your company' }, { status: 403 });
         const validIds = validUsers.map(user => user.id);
         const participants = [...new Set([...chat.participants, ...validIds])];
         const updatedChat = await prisma.appChat.update({
@@ -156,7 +180,6 @@ export async function PUT(req) {
 
     if (action === 'markRead') {
       if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 400 });
-      const actor = await prisma.appUser.findUnique({ where: { id: userId } });
       const canReadSupportChat = chat.type === 'support' && actor && (
         actor.role === 'Admin' ||
         actor.role === 'Super Admin' ||
@@ -182,7 +205,7 @@ export async function PUT(req) {
     }
 
     if (data.privateChatEnabled !== undefined) {
-      const actor = userId ? await prisma.appUser.findUnique({ where: { id: userId } }) : null;
+      const actor = await getSessionActor(req);
       const canManagePrivateChat = actor && (
         actor.role === 'Admin' ||
         actor.role === 'Super Admin' ||
@@ -204,6 +227,11 @@ export async function PUT(req) {
       }
     }
 
+    if (Object.keys(data).some(key => !['name', 'description', 'groupImage', 'privateChatEnabled', 'mutedBy'].includes(key))) return NextResponse.json({ error: 'Chat field cannot be changed' }, { status: 403 });
+    if (['name', 'description', 'groupImage', 'privateChatEnabled'].some(key => data[key] !== undefined)) {
+      const isGroupAdmin = chat.type === 'group' && (chat.createdBy === userId || chat.admins?.includes(userId));
+      if (!isGroupAdmin && !['Admin', 'Super Admin'].includes(actor.role)) return NextResponse.json({ error: 'Group admin access required' }, { status: 403 });
+    }
     const updatedChat = await prisma.appChat.update({
       where: { id },
       data

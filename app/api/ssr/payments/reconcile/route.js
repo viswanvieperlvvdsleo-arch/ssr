@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { fulfillServerPayment } from '../../server-credentials/fulfill';
 import { razorpayRequest } from '../razorpay';
+import { getSessionActor, isSjStaff } from '../../session';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +27,9 @@ export async function POST(req) {
   let ownsProcessingLock = false;
   try {
     const { userId, orderId } = await req.json();
+    const actor = await getSessionActor(req);
+    const isSjAdmin = isSjStaff(actor) && ['Admin', 'Super Admin'].includes(actor.role);
+    if (!actor || (actor.id !== userId && !isSjAdmin)) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     if (!userId || !orderId) return NextResponse.json({ error: 'Payment details are required' }, { status: 400 });
 
     paymentRecord = await prisma.appServerPayment.findUnique({ where: { razorpayOrderId: orderId } });
