@@ -24,8 +24,8 @@ function WorkerColumn({ worker, task, selected, onSelect, currentUser }) {
       <span className={styles.workerIdentity}>
         <span className={styles.avatar}>{initials(worker.userName)}</span>
         <span className={styles.workerNameWrap}><strong>{worker.userName}</strong><small>Joined #{task.workers.findIndex(item => item.id === worker.id) + 1}{worker.teamName ? ` | ${worker.teamName}` : ''}</small></span>
-        {currentUser && worker.userId !== currentUser.id && (
-          <span onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto' }}>
+        {currentUser && (
+          <span onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
             <CallButton targetUserId={worker.userId} targetUserName={worker.userName} callType="audio" currentUser={currentUser} />
           </span>
         )}
@@ -43,16 +43,27 @@ const PROFILE_STATUS = {
   completed: { label: 'Completed', className: styles.profileCompleted },
 };
 
-function ProfileRow({ profile, focused, taskClosed, busy, onStatusChange }) {
+function ProfileRow({ profile, focused, taskClosed, busy, onStatusChange, currentUser }) {
   const statusKey = profile.status || 'new';
   const status = PROFILE_STATUS[statusKey] || PROFILE_STATUS.new;
   return (
     <div id={`sj-profile-${profile.id}`} className={`${styles.profileRow} ${focused ? styles.focusedProfile : ''}`}>
-      <div className={styles.profileOwner}><strong>{profile.addedByName}</strong><small>{formatDate(profile.createdAt)}</small></div>
+      <div className={styles.profileOwner}>
+        <strong>{profile.addedByName}</strong>
+        <small>{formatDate(profile.createdAt)}</small>
+        {currentUser && (
+          <span style={{ marginLeft: 8, display: 'inline-flex', verticalAlign: 'middle' }}>
+            <CallButton targetUserId={profile.addedById} targetUserName={profile.addedByName} callType="audio" currentUser={currentUser} />
+          </span>
+        )}
+      </div>
       <p>{profile.text || 'Attached profile'}</p>
       <div className={styles.profileControls}>
         <span className={`${styles.profileStatus} ${status.className}`}>{status.label}</span>
         {profile.attachment?.url && <a href={profile.attachment.url} target="_blank" rel="noreferrer">View</a>}
+        {currentUser && (
+          <CallButton targetUserId={profile.addedById} targetUserName={profile.addedByName} callType="audio" currentUser={currentUser} />
+        )}
         {!taskClosed && statusKey === 'new' && <button type="button" disabled={Boolean(busy)} className={styles.followUpButton} onClick={() => onStatusChange(profile, 'follow_up')}>Follow-up</button>}
         {!taskClosed && ['new', 'follow_up'].includes(statusKey) && <button type="button" disabled={Boolean(busy)} className={styles.rejectButton} onClick={() => onStatusChange(profile, 'rejected')}>Rejected</button>}
         {!taskClosed && statusKey === 'follow_up' && <button type="button" disabled={Boolean(busy)} className={styles.profileCompleteButton} onClick={() => onStatusChange(profile, 'completed')}>Completed</button>}
@@ -61,6 +72,7 @@ function ProfileRow({ profile, focused, taskClosed, busy, onStatusChange }) {
     </div>
   );
 }
+
 
 function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, initiallyExpanded, focusProfileId }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
@@ -197,7 +209,8 @@ function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, initia
           <div className={styles.profileHeading}><strong>{selectedWorker ? `${selectedWorker.userName}'s profiles (${visibleProfiles.length})` : `Candidate profiles (${visibleProfiles.length})`}</strong>{selectedWorker && task.profiles.length !== visibleProfiles.length && <button type="button" onClick={() => setSelectedWorkerId('all')}>View all</button>}</div>
           <div className={styles.profileList}>
             {visibleProfiles.length === 0 && <p className={styles.empty}>No profiles added by this employee yet.</p>}
-            {visibleProfiles.map(profile => <ProfileRow key={profile.id} profile={profile} focused={focusProfileId === profile.id} taskClosed={isClosed} busy={Boolean(busy)} onStatusChange={updateProfileStatus} />)}
+            {visibleProfiles.map(profile => <ProfileRow key={profile.id} profile={profile} focused={focusProfileId === profile.id} taskClosed={isClosed} busy={Boolean(busy)} onStatusChange={updateProfileStatus} currentUser={currentUser} />)}
+
           </div>
         </section>
 

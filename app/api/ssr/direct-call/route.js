@@ -9,6 +9,10 @@ const CALL_RING_TIMEOUT_MS = 45_000; // auto-miss after 45s
 // ─── GET: poll for incoming call or get call state ───────────────────────────
 export async function GET(req) {
   try {
+    if (!prisma.appDirectCall) {
+      return NextResponse.json({ incoming: null });
+    }
+
     const actor = await getSessionActor(req);
     if (!actor) return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
 
@@ -22,7 +26,7 @@ export async function GET(req) {
         createdAt: { lt: new Date(Date.now() - CALL_RING_TIMEOUT_MS) },
       },
       data: { status: 'missed', endedAt: new Date() },
-    });
+    }).catch(() => {});
 
     if (callId) {
       const call = await prisma.appDirectCall.findUnique({ where: { id: callId } });
@@ -40,9 +44,10 @@ export async function GET(req) {
     return NextResponse.json({ incoming: incoming || null });
   } catch (err) {
     console.error('Direct call GET error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ incoming: null });
   }
 }
+
 
 // ─── POST: initiate a new call ────────────────────────────────────────────────
 export async function POST(req) {

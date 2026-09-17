@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw, Send, X } from 'lucide-react';
 import styles from './RequirementsPanel.module.css';
 
-const blankForm = { subject: '', body: '', cc: '', signature: '' };
+const blankForm = { to: '', subject: '', body: '', cc: '', signature: '' };
 const statuses = { open: 'Awaiting sourcing', in_progress: 'In sourcing', closed: 'Closed' };
 const mailLabels = { sent: 'Sent to email provider', failed: 'Email failed', not_configured: 'Email setup pending', unknown: 'Email confirmation unavailable', sending: 'Email confirmation pending', pending: 'Email pending' };
 const date = value => value ? new Date(value).toLocaleString() : '-';
@@ -15,7 +15,7 @@ async function read(response) {
 }
 
 export default function RequirementsPanel({ currentUser, initialToken, onOpenTask }) {
-  const canSubmit = currentUser?.role === 'Participant' || (currentUser?.companyId && (currentUser.role === 'Admin' || currentUser.permissions?.some(value => ['post_feeds', 'all_access'].includes(value))));
+  const canSubmit = currentUser?.role === 'Participant' || currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin' || (currentUser?.companyId && (currentUser.role === 'Admin' || currentUser.permissions?.some(value => ['post_feeds', 'all_access'].includes(value))));
   const [items, setItems] = useState([]);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,10 +58,19 @@ export default function RequirementsPanel({ currentUser, initialToken, onOpenTas
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      const result = await read(await fetch('/api/ssr/requirements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }));
+      const payload = {
+        ...form,
+        to: form.to || config?.to || 'admin.ssrbs@gmail.com',
+      };
+      const response = await fetch('/api/ssr/requirements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await read(response);
       setNotice(`${result.token} saved. ${mailLabels[result.emailStatus] || 'Email pending'}.`);
       setForm(blankForm); setComposing(false); setSelected(result.token);
-      await load();
+      load().catch(() => {});
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
@@ -70,7 +79,7 @@ export default function RequirementsPanel({ currentUser, initialToken, onOpenTas
     try {
       const result = await read(await fetch('/api/ssr/requirements', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: detail.token }) }));
       setNotice(`${detail.token}: ${mailLabels[result.emailStatus] || result.emailStatus}.`);
-      await load();
+      load().catch(() => {});
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
@@ -85,7 +94,17 @@ export default function RequirementsPanel({ currentUser, initialToken, onOpenTas
     {composing && <form className={styles.form} onSubmit={submit}>
       <h2>New requirement</h2>
       {config && !config.ready && <p className={styles.warning}>Email setup is pending with SJ. Your requirement will still be saved.</p>}
-      <div className={styles.fields}><label>To<input readOnly value={config?.to || 'SJ requirements inbox (not configured)'} /></label><label>Your email<input readOnly value={currentUser?.email || ''} /></label></div>
+      <div className={styles.fields}>
+        <label>To
+          <input
+            type="email"
+            placeholder="admin.ssrbs@gmail.com"
+            value={form.to !== '' ? form.to : (config?.to || 'admin.ssrbs@gmail.com')}
+            onChange={event => setForm({ ...form, to: event.target.value })}
+          />
+        </label>
+        <label>Your email<input readOnly value={currentUser?.email || ''} /></label>
+      </div>
       <label>CC (optional)<input value={form.cc} maxLength={1000} onChange={event => setForm({ ...form, cc: event.target.value })} /></label>
       <label>Subject<input required maxLength={160} value={form.subject} onChange={event => setForm({ ...form, subject: event.target.value })} /></label>
       <label>Body<textarea required rows={6} maxLength={10000} value={form.body} onChange={event => setForm({ ...form, body: event.target.value })} /></label>

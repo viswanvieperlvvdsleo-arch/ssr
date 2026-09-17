@@ -1,40 +1,41 @@
 import { NextResponse } from 'next/server';
+import { prisma } from '../prisma';
 
-export async function GET() {
-  // Safe diagnostics — no secrets are returned
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-  
-  let diagnosis = {
-    hasServiceAccountVar: !!raw,
-    hasVapidKey: !!vapidKey,
-    serviceAccountLength: raw?.length,
-    startsWithBrace: raw?.trimStart().startsWith('{'),
-    startsWithEyJ: raw?.startsWith('eyJ'), // base64 encoded
-  };
-
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      diagnosis.parseMethod = 'direct-json';
-      diagnosis.hasClientEmail = !!parsed.client_email;
-      diagnosis.hasPrivateKey = !!parsed.private_key;
-      diagnosis.hasProjectId = !!parsed.project_id;
-      diagnosis.projectId = parsed.project_id;
-    } catch {
-      try {
-        const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
-        diagnosis.parseMethod = 'base64-json';
-        diagnosis.hasClientEmail = !!parsed.client_email;
-        diagnosis.hasPrivateKey = !!parsed.private_key;
-        diagnosis.hasProjectId = !!parsed.project_id;
-        diagnosis.projectId = parsed.project_id;
-      } catch (e2) {
-        diagnosis.parseMethod = 'FAILED';
-        diagnosis.parseError = e2.message;
-      }
-    }
+export async function GET(req) {
+  const results = {};
+  try {
+    results.userCount = await prisma.appUser.count();
+  } catch (e) {
+    results.userCountError = e.message;
   }
-  
-  return NextResponse.json(diagnosis);
+
+  try {
+    results.hasDirectCallModel = typeof prisma.appDirectCall !== 'undefined';
+    if (results.hasDirectCallModel) {
+      results.directCallCount = await prisma.appDirectCall.count();
+    }
+  } catch (e) {
+    results.directCallError = e.message;
+  }
+
+  try {
+    results.requirementSubmissionCount = await prisma.appRequirementSubmission.count();
+  } catch (e) {
+    results.requirementSubmissionError = e.message;
+  }
+
+  try {
+    results.requirementTaskCount = await prisma.appRequirementTask.count();
+  } catch (e) {
+    results.requirementTaskError = e.message;
+  }
+
+  try {
+    results.users = await prisma.appUser.findMany({ select: { id: true, email: true, role: true }, take: 5 });
+  } catch (e) {
+    results.usersError = e.message;
+  }
+
+  return NextResponse.json(results);
 }
+

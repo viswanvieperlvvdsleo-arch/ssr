@@ -51,6 +51,7 @@ async function getAccessToken(account) {
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
+    signal: AbortSignal.timeout(5000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -100,6 +101,7 @@ async function sendToToken(accessToken, projectId, token, notification, data, ur
   };
   const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: 'POST',
+    signal: AbortSignal.timeout(5000),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json; charset=UTF-8',
