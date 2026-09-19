@@ -98,7 +98,16 @@ export async function POST(request) {
         companyId: company?.id || null,
       },
     });
-    const token = `REQ-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${randomBytes(5).toString('hex').toUpperCase()}`;
+
+    // Generate clean 4-digit sequential token (e.g. 0001, 0002, 0003...)
+    const existingCount = await prisma.appRequirementSubmission.count();
+    let nextNum = existingCount + 1;
+    let token = String(nextNum).padStart(4, '0');
+    while (await prisma.appRequirementSubmission.findUnique({ where: { token } })) {
+      nextNum += 1;
+      token = String(nextNum).padStart(4, '0');
+    }
+
     submission = await prisma.appRequirementSubmission.create({
       data: {
         token,

@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '../AppContext';
+import { portalHome } from '../portal.mjs';
 
 const ROLE_META = {
   superadmin: { label: 'Super Admin', icon: '👑', color: '#7C3AED', bg: '#F5F3FF' },
@@ -36,7 +37,7 @@ function LoginForm() {
     const result = await login(email.trim().toLowerCase(), password.trim(), meta.label);
     if (result?.success) {
       setSelectedRole(meta.label);
-      router.push('/ssr-app/home');
+      router.push(portalHome(result.user));
     } else {
       setError(result?.error || 'Invalid email or password.');
       setLoading(false);

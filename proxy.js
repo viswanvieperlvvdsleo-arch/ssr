@@ -27,6 +27,10 @@ const COMPANY_API_PATHS = new Set([
   '/api/ssr/meetings',
   '/api/ssr/meetings/external-join',
   '/api/ssr/meeting-room/join',
+  '/api/ssr/users',
+  '/api/ssr/users/presence',
+  '/api/ssr/realtime',
+  '/api/ssr/tasks',
 ]);
 
 export function proxy(request) {
@@ -49,8 +53,10 @@ export function proxy(request) {
   if (path.startsWith('/ssr-app/') && !session) {
     return NextResponse.redirect(new URL('/ssr-app', request.url));
   }
-  if (path.startsWith('/ssr-app/') && path !== '/ssr-app/company' && !path.startsWith('/ssr-app/meeting/') && session?.companyId) {
-    return NextResponse.redirect(new URL('/ssr-app/company', request.url));
+  if (path.startsWith('/ssr-app/') && !path.startsWith('/ssr-app/admin') && !path.startsWith('/ssr-app/meeting/') && session?.companyId) {
+    const destination = new URL('/ssr-app/admin/home', request.url);
+    destination.search = request.nextUrl.search;
+    return NextResponse.redirect(destination);
   }
   if (path === '/ssr-app/company' && (!session || !session.companyId)) {
     return NextResponse.redirect(new URL('/ssr-app', request.url));

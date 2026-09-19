@@ -77,23 +77,26 @@ const NavIcons = {
 };
 
 const getLeftNav = (user) => {
+  const isCompanyUser = Boolean(user?.companyId);
   const nav = [
     { id: 'feed',      label: 'Feed' },
     { id: 'courses',   label: 'Services' },
     { id: 'meetings',  label: 'Meetings' },
-    { id: 'trainers',  label: 'Trainers / Users' },
+    ...(!isCompanyUser ? [{ id: 'trainers', label: 'Trainers / Users' }] : []),
     { id: 'bookmarks', label: 'Bookmarks' },
     { id: 'settings',  label: 'Settings' },
   ];
 
   if (user && (user.role === 'Admin' || user.role === 'Super Admin') && !user.isImpersonating) {
     nav.push({ id: 'accounts', label: 'Account Management' });
-    nav.push({ id: 'data-management', label: 'Data Management' });
+    if (!isCompanyUser) {
+      nav.push({ id: 'data-management', label: 'Data Management' });
+    }
   }
   if (user?.role === 'Super Admin' && !user.isImpersonating) nav.push({ id: 'companies', label: 'Companies' });
   if (user && ['Super Admin', 'Admin', 'Employee'].includes(user.role) && !user.companyId && !user.restricted) nav.push({ id: 'tokens', label: 'Tokens' });
   if (user?.role === 'Participant' && !user.restricted) nav.push({ id: 'tokens', label: 'Your Requirements' });
-  if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
+  if (user && !isCompanyUser && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
     nav.push({ id: 'requests', label: 'Requests' });
   }
   nav.push({ id: 'history', label: 'History' });
@@ -2324,7 +2327,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
         ) : (
           <div style={{ padding: '10px 12px', background: '#fff', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {isMobile && (
-              <button onClick={() => conversationOnly ? router.push('/ssr-app/chat') : setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => conversationOnly ? router.push('/ssr-app/admin/chat') : setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
               </button>
             )}
@@ -2519,7 +2522,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
               }
               openMediaComposer({ file, chatId: activeChat?.id, replyTo: replyingTo });
               setShowAttachMenu(false);
-              if (activeChat?.id) router.push('/ssr-app/chat/compose');
+              if (activeChat?.id) router.push('/ssr-app/admin/chat/compose');
             }
           };
           return (
@@ -3800,7 +3803,8 @@ function CoursesPanel({ currentUser, initialCourseId = null }) {
   }, [selectedCourse?.id, selectedCourse?.serviceType]);
 
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'Super Admin';
-  const canManageServices = !currentUser?.isImpersonating && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
+  const canManageServices = !currentUser?.isImpersonating && !currentUser?.companyId && (isAdminUser || hasEmployeePermission(currentUser, 'post_services'));
+
 
   const relatedTrainerIds = useMemo(() => {
     if (!selectedCourse) return [];
@@ -5162,13 +5166,17 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
 
   if (currentUser.role !== 'Admin' && currentUser.role !== 'Super Admin') return null;
 
+  const isCompanyAdmin = Boolean(currentUser.companyId);
   const allUsers = Object.values(users);
-  const admins = allUsers.filter(u => u.role === 'Admin' && !u.companyId);
-  const participants = allUsers.filter(u => u.role === 'Participant');
-  const trainers = allUsers.filter(u => u.role === 'Trainer');
-  const employees = allUsers.filter(u => u.role === 'Employee' && !u.companyId);
-  const restricted = allUsers.filter(u => u.restricted && !u.companyId);
+  const companyUsers = isCompanyAdmin ? allUsers.filter(u => u.companyId === currentUser.companyId) : allUsers;
 
+  const admins = isCompanyAdmin ? [] : allUsers.filter(u => u.role === 'Admin' && !u.companyId);
+  const participants = isCompanyAdmin ? [] : allUsers.filter(u => u.role === 'Participant');
+  const trainers = isCompanyAdmin ? [] : allUsers.filter(u => u.role === 'Trainer');
+  const employees = isCompanyAdmin
+    ? allUsers.filter(u => u.role === 'Employee' && u.companyId === currentUser.companyId)
+    : allUsers.filter(u => u.role === 'Employee' && !u.companyId);
+  const restricted = companyUsers.filter(u => u.restricted);
   const normalizedAccountSearch = accountSearch.trim().toLowerCase();
   const matchesAccountSearch = user => {
     if (!normalizedAccountSearch) return true;
@@ -5176,7 +5184,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
     return [user.name, user.email, user.role, teamName]
       .some(value => String(value || '').toLowerCase().includes(normalizedAccountSearch));
   };
-  const visibleAccounts = allUsers.filter(matchesAccountSearch);
+  const visibleAccounts = companyUsers.filter(matchesAccountSearch);
   const visibleAdmins = admins.filter(matchesAccountSearch);
   const visibleParticipants = participants.filter(matchesAccountSearch);
   const visibleTrainers = trainers.filter(matchesAccountSearch);
@@ -5253,17 +5261,22 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
         />
       )}
 
-      <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: '#0F172A' }}>Account Management</h2>
+      <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: '#0F172A' }}>
+        {isCompanyAdmin ? 'Company Team Management' : 'Account Management'}
+      </h2>
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1.5px solid #E8ECF0', marginBottom: 24, overflowX: 'auto' }}>
-        {[
+        {(isCompanyAdmin ? [
+          ['dashboard','Dashboard'],
+          ['employees','Employees']
+        ] : [
           ['dashboard','Dashboard'],
           ...(currentUser.role === 'Super Admin' ? [['admins','Admins']] : []),
           ['users','Users'],
           ['trainers','Trainers'],
           ['employees','Employees']
-        ].map(([id, label]) => (
+        ]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(id)}>{label}</button>
         ))}
       </div>
@@ -5272,7 +5285,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
         <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 18, height: 18, color: '#64748B', pointerEvents: 'none' }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         </span>
-        <input type="search" value={accountSearch} onChange={event => setAccountSearch(event.target.value)} placeholder="Search accounts by name, email, role, or team" aria-label="Search accounts" style={{ width: '100%', height: 42, boxSizing: 'border-box', border: '1px solid #CBD5E1', borderRadius: 7, background: '#fff', padding: '0 14px 0 42px', color: '#0F172A', fontSize: 13, outline: 'none' }} />
+        <input type="search" value={accountSearch} onChange={event => setAccountSearch(event.target.value)} placeholder={isCompanyAdmin ? "Search employees by name, email, or team" : "Search accounts by name, email, role, or team"} aria-label="Search accounts" style={{ width: '100%', height: 42, boxSizing: 'border-box', border: '1px solid #CBD5E1', borderRadius: 7, background: '#fff', padding: '0 14px 0 42px', color: '#0F172A', fontSize: 13, outline: 'none' }} />
       </label>
 
       {/* Dashboard */}
@@ -5280,7 +5293,12 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
         <div>
           {/* Stat Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
-            {[
+            {(isCompanyAdmin ? [
+              { label: 'Company Employees', value: employees.length, icon: '🏢', color: '#FFF7ED', border: '#FED7AA' },
+              { label: 'Total Accounts', value: companyUsers.length, icon: '🔑', color: '#F5F3FF', border: '#DDD6FE' },
+              { label: 'Restricted Accounts', value: restricted.length, icon: '🚫', color: '#FFF1F2', border: '#FECDD3' },
+              { label: 'Online Now', value: companyUsers.filter(u => u.online).length, icon: '🟢', color: '#F7FEE7', border: '#BBF7D0' },
+            ] : [
               ...(currentUser.role === 'Super Admin' ? [{ label: 'Admins', value: admins.length, icon: '🛡️', color: '#FEF2F2', border: '#FECDD3' }] : []),
               { label: 'Total Users', value: participants.length, icon: '👥', color: '#EFF6FF', border: '#BFDBFE' },
               { label: 'Trainers', value: trainers.length, icon: '🎓', color: '#F0FDF4', border: '#BBF7D0' },
@@ -5293,7 +5311,7 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
               { label: 'Comments', value: posts.reduce((sum, p) => sum + (Array.isArray(p.comments) ? p.comments.length : (p.comments || 0)), 0), icon: '💬', color: '#F5F3FF', border: '#DDD6FE' },
               { label: 'Total Views', value: posts.reduce((sum, p) => sum + (p.likes || 0) * 14 + (Array.isArray(p.comments) ? p.comments.length : (p.comments || 0)) * 7 + 34, 0), icon: '👁️', color: '#EFF6FF', border: '#BFDBFE' },
               { label: 'Online Now', value: allUsers.filter(u => u.online).length, icon: '🟢', color: '#F7FEE7', border: '#BBF7D0' },
-            ].map(s => (
+            ]).map(s => (
               <div key={s.label} style={{ background: s.color, border: `1px solid ${s.border}`, borderRadius: 12, padding: '18px 20px' }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>{s.icon}</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>{s.value}</div>
@@ -5806,7 +5824,7 @@ function GlobalUserProfileModal() {
       if (chat) {
         setTargetChat({ chatId: chat.id });
         closeUserProfile();
-        router.push(`/ssr-app/chat/${chat.id}`);
+        router.push(`/ssr-app/admin/chat/${chat.id}`);
       }
       return;
     }
@@ -5817,7 +5835,7 @@ function GlobalUserProfileModal() {
     if (result.chat) {
       setTargetChat({ chatId: result.chat.id });
       closeUserProfile();
-      router.push(`/ssr-app/chat/${result.chat.id}`);
+      router.push(`/ssr-app/admin/chat/${result.chat.id}`);
       return;
     }
     alert(result.success ? (result.existing ? 'Request is already pending with Admin Service.' : 'Request sent to Admin Service.') : (result.error || 'Could not send request.'));
@@ -6548,7 +6566,7 @@ export default function HomePage() {
   const handleMobileNotificationOpen = (notification) => {
     if (!notification?.url) return;
     const destination = new URL(notification.url, window.location.origin);
-    if (destination.pathname !== '/ssr-app/home') {
+    if (destination.pathname !== '/ssr-app/admin/home') {
       router.push(notification.url);
       return;
     }
@@ -6704,7 +6722,7 @@ export default function HomePage() {
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.help}</span>Help</button>
-                  <button onClick={() => { router.push('/ssr-app/payments'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+                  <button onClick={() => { router.push('/ssr-app/admin/payments'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                     <span style={{ color: '#64748B' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>Payment History
                   </button>
                   <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 4, paddingTop: 4 }}>
@@ -6808,7 +6826,7 @@ export default function HomePage() {
               {activeNav === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><CompaniesPanel /></div>}
               {activeNav === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { setActiveNav('task-board'); const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); }} /></div>}
 
-              {activeNav === 'data-management' && (
+              {activeNav === 'data-management' && !currentUser?.companyId && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <DataManagementPanel
                     currentUser={currentUser}
@@ -6818,7 +6836,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {activeNav === 'requests' && (
+              {activeNav === 'requests' && !currentUser?.companyId && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <RequestsPanel />
                 </div>
@@ -6854,7 +6872,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {activeNav === 'trainers' && (
+              {activeNav === 'trainers' && !currentUser?.companyId && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
                   <TrainersPanel />
                 </div>
@@ -6932,7 +6950,7 @@ export default function HomePage() {
               <button onClick={() => { navigateMobile('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}>{MenuIcons.settings}</span>Settings
               </button>
-              <button onClick={() => { router.push('/ssr-app/payments'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
+              <button onClick={() => { router.push('/ssr-app/admin/payments'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                 <span style={{ color: '#64748B' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>Payment History
               </button>
 
@@ -6948,7 +6966,7 @@ export default function HomePage() {
               )}
               {currentUser?.role === 'Super Admin' && !currentUser.isImpersonating && <button onClick={() => { navigateMobile('companies'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}><span>{NavIcons.companies}</span>Companies</button>}
               {['Super Admin', 'Admin', 'Employee'].includes(currentUser?.role) && !currentUser.companyId && <button onClick={() => { navigateMobile('tokens'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}><span>{NavIcons.tokens}</span>Tokens</button>}
-              {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
+              {currentUser && !currentUser.companyId && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
                 <button onClick={() => { navigateMobile('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}>
                   <span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests
                 </button>
@@ -7017,7 +7035,7 @@ export default function HomePage() {
       {mobilePage === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ height: 'calc(100vh - 116px)', overflowY: 'auto' }}><CompaniesPanel /></div>}
       {mobilePage === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ height: 'calc(100dvh - 116px)', overflowY: 'auto' }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); navigateMobile('task-board'); }} /></div>}
 
-      {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.isImpersonating && (
+      {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.companyId && !currentUser.isImpersonating && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <DataManagementPanel
             currentUser={currentUser}
@@ -7027,7 +7045,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {mobilePage === 'requests' && (
+      {mobilePage === 'requests' && !currentUser?.companyId && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <RequestsPanel />
         </div>
@@ -7072,7 +7090,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {mobilePage === 'trainers' && (
+      {mobilePage === 'trainers' && !currentUser?.companyId && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <TrainersPanel />
         </div>

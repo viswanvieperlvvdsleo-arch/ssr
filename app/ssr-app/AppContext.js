@@ -203,7 +203,7 @@ export function AppProvider({ children }) {
   }, [currentUser?.id]);
 
   useEffect(() => {
-    if (!currentUser?.id || currentUser.companyId || typeof window === 'undefined') return undefined;
+    if (!currentUser?.id || typeof window === 'undefined') return undefined;
 
     const updatePresence = online => {
       const payload = JSON.stringify({
@@ -256,15 +256,17 @@ export function AppProvider({ children }) {
     let contentIntervalId;
     let isLoading = false;
     let isCheckingContent = false;
+    let disposed = false;
     const contentRevision = { posts: null, tasks: null };
 
     async function loadStaticData() {
       // Load slow-changing data only once on mount
       const storedUser = readStoredAppUser();
-      if (storedUser?.companyId) {
+      if (!storedUser?.id) {
         setInitialDataLoading(false);
         return;
       }
+      const requestGeneration = sessionGenerationRef.current;
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
@@ -273,17 +275,19 @@ export function AppProvider({ children }) {
           fetch(usersUrl).then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/courses').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
-          fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
-          fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
+          storedUser.companyId ? Promise.resolve([]) : fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
+          storedUser.companyId ? Promise.resolve([]) : fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
-          fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
+          storedUser.companyId ? Promise.resolve([]) : fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
         ]);
 
         const postsRes = await postsPromise;
+        if (disposed || requestGeneration !== sessionGenerationRef.current) return;
         if (postsRes && !postsRes.error && Array.isArray(postsRes)) setIfChanged(setPosts, postsRes.map(normalizePost));
         setInitialDataLoading(false);
 
         const [usersRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes, scheduledMessagesRes] = await otherDataPromise;
+        if (disposed || requestGeneration !== sessionGenerationRef.current) return;
         const normalizedUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
         if (normalizedUsers) setIfChanged(setUsers, normalizedUsers);
         if (coursesRes && !coursesRes.error && Array.isArray(coursesRes)) {
@@ -320,7 +324,7 @@ export function AppProvider({ children }) {
     async function loadRealtimeData() {
       // Only poll chats + messages (the real-time stuff) — skip if tab hidden
       if (document.visibilityState === 'hidden') return;
-      if (readStoredAppUser()?.companyId) return;
+      if (!readStoredAppUser()?.id) return;
       if (isLoading) return;
       isLoading = true;
       const requestGeneration = sessionGenerationRef.current;
@@ -330,12 +334,12 @@ export function AppProvider({ children }) {
         const [chatsRes, messagesRes, scheduledMessagesRes, notificationsRes, usersRes] = await Promise.all([
           fetch('/api/ssr/chats').then(r => r.json()).catch(() => ({})),
           fetch('/api/ssr/messages').then(r => r.json()).catch(() => ({})),
-          fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
+          storedUser?.companyId ? Promise.resolve([]) : fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
           fetch(currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users').then(r => r.json()).catch(() => ({})),
         ]);
 
-        if (requestGeneration !== sessionGenerationRef.current) return;
+        if (disposed || requestGeneration !== sessionGenerationRef.current) return;
 
         if (chatsRes && !chatsRes.error && Array.isArray(chatsRes)) setIfChanged(setMutableChats, chatsRes.map(normalizeChat));
 
@@ -376,8 +380,8 @@ export function AppProvider({ children }) {
     async function syncContentChanges(event = null) {
       if (document.visibilityState === 'hidden' || isCheckingContent) return;
       const storedUser = readStoredAppUser();
-      if (storedUser?.companyId) return;
       const currId = storedUser?.id;
+      const requestGeneration = sessionGenerationRef.current;
       if (!currId) return;
       isCheckingContent = true;
       try {
@@ -397,7 +401,7 @@ export function AppProvider({ children }) {
         if (postsChanged || forcePosts) {
           const postsResponse = await fetch(`/api/ssr/posts?viewerId=${encodeURIComponent(currId)}`, { cache: 'no-store' });
           const postsResult = await postsResponse.json().catch(() => []);
-          if (postsResponse.ok && Array.isArray(postsResult)) setIfChanged(setPosts, postsResult.map(normalizePost));
+          if (!disposed && requestGeneration === sessionGenerationRef.current && postsResponse.ok && Array.isArray(postsResult)) setIfChanged(setPosts, postsResult.map(normalizePost));
         }
         if (tasksChanged || forceTasks) {
           window.dispatchEvent(new CustomEvent('sj-task-updated', { detail: { source: 'realtime' } }));
@@ -435,13 +439,14 @@ export function AppProvider({ children }) {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      disposed = true;
       clearInterval(intervalId);
       clearInterval(contentIntervalId);
       if (localScheduleIntervalId) clearInterval(localScheduleIntervalId);
       window.removeEventListener('sj-live-sync', onLiveSync);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [currentUser?.id, currentUser?.companyId]);
 
   useEffect(() => {
     if (!currentUser || canUseStaffChatAccess(currentUser)) return;
@@ -622,6 +627,9 @@ export function AppProvider({ children }) {
       const data = await res.json();
       if (data.user) {
         const user = normalizeUser(data.user);
+        sessionGenerationRef.current += 1;
+        setPosts([]); setCourses([]); setMeetings([]); setMutableChats([]); setChatMessages({}); setUsers({}); setNotifications([]);
+        setInitialDataLoading(true);
         setCurrentUser(user);
         setSelectedRole(user.role);
         persistAppUser(user);
@@ -756,6 +764,7 @@ export function AppProvider({ children }) {
       }).catch(() => {});
     }
     setCurrentUser(null);
+    setPosts([]); setCourses([]); setMeetings([]); setMutableChats([]); setChatMessages({}); setUsers({}); setNotifications([]);
     setSelectedRole(null);
     clearStoredAppUser();
     fetch('/api/ssr/auth', {
@@ -1429,6 +1438,33 @@ export function AppProvider({ children }) {
     }
   };
 
+  const addAdmin = async (adminData) => {
+    const newAdmin = {
+      name: adminData.name,
+      email: adminData.email,
+      password: adminData.password || 'welcome123',
+      role: 'Admin',
+      initials: adminData.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+      color: '#DC2626',
+      restricted: false,
+    };
+    try {
+      const res = await fetch('/api/ssr/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAdmin)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.id) return { success: false, error: data.error || 'Could not create admin account' };
+      setUsers(prev => ({ ...prev, [data.id]: normalizeUser(data) }));
+      return { success: true, user: normalizeUser(data) };
+    } catch(e) {
+      console.error(e);
+      return { success: false, error: e.message || 'Could not create admin account' };
+    }
+  };
+
+
   const updateEmployeeProfile = async (userId, updates) => {
     await updateUserProfile(userId, updates);
   };
@@ -1449,6 +1485,19 @@ export function AppProvider({ children }) {
   const canDirectChatWith = (targetUserId) => {
     if (!currentUser || !targetUserId || currentUser.id === targetUserId) return false;
     const targetUser = users[targetUserId];
+    if (!targetUser || targetUser.restricted) return false;
+
+    // Colleagues in the same company can freely chat with each other directly without requests
+    if (currentUser.companyId && targetUser.companyId === currentUser.companyId) return true;
+
+    // Company users can chat directly with SA staff (Super Admin, Admin, Employee without companyId)
+    const isTargetSjStaff = !targetUser.companyId && ['Super Admin', 'Admin', 'Employee'].includes(targetUser.role);
+    const isCurrentSjStaff = !currentUser.companyId && ['Super Admin', 'Admin', 'Employee'].includes(currentUser.role);
+    if ((currentUser.companyId && isTargetSjStaff) || (isCurrentSjStaff && targetUser.companyId)) return true;
+
+    // Cross-tenant chat between different companies is strictly blocked
+    if (currentUser.companyId && targetUser.companyId && currentUser.companyId !== targetUser.companyId) return false;
+
     if (canUseStaffChatAccess(currentUser)) return true;
     if (isAdminUser(targetUser)) return true;
     const sharedGroups = mutableChats.filter(chat => chat.type === 'group' && chat.participants?.includes(currentUser.id) && chat.participants?.includes(targetUserId));
@@ -1457,6 +1506,7 @@ export function AppProvider({ children }) {
     if (sharedGroups.length > 0 && !sharedGroups.some(chat => chat.privateChatEnabled !== false)) return false;
     return Boolean(getDirectChatWith(targetUserId)) || sharedGroups.some(chat => chat.privateChatEnabled !== false);
   };
+
 
   const startDirectChat = async (targetUserId) => {
     if (!currentUser || !targetUserId || currentUser.id === targetUserId) return null;
@@ -1740,7 +1790,7 @@ export function AppProvider({ children }) {
       meetings, addMeeting, addMeetingParticipants, deleteMeeting,
       scheduledMessages, cancelScheduledMessage,
       users,
-      deleteUser, restrictUser, addEmployee, updateUserPermissions, updateEmployeeProfile,
+      deleteUser, restrictUser, addEmployee, addAdmin, updateUserPermissions, updateEmployeeProfile,
       chatRequests, requestChatAccess, decideChatRequest, startDirectChat, canDirectChatWith,
       canManageChatRequests, canViewPrivateUserDetails, canUseStaffChatAccess,
       notifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications,

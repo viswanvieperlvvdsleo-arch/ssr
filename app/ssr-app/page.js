@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from './AppContext';
+import { portalHome } from './portal.mjs';
 
 const CATEGORIES = ['User', 'Trainer', 'Employee', 'Admin'];
 
@@ -30,7 +31,7 @@ export default function EntryPage() {
       .then(response => response.ok ? response.json() : null)
       .then(result => {
         if (cancelled) return;
-        if (result?.user) router.replace(result.user.companyId ? '/ssr-app/company' : '/ssr-app/home');
+        if (result?.user) router.replace(portalHome(result.user));
         else { logout(); setSessionChecked(true); }
       })
       .catch(() => { if (!cancelled) setSessionChecked(true); });
@@ -128,7 +129,7 @@ export default function EntryPage() {
     } else {
       const result = await login(email.trim().toLowerCase(), password.trim(), CATEGORY_TO_ROLE[category]);
       if (result && result.success) {
-        router.push(result.user?.companyId ? '/ssr-app/company' : '/ssr-app/home');
+        router.push(portalHome(result.user));
       } else {
         setError(`Login failed: ${result?.error || 'Invalid email or password.'}`);
         setLoading(false);

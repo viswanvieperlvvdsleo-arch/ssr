@@ -100,6 +100,14 @@ async function ensureTask(post) {
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
+    const viewer = await getSessionActor(req);
+    if (viewer?.companyId) {
+      if (searchParams.get('userId') && searchParams.get('userId') !== viewer.id) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      const postId = searchParams.get('postId');
+      const tasks = await prisma.appRequirementTask.findMany({ where: { companyId: viewer.companyId, ...(postId ? { postId } : {}) }, orderBy: { createdAt: 'desc' } });
+      const hydrated = await hydrateTasks(tasks);
+      return NextResponse.json(postId ? hydrated[0] || null : hydrated);
+    }
     const actor = await getActor(req, searchParams.get('userId'));
     if (!actor) return NextResponse.json({ error: 'Employee or admin access is required' }, { status: 403 });
     const postId = searchParams.get('postId');

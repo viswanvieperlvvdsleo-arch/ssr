@@ -4,6 +4,7 @@ import { buildPostData, hasEmployeePermission } from '../defaults';
 import { notifyUsers } from '../notify';
 import { bumpRealtimeRevision } from '../realtime';
 import { getSessionActor, SJ_USER_FILTER } from '../session';
+import { POST as submitRequirement } from '../requirements/route';
 
 export async function GET(req) {
   try {
@@ -12,7 +13,9 @@ export async function GET(req) {
     if (viewerId && viewerId !== viewer?.id) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     const canViewInternal = viewer && !viewer.companyId && ['Employee', 'Admin', 'Super Admin'].includes(viewer.role) && !viewer.restricted;
     const posts = await prisma.appPost.findMany({
-      where: canViewInternal ? { OR: [SJ_USER_FILTER, { companyId: { not: null }, isRequirement: true }] } : { visibility: 'public' },
+      where: viewer?.companyId ? { OR: [
+        { companyId: viewer.companyId }, { ...SJ_USER_FILTER, visibility: 'public' },
+      ] } : canViewInternal ? { OR: [SJ_USER_FILTER, { companyId: { not: null }, isRequirement: true }] } : { ...SJ_USER_FILTER, visibility: 'public' },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(posts);
@@ -26,12 +29,20 @@ export async function POST(req) {
   try {
     const data = await req.json();
     const author = await getSessionActor(req);
-    if (!author || author.companyId || author.id !== data.authorId || !hasEmployeePermission(author, 'post_feeds') || author.restricted) {
+    if (!author || author.id !== data.authorId || !hasEmployeePermission(author, 'post_feeds') || author.restricted) {
       return NextResponse.json({ error: 'You do not have permission to publish posts' }, { status: 403 });
     }
-    data.visibility = data.visibility === 'internal' ? 'internal' : 'public';
+    if (author.companyId && data.isRequirement) {
+      const submissionRequest = { cookies: req.cookies, json: async () => ({ subject: data.title, body: data.content }) };
+      const result = await submitRequirement(submissionRequest);
+      const submission = await result.json();
+      if (!result.ok) return NextResponse.json(submission, { status: result.status });
+      const post = await prisma.appPost.findUnique({ where: { id: submission.postId } });
+      return NextResponse.json({ ...post, token: submission.token, emailStatus: submission.emailStatus }, { status: 201 });
+    }
+    data.visibility = author.companyId || data.visibility === 'internal' ? 'internal' : 'public';
     data.isRequirement = data.visibility === 'internal' && Boolean(data.isRequirement);
-    const newPost = await prisma.appPost.create({ data: buildPostData({ ...data, authorName: author.name, authorRole: author.role, companyId: null }) });
+    const newPost = await prisma.appPost.create({ data: buildPostData({ ...data, authorName: author.name, authorRole: author.role, companyId: author.companyId || null }) });
     if (newPost.isRequirement) {
       await prisma.appRequirementTask.create({
         data: {
@@ -48,7 +59,7 @@ export async function POST(req) {
       where: {
         id: { not: newPost.authorId },
         restricted: false,
-        ...(newPost.visibility === 'internal' ? { ...SJ_USER_FILTER, role: { in: ['Employee', 'Admin', 'Super Admin'] } } : {}),
+        ...(author.companyId ? { companyId: author.companyId } : newPost.visibility === 'internal' ? { ...SJ_USER_FILTER, role: { in: ['Employee', 'Admin', 'Super Admin'] } } : {}),
       },
       select: { id: true },
     });
@@ -194,7 +205,7 @@ export async function DELETE(req) {
       getSessionActor(req),
     ]);
     if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (!actor || actor.id !== userId || actor.companyId || !['Admin', 'Super Admin'].includes(actor.role) || actor.restricted) {
+    if (!actor || actor.id !== userId || (actor.companyId && post.companyId !== actor.companyId) || !['Admin', 'Super Admin'].includes(actor.role) || actor.restricted) {
       return NextResponse.json({ error: 'You do not have permission to delete this post' }, { status: 403 });
     }
     const task = await prisma.appRequirementTask.findUnique({ where: { postId: id } });

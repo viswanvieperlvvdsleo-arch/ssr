@@ -86,6 +86,10 @@ export async function PUT(request) {
   }
   if (typeof data.restricted === 'boolean') updates.restricted = data.restricted;
   if (Array.isArray(data.permissions)) updates.permissions = [...new Set(data.permissions.filter(permission => ALLOWED_PERMISSIONS.has(permission)))];
+  if (data.password) {
+    if (String(data.password).length < 8) return NextResponse.json({ error: 'Password must have at least 8 characters' }, { status: 400 });
+    updates.password = hashPassword(String(data.password));
+  }
   const user = await prisma.appUser.update({ where: { id: target.id }, data: updates });
   return NextResponse.json(publicAccount(user));
 }
