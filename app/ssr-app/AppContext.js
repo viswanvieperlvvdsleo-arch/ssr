@@ -162,6 +162,15 @@ const setIfChanged = (setter, next) => {
   setter(prev => areSnapshotsEqual(prev, next) ? prev : next);
 };
 
+const fetchWithTimeout = (url, timeoutMs = 4000) => {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  return fetch(url, controller ? { signal: controller.signal } : {})
+    .then(r => r.json())
+    .catch(() => ({}))
+    .finally(() => { if (timer) clearTimeout(timer); });
+};
+
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => readStoredAppUser());
   const [selectedRole, setSelectedRole] = useState(() => readStoredAppUser()?.role || null);
@@ -176,6 +185,14 @@ export function AppProvider({ children }) {
   const [chatRequests, setChatRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [initialDataLoading, setInitialDataLoading] = useState(true);
+
+  // Safety watchdog: ensure initialDataLoading never stays true for more than 1.8s
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInitialDataLoading(false);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, []);
   const [userProfileToView, setUserProfileToView] = useState(null);
   const [profilePicToView, setProfilePicToView] = useState(null);
   const [showScheduleMeeting, setShowScheduleMeeting] = useState(false);
@@ -270,20 +287,21 @@ export function AppProvider({ children }) {
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const postsPromise = fetch(currId ? `/api/ssr/posts?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/posts').then(r => r.json()).catch(() => ({}));
+        const postsPromise = fetchWithTimeout(currId ? `/api/ssr/posts?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/posts', 3500);
         const otherDataPromise = Promise.all([
-          fetch(usersUrl).then(r => r.json()).catch(() => ({})),
-          fetch('/api/ssr/courses').then(r => r.json()).catch(() => ({})),
-          fetch(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings').then(r => r.json()).catch(() => ({})),
-          storedUser.companyId ? Promise.resolve([]) : fetch('/api/ssr/chat-requests').then(r => r.json()).catch(() => ({})),
-          storedUser.companyId ? Promise.resolve([]) : fetch('/api/ssr/ratings').then(r => r.json()).catch(() => ({})),
-          fetch(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications').then(r => r.json()).catch(() => ({})),
-          storedUser.companyId ? Promise.resolve([]) : fetch(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages').then(r => r.json()).catch(() => ({})),
+          fetchWithTimeout(usersUrl, 4000),
+          fetchWithTimeout('/api/ssr/courses', 4000),
+          fetchWithTimeout(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings', 4000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/chat-requests', 4000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/ratings', 4000),
+          fetchWithTimeout(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications', 4000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages', 4000),
         ]);
 
         const postsRes = await postsPromise;
-        if (disposed || requestGeneration !== sessionGenerationRef.current) return;
-        if (postsRes && !postsRes.error && Array.isArray(postsRes)) setIfChanged(setPosts, postsRes.map(normalizePost));
+        if (!disposed && requestGeneration === sessionGenerationRef.current && postsRes && !postsRes.error && Array.isArray(postsRes)) {
+          setIfChanged(setPosts, postsRes.map(normalizePost));
+        }
         setInitialDataLoading(false);
 
         const [usersRes, coursesRes, meetingsRes, chatRequestsRes, ratingsRes, notificationsRes, scheduledMessagesRes] = await otherDataPromise;

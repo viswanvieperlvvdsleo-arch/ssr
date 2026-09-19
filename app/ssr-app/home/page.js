@@ -6393,6 +6393,12 @@ export default function HomePage() {
   const [notificationMeetingId, setNotificationMeetingId] = useState(null);
   const [notificationToken, setNotificationToken] = useState(null);
   const processedDeepLinkRef = useRef(null);
+  const [skeletonDismissed, setSkeletonDismissed] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSkeletonDismissed(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const navigateMobile = useCallback((page, { replace = false } = {}) => {
     if (!page) return;
@@ -6515,7 +6521,7 @@ export default function HomePage() {
     );
   }
 
-  if (initialDataLoading) return <AppShellSkeleton />;
+  if (initialDataLoading && !skeletonDismissed && (!posts || posts.length === 0)) return <AppShellSkeleton />;
 
   const filteredPosts = [...posts].filter(p => {
     const isInternalPost = p.visibility === 'internal';

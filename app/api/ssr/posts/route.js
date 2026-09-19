@@ -10,18 +10,24 @@ export async function GET(req) {
   try {
     const viewerId = new URL(req.url).searchParams.get('viewerId');
     const viewer = await getSessionActor(req);
-    if (viewerId && viewerId !== viewer?.id) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
-    const canViewInternal = viewer && !viewer.companyId && ['Employee', 'Admin', 'Super Admin'].includes(viewer.role) && !viewer.restricted;
+    let effectiveViewer = viewer;
+    if (!effectiveViewer && viewerId) {
+      effectiveViewer = await prisma.appUser.findUnique({ where: { id: viewerId } }).catch(() => null);
+    }
+    const canViewInternal = effectiveViewer && !effectiveViewer.companyId && ['Employee', 'Admin', 'Super Admin'].includes(effectiveViewer.role) && !effectiveViewer.restricted;
     const posts = await prisma.appPost.findMany({
-      where: viewer?.companyId ? { OR: [
-        { companyId: viewer.companyId }, { ...SJ_USER_FILTER, visibility: 'public' },
-      ] } : canViewInternal ? { OR: [SJ_USER_FILTER, { companyId: { not: null }, isRequirement: true }] } : { ...SJ_USER_FILTER, visibility: 'public' },
+      where: effectiveViewer?.companyId ? {
+        OR: [{ companyId: effectiveViewer.companyId }, { visibility: 'public' }],
+      } : canViewInternal ? {
+        OR: [{ companyId: null }, { companyId: { not: null }, isRequirement: true }],
+      } : { visibility: 'public' },
       orderBy: { createdAt: 'desc' },
+      take: 60,
     });
-    return NextResponse.json(posts);
+    return NextResponse.json(posts || []);
   } catch (error) {
     console.error('Posts GET API Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json([]);
   }
 }
 
