@@ -164,7 +164,27 @@ export function useAgoraCall({ callId, callType }) {
 
       // Join the Agora RTC channel (clean channel name)
       const channelName = `call_${String(callId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
-      await client.join(AGORA_APP_ID, channelName, null, null);
+
+      // Fetch dynamic RTC token from backend (required because Primary Certificate is enabled)
+      let rtcToken = null;
+      let rtcUid = null;
+      try {
+        const tokenRes = await fetch(`/api/ssr/direct-call/token?channelName=${encodeURIComponent(channelName)}`);
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          if (tokenData?.token) {
+            rtcToken = tokenData.token;
+            rtcUid = tokenData.uid ?? null;
+          }
+        } else {
+          const errData = await tokenRes.json().catch(() => null);
+          console.warn('Agora token fetch non-ok:', tokenRes.status, errData);
+        }
+      } catch (tokenErr) {
+        console.warn('Could not fetch Agora RTC token:', tokenErr);
+      }
+
+      await client.join(AGORA_APP_ID, channelName, rtcToken, rtcUid);
 
       // Create and publish local tracks
       const tracksToPublish = [];
