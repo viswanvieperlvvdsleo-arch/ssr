@@ -162,11 +162,13 @@ class AccessToken2 {
   __signing() {
     const tsBuf = ByteBuf();
     tsBuf.putUint32(this.issueTs);
-    let signing = encodeHMac(this.appCertificate, tsBuf.pack());
+    // Official Agora order: encodeHMac(key=issueTs_bytes, message=appCertificate)
+    let signing = encodeHMac(tsBuf.pack(), this.appCertificate);
 
     const saltBuf = ByteBuf();
     saltBuf.putUint32(this.salt);
-    signing = encodeHMac(signing, saltBuf.pack());
+    // Official Agora order: encodeHMac(key=salt_bytes, message=signing)
+    signing = encodeHMac(saltBuf.pack(), signing);
     return signing;
   }
 

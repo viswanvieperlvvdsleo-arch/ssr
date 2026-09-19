@@ -19,6 +19,34 @@ self.addEventListener('notificationclick', (event) => {
     })());
     return;
   }
+
+  // ── Incoming direct call: 'answer' or 'decline' actions ───────────────────
+  if (data.type === 'direct-call' && data.callId) {
+    if (event.action === 'decline') {
+      event.waitUntil((async () => {
+        await fetch('/api/ssr/direct-call', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: data.callId, action: 'decline' }),
+        }).catch(() => {});
+      })());
+      return;
+    }
+    // 'answer' or default tap → open/focus app on the call URL
+    const callUrl = `${self.location.origin}/ssr-app/home?callId=${encodeURIComponent(data.callId)}`;
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        const existing = windowClients.find(c => c.url.includes('/ssr-app/')) || windowClients[0];
+        if (existing && 'navigate' in existing) {
+          existing.postMessage({ type: 'ssr-incoming-call', callId: data.callId, callerName: data.callerName, callType: data.callType });
+          return existing.focus();
+        }
+        return clients.openWindow(callUrl);
+      })
+    );
+    return;
+  }
+
   const targetUrl = data.url;
   if (!targetUrl) return;
   const target = new URL(targetUrl, self.location.origin);
@@ -61,6 +89,10 @@ function actionsForType(type) {
     { action: 'dismiss', title: 'Cancel' },
     { action: 'start', title: 'Start' },
   ];
+  if (type === 'direct-call') return [
+    { action: 'decline', title: '❌ Decline' },
+    { action: 'answer', title: '📞 Answer' },
+  ];
   if (type === 'task' || type === 'task-profile' || type === 'task-mention' || type === 'task-profile-status') {
     return [{ action: 'open', title: 'View' }];
   }
@@ -87,16 +119,23 @@ messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
 
   const notification = payload.notification || {};
+  const notifType = payload.data?.type || '';
+  const isCall = notifType === 'direct-call';
+
   const notificationTitle = notification.title || payload.data?.title || 'SJ INFO BUSINESS SOLUTIONS';
   const notificationOptions = {
     body: notification.body || payload.data?.body || 'You have a new notification.',
     icon: '/logo/192.png',
+    badge: '/logo/192.png',
     data: payload.data || {},
-    actions: actionsForType(payload.data?.type),
-    tag: payload.data?.notificationTag || payload.messageId || `sj-${Date.now()}`,
+    actions: actionsForType(notifType),
+    tag: payload.data?.notificationTag || payload.data?.callId || payload.messageId || `sj-${Date.now()}`,
     renotify: true,
     silent: false,
-    vibrate: [200, 100, 200],
+    // Call notifications stay on screen until user taps Answer or Decline
+    requireInteraction: isCall,
+    // Stronger vibration pattern for calls
+    vibrate: isCall ? [400, 100, 400, 100, 400] : [200, 100, 200],
   };
 
   return self.registration.showNotification(notificationTitle, notificationOptions);
