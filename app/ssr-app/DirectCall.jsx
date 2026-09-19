@@ -1,8 +1,134 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, createContext } from 'react';
 
 const AGORA_APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || 'bf0878574a024609ba7d798f24065d6e';
+
+// ─── Global Call Context (shared across all pages) ────────────────────────────
+export const CallContext = createContext(null);
+
+export function useCallContext() {
+  return useContext(CallContext);
+}
+
+/**
+ * Notify the service worker about call lifecycle changes.
+ * This keeps the persistent "Ongoing call" notification in sync.
+ */
+function notifySW(type, payload = {}) {
+  if (typeof navigator === 'undefined' || !navigator.serviceWorker?.controller) return;
+  try { navigator.serviceWorker.controller.postMessage({ type, ...payload }); } catch {}
+}
+
+export function CallProvider({ children }) {
+  // activeCall = { id, callerName, calleeName, type, status, isCaller }
+  const [activeCall, setActiveCall] = useState(null);
+  const [minimized, setMinimized] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef(null);
+
+  // Start/stop the global call timer
+  useEffect(() => {
+    if (activeCall && !timerRef.current) {
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+    }
+    if (!activeCall && timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      setElapsed(0);
+    }
+    return () => {};
+  }, [activeCall]);
+
+  // Keep service worker's persistent notification timer in sync
+  useEffect(() => {
+    if (!activeCall) return;
+    notifySW('CALL_TIMER_UPDATE', {
+      callId: activeCall.id,
+      peerName: activeCall.isCaller ? activeCall.calleeName : activeCall.callerName,
+      elapsed,
+      type: activeCall.type,
+    });
+  }, [elapsed, activeCall]);
+
+  const startCall = useCallback((call) => {
+    setActiveCall(call);
+    setMinimized(false);
+    setElapsed(0);
+    notifySW('CALL_STARTED', {
+      callId: call.id,
+      peerName: call.isCaller ? call.calleeName : call.callerName,
+      type: call.type,
+    });
+  }, []);
+
+  const endCallContext = useCallback(() => {
+    notifySW('CALL_ENDED');
+    setActiveCall(null);
+    setMinimized(false);
+    setElapsed(0);
+  }, []);
+
+  const minimize = useCallback(() => setMinimized(true), []);
+  const restore = useCallback(() => setMinimized(false), []);
+
+  return (
+    <CallContext.Provider value={{ activeCall, minimized, elapsed, startCall, endCallContext, minimize, restore }}>
+      {children}
+    </CallContext.Provider>
+  );
+}
+
+// ─── Ongoing Call Pill (floating bar shown while call is minimized or app in bg)
+export function OngoingCallPill() {
+  const ctx = useCallContext();
+  if (!ctx?.activeCall || !ctx.minimized) return null;
+
+  const { activeCall, elapsed, restore } = ctx;
+  const peerName = activeCall.isCaller ? activeCall.calleeName : activeCall.callerName;
+  const fmt = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  return (
+    <div
+      onClick={restore}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 999999,
+        background: '#16A34A',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px 18px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+        userSelect: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          width: 10, height: 10, borderRadius: '50%', background: '#fff',
+          animation: 'pulse 2s infinite',
+          flexShrink: 0,
+        }} />
+        <span style={{ fontWeight: 700, fontSize: 15 }}>{peerName}</span>
+        <span style={{ fontSize: 13, opacity: 0.85 }}>
+          {activeCall.type === 'video' ? '🎥' : '📞'} {fmt(elapsed)}
+        </span>
+      </div>
+      <div style={{
+        fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.2)',
+        borderRadius: 20, padding: '4px 12px',
+      }}>
+        tap to return
+      </div>
+    </div>
+  );
+}
 
 // ─── Pleasant Web Audio Ringtone (no external mp3 files needed) ───────────────
 class RingtonePlayer {
@@ -95,7 +221,20 @@ class RingtonePlayer {
   }
 }
 
-export function Avatar({ name = '?', size = 80 }) {
+export function Avatar({ name = '?', size = 80, image = null }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={name}
+        style={{
+          width: size, height: size, borderRadius: '50%', objectFit: 'cover',
+          border: '2px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
   const initials = String(name).trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
   const hue = [...initials].reduce((h, c) => h + c.charCodeAt(0), 0) % 360;
   return (
@@ -104,7 +243,8 @@ export function Avatar({ name = '?', size = 80 }) {
       background: `linear-gradient(135deg, hsl(${hue},65%,50%), hsl(${(hue + 45) % 360},60%,38%))`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: Math.round(size * 0.38), fontWeight: 700, color: '#fff', flexShrink: 0,
-      boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+      border: '2px solid rgba(255,255,255,0.2)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
     }}>{initials}</div>
   );
 }
@@ -348,57 +488,292 @@ export function IncomingCallBanner({ call, onAccept, onDecline }) {
   );
 }
 
+// ─── SVG Icons for Android/iOS Native Style Dialer ────────────────────────────
+const DialerIcons = {
+  record: (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="6" width="20" height="12" rx="3" />
+      <circle cx="8" cy="12" r="2.5" />
+      <circle cx="16" cy="12" r="2.5" />
+      <line x1="8" y1="14.5" x2="16" y2="14.5" />
+    </svg>
+  ),
+  hold: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="9" y1="5" x2="9" y2="19" />
+      <line x1="15" y1="5" x2="15" y2="19" />
+    </svg>
+  ),
+  video: (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="3" ry="3" />
+    </svg>
+  ),
+  mic: (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  ),
+  micMuted: (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  ),
+  speaker: (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  ),
+  endCall: (
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(135deg)' }}>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+    </svg>
+  ),
+  minimize: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  ),
+};
+
+// ─── Circular Dialer Action Button with bottom label ──────────────────────────
+function DialerActionBtn({ icon, label, onClick, active = false, danger = false, disabled = false }) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      userSelect: 'none',
+    }}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          width: 68,
+          height: 68,
+          borderRadius: '50%',
+          border: danger
+            ? 'none'
+            : active
+              ? '1px solid rgba(255,255,255,0.45)'
+              : '1px solid rgba(255,255,255,0.12)',
+          background: danger
+            ? '#EF4444'
+            : active
+              ? '#FFFFFF'
+              : 'rgba(255, 255, 255, 0.14)',
+          color: danger ? '#FFFFFF' : active ? '#18181B' : '#FFFFFF',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: disabled ? 'default' : 'pointer',
+          opacity: disabled ? 0.45 : 1,
+          boxShadow: danger
+            ? '0 10px 28px rgba(239, 68, 68, 0.5)'
+            : active
+              ? '0 8px 20px rgba(255, 255, 255, 0.25)'
+              : '0 4px 16px rgba(0, 0, 0, 0.3)',
+          transition: 'all 0.18s ease',
+          outline: 'none',
+        }}
+      >
+        {icon}
+      </button>
+      <span style={{
+        marginTop: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        color: active ? '#FFFFFF' : '#D1D5DB',
+        letterSpacing: '-0.01em',
+        textAlign: 'center',
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 // ─── Outgoing Call Screen (Ringing for caller) ───────────────────────────────
 export function OutgoingCallScreen({ call, onCancel }) {
+  const [muted, setMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
+
   useEffect(() => {
     const dialTone = new RingtonePlayer('dial');
     dialTone.start();
     return () => dialTone.stop();
   }, []);
 
+  const peerName = call.calleeName || 'User';
+  const peerSubtitle = call.calleePhone || call.companyName || 'SSR Direct Connect';
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100000,
-      background: 'radial-gradient(circle at center, #1E293B 0%, #0F172A 100%)',
-      color: '#fff',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
+      background: 'linear-gradient(180deg, #2D2D31 0%, #1A1A1D 55%, #121214 100%)',
+      color: '#FFFFFF',
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     }}>
-      <div style={{ position: 'relative', marginBottom: 24 }}>
+      {/* Top Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '24px 24px 8px',
+      }}>
+        <button
+          onClick={onCancel}
+          title="Minimize or Cancel"
+          style={{
+            background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff',
+            width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', cursor: 'pointer', backdropFilter: 'blur(10px)',
+          }}
+        >
+          {DialerIcons.minimize}
+        </button>
+        <div style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>
+          {call.type === 'video' ? '🎥 Video Calling' : '📞 Calling'}
+        </div>
+      </div>
+
+      {/* Main Contact Block (matching user's screenshot layout) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        padding: '20px 28px 0',
+        width: '100%',
+        maxWidth: 480,
+        margin: '0 auto',
+      }}>
+        <div style={{ flex: 1, minWidth: 0, paddingRight: 16 }}>
+          <h1 style={{
+            fontSize: 'clamp(26px, 6.5vw, 34px)',
+            fontWeight: 700,
+            color: '#FFFFFF',
+            margin: 0,
+            lineHeight: 1.15,
+            letterSpacing: '-0.02em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {peerName}
+          </h1>
+          <div style={{
+            fontSize: 15,
+            color: '#9CA3AF',
+            marginTop: 6,
+            fontWeight: 400,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {peerSubtitle}
+          </div>
+          <div style={{
+            marginTop: 20,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 15,
+            fontWeight: 600,
+          }}>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              padding: '2px 5px',
+              borderRadius: 4,
+              background: 'rgba(255,255,255,0.18)',
+              color: '#FFFFFF',
+            }}>
+              VoIP
+            </span>
+            <span style={{ color: '#E4E4E7' }}>Waiting...</span>
+          </div>
+        </div>
+
+        <div style={{ flexShrink: 0, position: 'relative' }}>
+          <Avatar name={peerName} size={78} />
+        </div>
+      </div>
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* 3x2 Dialer Action Grid (matching uploaded screenshot) */}
+      <div style={{
+        padding: '0 24px calc(env(safe-area-inset-bottom, 0px) + 42px)',
+        width: '100%',
+      }}>
         <div style={{
-          position: 'absolute', inset: -16, borderRadius: '50%',
-          border: '2px solid rgba(56, 189, 248, 0.4)',
-          animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
-        }} />
-        <Avatar name={call.calleeName} size={110} />
-      </div>
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '24px 16px',
+          maxWidth: 340,
+          margin: '0 auto',
+        }}>
+          {/* Row 1 */}
+          <DialerActionBtn
+            icon={DialerIcons.record}
+            label="Record"
+            disabled={true}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.hold}
+            label="Hold"
+            disabled={true}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.video}
+            label="Video call"
+            active={call.type === 'video'}
+          />
 
-      <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6, textAlign: 'center' }}>
-        {call.calleeName}
+          {/* Row 2 */}
+          <DialerActionBtn
+            icon={muted ? DialerIcons.micMuted : DialerIcons.mic}
+            label={muted ? 'Unmute' : 'Mute'}
+            active={muted}
+            onClick={() => setMuted(m => !m)}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.endCall}
+            label="End"
+            danger={true}
+            onClick={onCancel}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.speaker}
+            label="Speaker"
+            active={speakerOn}
+            onClick={() => setSpeakerOn(s => !s)}
+          />
+        </div>
       </div>
-      <div style={{ fontSize: 14, color: '#94A3B8', marginBottom: 36, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span>{call.type === 'video' ? '🎥 Video Calling…' : '📞 Calling…'}</span>
-      </div>
-
-      <button
-        onClick={onCancel}
-        style={{
-          width: 64, height: 64, borderRadius: '50%', border: 'none',
-          background: '#EF4444', color: '#fff', fontSize: 26, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 8px 24px rgba(239, 68, 68, 0.45)',
-          transition: 'transform 0.15s',
-        }}
-        title="Cancel Call"
-      >
-        📵
-      </button>
     </div>
   );
 }
 
 // ─── Full Active Call Screen (Agora connected) ───────────────────────────────
 export function ActiveCallScreen({ call, isCaller, onEnd }) {
+  const callCtx = useCallContext();
   const {
     start,
     stop,
@@ -416,147 +791,252 @@ export function ActiveCallScreen({ call, isCaller, onEnd }) {
     callType: call.type,
   });
 
-  const [elapsed, setElapsed] = useState(0);
+  const [localElapsed, setLocalElapsed] = useState(0);
+  const [onHold, setOnHold] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
+
+  const elapsed = callCtx?.elapsed ?? localElapsed;
+  const isMinimized = callCtx?.minimized ?? false;
 
   useEffect(() => {
     start();
+    if (callCtx?.startCall) {
+      callCtx.startCall({ ...call, isCaller });
+    }
     return () => { stop(); };
-  }, [start, stop]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => setElapsed(s => s + 1), 1000);
+    if (callCtx) return;
+    const timer = setInterval(() => setLocalElapsed(s => s + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [callCtx]);
+
+  const handleEnd = () => {
+    if (callCtx?.endCallContext) callCtx.endCallContext();
+    onEnd();
+  };
+
+  const handleMinimize = () => {
+    if (callCtx?.minimize) callCtx.minimize();
+  };
+
+  const toggleHold = () => {
+    setOnHold(h => {
+      const next = !h;
+      if (toggleMute && next !== muted) {
+        toggleMute();
+      }
+      return next;
+    });
+  };
+
+  const toggleRecord = () => {
+    setIsRecording(r => !r);
+  };
+
+  const toggleSpeaker = () => {
+    setSpeakerOn(s => !s);
+  };
 
   const formatTime = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   const peerName = isCaller ? call.calleeName : call.callerName;
+  const peerSubtitle = call.calleePhone || call.companyName || 'SSR Direct Connect';
+
+  if (isMinimized) return null;
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100000,
-      background: '#090D16', color: '#fff',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: 'linear-gradient(180deg, #2D2D31 0%, #1A1A1D 55%, #121214 100%)',
+      color: '#FFFFFF',
+      display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     }}>
-      {call.type === 'video' ? (
-        <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          {/* Remote user video container */}
-          <div
-            ref={remoteVideoContainerRef}
-            style={{
-              width: '100%', height: '100%', position: 'absolute', inset: 0,
-              background: '#090D16', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            {!remoteUserJoined && (
-              <div style={{ textAlign: 'center', zIndex: 1 }}>
-                <Avatar name={peerName} size={90} />
-                <div style={{ marginTop: 14, fontSize: 18, fontWeight: 700 }}>{peerName}</div>
-                <div style={{ fontSize: 13, color: '#94A3B8', marginTop: 4 }}>Connecting video stream…</div>
-              </div>
-            )}
-          </div>
+      {/* Top Bar: minimize button & rec indicator */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '24px 24px 8px',
+        zIndex: 20,
+      }}>
+        <button
+          onClick={handleMinimize}
+          title="Minimize call (continues in background)"
+          style={{
+            background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff',
+            width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', cursor: 'pointer', backdropFilter: 'blur(10px)',
+          }}
+        >
+          {DialerIcons.minimize}
+        </button>
 
-          {/* Local user self preview */}
-          <div
-            ref={localVideoContainerRef}
-            style={{
-              position: 'absolute', top: 20, right: 20, width: 130, height: 170,
-              borderRadius: 14, overflow: 'hidden',
-              border: '2px solid rgba(255,255,255,0.25)',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
-              background: '#1E293B', zIndex: 10,
-              display: camOff ? 'none' : 'block',
-            }}
+        {isRecording && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(239,68,68,0.22)', border: '1px solid rgba(239,68,68,0.45)',
+            borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700, color: '#FCA5A5',
+          }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }} />
+            REC
+          </div>
+        )}
+      </div>
+
+      {/* Main Contact Block (matching user's screenshot layout) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        padding: '16px 28px 0',
+        width: '100%',
+        maxWidth: 480,
+        margin: '0 auto',
+        zIndex: 20,
+      }}>
+        <div style={{ flex: 1, minWidth: 0, paddingRight: 16 }}>
+          <h1 style={{
+            fontSize: 'clamp(26px, 6.5vw, 34px)',
+            fontWeight: 700,
+            color: '#FFFFFF',
+            margin: 0,
+            lineHeight: 1.15,
+            letterSpacing: '-0.02em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {peerName}
+          </h1>
+          <div style={{
+            fontSize: 15,
+            color: '#9CA3AF',
+            marginTop: 6,
+            fontWeight: 400,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {peerSubtitle}
+          </div>
+          <div style={{
+            marginTop: 18,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 15,
+            fontWeight: 600,
+          }}>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              padding: '2px 5px',
+              borderRadius: 4,
+              background: 'rgba(255,255,255,0.18)',
+              color: '#FFFFFF',
+            }}>
+              VoIP
+            </span>
+            <span style={{ color: onHold ? '#FBBF24' : connected ? '#38BDF8' : '#E4E4E7' }}>
+              {onHold ? 'On Hold' : connected ? (remoteUserJoined ? formatTime(elapsed) : 'Connecting...') : 'Joining...'}
+            </span>
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#F87171', marginTop: 8 }}>{error}</div>}
+        </div>
+
+        <div style={{ flexShrink: 0, position: 'relative' }}>
+          <Avatar name={peerName} size={78} />
+        </div>
+      </div>
+
+      {/* Middle Video or Audio Spacer */}
+      <div style={{ flex: 1, position: 'relative', minHeight: 80, width: '100%' }}>
+        {call.type === 'video' && (
+          <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+            <div
+              ref={remoteVideoContainerRef}
+              style={{
+                width: '100%', height: '100%',
+                background: '#090D16', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            />
+            <div
+              ref={localVideoContainerRef}
+              style={{
+                position: 'absolute', top: 12, right: 20, width: 110, height: 150,
+                borderRadius: 14, overflow: 'hidden',
+                border: '2px solid rgba(255,255,255,0.25)',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+                background: '#1E293B', zIndex: 10,
+                display: camOff ? 'none' : 'block',
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 3x2 Dialer Action Grid (matching uploaded screenshot) */}
+      <div style={{
+        padding: '0 24px calc(env(safe-area-inset-bottom, 0px) + 42px)',
+        width: '100%',
+        zIndex: 20,
+      }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '24px 16px',
+          maxWidth: 340,
+          margin: '0 auto',
+        }}>
+          {/* Row 1 */}
+          <DialerActionBtn
+            icon={isRecording ? (
+              <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#EF4444' }} />
+            ) : DialerIcons.record}
+            label={isRecording ? 'Recording' : 'Record'}
+            active={isRecording}
+            onClick={toggleRecord}
+            disabled={!connected}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.hold}
+            label={onHold ? 'On Hold' : 'Hold'}
+            active={onHold}
+            onClick={toggleHold}
+            disabled={!connected}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.video}
+            label="Video call"
+            active={call.type === 'video' && !camOff}
+            onClick={toggleCam}
+          />
+
+          {/* Row 2 */}
+          <DialerActionBtn
+            icon={muted ? DialerIcons.micMuted : DialerIcons.mic}
+            label={muted ? 'Unmute' : 'Mute'}
+            active={muted}
+            onClick={toggleMute}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.endCall}
+            label="End"
+            danger={true}
+            onClick={handleEnd}
+          />
+          <DialerActionBtn
+            icon={DialerIcons.speaker}
+            label="Speaker"
+            active={speakerOn}
+            onClick={toggleSpeaker}
           />
         </div>
-      ) : (
-        /* Audio Only View */
-        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', marginBottom: 40 }}>
-          <div style={{ position: 'relative', display: 'inline-block', marginBottom: 20 }}>
-            <div style={{
-              position: 'absolute', inset: -14, borderRadius: '50%',
-              border: '2px solid rgba(14, 165, 233, 0.35)',
-              animation: 'pulse 2.5s infinite',
-            }} />
-            <Avatar name={peerName} size={110} />
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#fff' }}>{peerName}</div>
-          <div style={{ fontSize: 14, color: connected ? '#38BDF8' : '#94A3B8', marginTop: 6, fontWeight: 600 }}>
-            {connected ? (remoteUserJoined ? formatTime(elapsed) : 'Connecting audio…') : 'Joining…'}
-          </div>
-          {error && <div style={{ fontSize: 12, color: '#F87171', marginTop: 10 }}>{error}</div>}
-        </div>
-      )}
-
-      {/* Top Overlay for Video Time */}
-      {call.type === 'video' && (
-        <div style={{
-          position: 'absolute', top: 24, left: 24, zIndex: 10,
-          background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(8px)',
-          padding: '8px 16px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 8,
-          border: '1px solid rgba(255,255,255,0.1)',
-        }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E' }} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{peerName}</span>
-          <span style={{ fontSize: 13, color: '#94A3B8' }}>{formatTime(elapsed)}</span>
-        </div>
-      )}
-
-      {/* Floating Bottom Control Bar */}
-      <div style={{
-        position: 'absolute', bottom: 36, zIndex: 20,
-        display: 'flex', alignItems: 'center', gap: 18,
-        background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)',
-        padding: '12px 24px', borderRadius: 36,
-        border: '1px solid rgba(255,255,255,0.12)',
-        boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
-      }}>
-        {/* Mute Mic Toggle */}
-        <button
-          onClick={toggleMute}
-          title={muted ? 'Unmute microphone' : 'Mute microphone'}
-          style={{
-            width: 50, height: 50, borderRadius: '50%', border: 'none',
-            background: muted ? '#EF4444' : '#334155',
-            color: '#fff', fontSize: 20, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 0.2s',
-          }}
-        >
-          {muted ? '🔇' : '🎙️'}
-        </button>
-
-        {/* Camera Toggle (Video Call Only) */}
-        {call.type === 'video' && (
-          <button
-            onClick={toggleCam}
-            title={camOff ? 'Turn camera on' : 'Turn camera off'}
-            style={{
-              width: 50, height: 50, borderRadius: '50%', border: 'none',
-              background: camOff ? '#EF4444' : '#334155',
-              color: '#fff', fontSize: 20, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.2s',
-            }}
-          >
-            {camOff ? '🚫' : '📹'}
-          </button>
-        )}
-
-        {/* End Call Button */}
-        <button
-          onClick={onEnd}
-          title="End Call"
-          style={{
-            width: 54, height: 54, borderRadius: '50%', border: 'none',
-            background: '#DC2626', color: '#fff', fontSize: 22, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(220,38,38,0.4)',
-          }}
-        >
-          📵
-        </button>
       </div>
     </div>
   );
@@ -763,6 +1243,20 @@ export function CallButton({
 export function IncomingCallWatcher({ currentUser }) {
   const [incoming, setIncoming] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
+  const callCtx = useCallContext();
+
+  // Listen for service-worker messages (restore call from ongoing-call notification tap)
+  useEffect(() => {
+    if (!navigator?.serviceWorker) return;
+    const handler = (event) => {
+      if (event.data?.type === 'ssr-restore-call') {
+        // Un-minimize the call
+        if (callCtx?.restore) callCtx.restore();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [callCtx]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -833,6 +1327,124 @@ export function IncomingCallWatcher({ currentUser }) {
   }
 
   return null;
+}
+
+// ─── Call History Panel (shows per-user call log) ─────────────────────────────
+export function CallHistoryPanel({ targetUserId, currentUser }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 20;
+
+  const load = useCallback(async (p = 1) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: LIMIT, page: p });
+      if (targetUserId) params.set('userId', targetUserId);
+      const res = await fetch(`/api/ssr/call-logs?${params}`).catch(() => null);
+      if (!res?.ok) { setLoading(false); return; }
+      const data = await res.json();
+      setLogs(p === 1 ? data.logs : prev => [...prev, ...data.logs]);
+      setTotal(data.total || 0);
+    } finally {
+      setLoading(false);
+    }
+  }, [targetUserId]);
+
+  useEffect(() => { setPage(1); load(1); }, [load]);
+
+  const fmt = (s) => {
+    if (s == null) return '';
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
+
+  const timeAgo = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const diff = Math.floor((Date.now() - d) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  };
+
+  const statusIcon = (log) => {
+    if (log.status === 'missed') return { icon: '📵', color: '#EF4444', label: 'Missed' };
+    if (log.status === 'declined') return { icon: '🚫', color: '#F59E0B', label: 'Declined' };
+    if (log.isOutgoing) return { icon: '📤', color: '#3B82F6', label: 'Outgoing' };
+    return { icon: '📥', color: '#10B981', label: 'Incoming' };
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {loading && logs.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 32, color: '#94A3B8', fontSize: 14 }}>Loading call history…</div>
+      )}
+      {!loading && logs.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 32, color: '#94A3B8', fontSize: 14 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📵</div>
+          No call history yet
+        </div>
+      )}
+      {logs.map((log) => {
+        const st = statusIcon(log);
+        const peerName = log.isOutgoing ? log.calleeName : log.callerName;
+        return (
+          <div key={log.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '12px 16px',
+            borderBottom: '1px solid #F1F5F9',
+          }}>
+            {/* Status icon */}
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: `${st.color}18`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 17, flexShrink: 0,
+            }}>
+              {st.icon}
+            </div>
+            {/* Info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {peerName}
+              </div>
+              <div style={{ fontSize: 12, color: '#64748B', marginTop: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ color: st.color }}>{st.label}</span>
+                <span>·</span>
+                <span>{log.type === 'video' ? '🎥 Video' : '📞 Audio'}</span>
+                {log.duration != null && log.duration > 0 && (
+                  <><span>·</span><span>{fmt(log.duration)}</span></>
+                )}
+              </div>
+            </div>
+            {/* Time */}
+            <div style={{ fontSize: 12, color: '#94A3B8', flexShrink: 0 }}>
+              {timeAgo(log.createdAt)}
+            </div>
+          </div>
+        );
+      })}
+      {/* Load more */}
+      {logs.length < total && !loading && (
+        <button
+          onClick={() => { const next = page + 1; setPage(next); load(next); }}
+          style={{
+            margin: '8px 16px', padding: '10px', borderRadius: 8, border: '1px solid #E2E8F0',
+            background: '#F8FAFC', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Load more
+        </button>
+      )}
+      {loading && logs.length > 0 && (
+        <div style={{ textAlign: 'center', padding: 12, color: '#94A3B8', fontSize: 13 }}>Loading…</div>
+      )}
+    </div>
+  );
 }
 
 export default CallButton;

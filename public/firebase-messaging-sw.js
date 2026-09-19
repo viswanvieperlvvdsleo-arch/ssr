@@ -1,6 +1,56 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+// ─── Handle messages from the active call page ────────────────────────────────
+const ONGOING_CALL_TAG = 'sj-ongoing-call';
+
+self.addEventListener('message', (event) => {
+  const { type, peerName, elapsed, callId } = event.data || {};
+
+  if (type === 'CALL_STARTED') {
+    // Show a persistent "Ongoing call" notification
+    self.registration.showNotification('📞 Ongoing Call', {
+      body: `${peerName || 'Unknown'} • 00:00`,
+      icon: '/logo/192.png',
+      badge: '/logo/192.png',
+      tag: ONGOING_CALL_TAG,
+      renotify: false,
+      silent: true,
+      requireInteraction: true,
+      data: { type: 'ongoing-call', callId, peerName },
+      actions: [{ action: 'return', title: '↩ Return to call' }],
+    });
+    return;
+  }
+
+  if (type === 'CALL_TIMER_UPDATE') {
+    // Update the body text every few seconds with live timer
+    if (!elapsed || elapsed % 5 !== 0) return; // update every 5 seconds
+    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const secs = String(elapsed % 60).padStart(2, '0');
+    self.registration.showNotification('📞 Ongoing Call', {
+      body: `${peerName || 'Unknown'} • ${mins}:${secs}`,
+      icon: '/logo/192.png',
+      badge: '/logo/192.png',
+      tag: ONGOING_CALL_TAG,
+      renotify: true,
+      silent: true,
+      requireInteraction: true,
+      data: { type: 'ongoing-call', callId, peerName },
+      actions: [{ action: 'return', title: '↩ Return to call' }],
+    });
+    return;
+  }
+
+  if (type === 'CALL_ENDED') {
+    // Remove the persistent notification
+    self.registration.getNotifications({ tag: ONGOING_CALL_TAG }).then((notifs) => {
+      notifs.forEach(n => n.close());
+    });
+    return;
+  }
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification?.data || {};
@@ -39,6 +89,22 @@ self.addEventListener('notificationclick', (event) => {
         const existing = windowClients.find(c => c.url.includes('/ssr-app/')) || windowClients[0];
         if (existing && 'navigate' in existing) {
           existing.postMessage({ type: 'ssr-incoming-call', callId: data.callId, callerName: data.callerName, callType: data.callType });
+          return existing.focus();
+        }
+        return clients.openWindow(callUrl);
+      })
+    );
+    return;
+  }
+
+  // ── Tapping the persistent "Ongoing call" notification ──────────────────────
+  if (data.type === 'ongoing-call') {
+    const callUrl = `${self.location.origin}/ssr-app/home`;
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        const existing = windowClients.find(c => c.url.includes('/ssr-app/')) || windowClients[0];
+        if (existing) {
+          existing.postMessage({ type: 'ssr-restore-call', callId: data.callId });
           return existing.focus();
         }
         return clients.openWindow(callUrl);
