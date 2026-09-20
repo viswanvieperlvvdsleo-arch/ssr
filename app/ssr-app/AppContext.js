@@ -46,6 +46,8 @@ const clearStoredAppUser = () => {
   sessionStorage.removeItem('ssr_app_user');
 };
 
+const postsCacheKey = userId => `ssr_cached_posts_${userId || 'anonymous'}`;
+
 const getInitials = (name = '') => {
   const initials = name
     .trim()
@@ -166,15 +168,30 @@ const fetchWithTimeout = (url, timeoutMs = 4000) => {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   return fetch(url, controller ? { signal: controller.signal } : {})
-    .then(r => r.json())
+    .then(r => {
+      if (r.status === 401 && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('sj-session-expired'));
+      }
+      return r.json();
+    })
     .catch(() => ({}))
     .finally(() => { if (timer) clearTimeout(timer); });
 };
 
 export function AppProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(() => readStoredAppUser());
-  const [selectedRole, setSelectedRole] = useState(() => readStoredAppUser()?.role || null);
-  const [posts, setPosts] = useState([]);
+  const initialStoredUserRef = useRef(readStoredAppUser());
+  const [currentUser, setCurrentUser] = useState(null);
+  const [selectedRole, setSelectedRole] = useState(() => initialStoredUserRef.current?.role || null);
+  const [sessionRestoring, setSessionRestoring] = useState(Boolean(initialStoredUserRef.current?.id));
+  const [posts, setPosts] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const cached = sessionStorage.getItem(postsCacheKey(initialStoredUserRef.current?.id));
+      return cached ? JSON.parse(cached).map(normalizePost) : [];
+    } catch {
+      return [];
+    }
+  });
   const [courses, setCourses] = useState([]);
   const [trainerRatings, setTrainerRatings] = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -186,13 +203,14 @@ export function AppProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [initialDataLoading, setInitialDataLoading] = useState(true);
 
-  // Safety watchdog: ensure initialDataLoading never stays true for more than 1.8s
+  // Do not leave the shell blocked if one secondary data source is slow.
   useEffect(() => {
+    if (sessionRestoring) return undefined;
     const timer = setTimeout(() => {
       setInitialDataLoading(false);
     }, 1800);
     return () => clearTimeout(timer);
-  }, []);
+  }, [sessionRestoring]);
   const [userProfileToView, setUserProfileToView] = useState(null);
   const [profilePicToView, setProfilePicToView] = useState(null);
   const [showScheduleMeeting, setShowScheduleMeeting] = useState(false);
@@ -208,6 +226,63 @@ export function AppProvider({ children }) {
   const sessionGenerationRef = useRef(0);
 
   useEffect(() => {
+    const handleSessionExpired = () => {
+      const storedUserId = readStoredAppUser()?.id;
+      sessionGenerationRef.current += 1;
+      setCurrentUser(null);
+      setSelectedRole(null);
+      setPosts([]);
+      setCourses([]);
+      setMeetings([]);
+      setMutableChats([]);
+      setChatMessages({});
+      setUsers({});
+      setNotifications([]);
+      clearStoredAppUser();
+      if (storedUserId) sessionStorage.removeItem(postsCacheKey(storedUserId));
+      sessionStorage.removeItem('ssr_cached_posts');
+      if (window.location.pathname !== '/ssr-app') window.location.replace('/ssr-app');
+    };
+    window.addEventListener('sj-session-expired', handleSessionExpired);
+    return () => window.removeEventListener('sj-session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
+    const storedUser = initialStoredUserRef.current;
+    if (!storedUser?.id) {
+      setSessionRestoring(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    fetch('/api/ssr/auth', { cache: 'no-store' })
+      .then(async response => ({ response, result: await response.json().catch(() => ({})) }))
+      .then(({ response, result }) => {
+        if (cancelled) return;
+        if (response.ok && result.user?.id === storedUser.id) {
+          const user = normalizeUser(result.user);
+          setCurrentUser(user);
+          setSelectedRole(user.role);
+          persistAppUser(user);
+          return;
+        }
+        sessionGenerationRef.current += 1;
+        setPosts([]);
+        setSelectedRole(null);
+        clearStoredAppUser();
+        sessionStorage.removeItem(postsCacheKey(storedUser.id));
+        sessionStorage.removeItem('ssr_cached_posts');
+        if (window.location.pathname !== '/ssr-app') window.location.replace('/ssr-app');
+      })
+      .catch(() => {
+        // Keep the installed app usable with its last authenticated view while offline.
+        if (!cancelled) setCurrentUser(normalizeUser(storedUser));
+      })
+      .finally(() => { if (!cancelled) setSessionRestoring(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const handleNotificationRead = event => {
       const chatId = event.detail?.chatId;
       if (!chatId || !currentUser?.id) return;
@@ -220,7 +295,7 @@ export function AppProvider({ children }) {
   }, [currentUser?.id]);
 
   useEffect(() => {
-    if (!currentUser?.id || typeof window === 'undefined') return undefined;
+    if (sessionRestoring || !currentUser?.id || typeof window === 'undefined') return undefined;
 
     const updatePresence = online => {
       const payload = JSON.stringify({
@@ -251,7 +326,7 @@ export function AppProvider({ children }) {
       window.removeEventListener('pagehide', handlePageHide);
       updatePresence(false);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, sessionRestoring]);
 
   const registerBackHandler = useCallback((handler) => {
     const entry = { handler };
@@ -269,6 +344,7 @@ export function AppProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (sessionRestoring || !currentUser?.id) return undefined;
     let intervalId;
     let contentIntervalId;
     let isLoading = false;
@@ -287,20 +363,21 @@ export function AppProvider({ children }) {
       const currId = storedUser ? storedUser.id : null;
       try {
         const usersUrl = currId ? `/api/ssr/users?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/users';
-        const postsPromise = fetchWithTimeout(currId ? `/api/ssr/posts?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/posts', 3500);
+        const postsPromise = fetchWithTimeout(currId ? `/api/ssr/posts?viewerId=${encodeURIComponent(currId)}` : '/api/ssr/posts', 12000);
         const otherDataPromise = Promise.all([
-          fetchWithTimeout(usersUrl, 4000),
-          fetchWithTimeout('/api/ssr/courses', 4000),
-          fetchWithTimeout(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings', 4000),
-          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/chat-requests', 4000),
-          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/ratings', 4000),
-          fetchWithTimeout(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications', 4000),
-          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages', 4000),
+          fetchWithTimeout(usersUrl, 10000),
+          fetchWithTimeout('/api/ssr/courses', 10000),
+          fetchWithTimeout(currId ? `/api/ssr/meetings?userId=${encodeURIComponent(currId)}` : '/api/ssr/meetings', 10000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/chat-requests', 8000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout('/api/ssr/ratings', 8000),
+          fetchWithTimeout(currId ? `/api/ssr/notifications?userId=${encodeURIComponent(currId)}` : '/api/ssr/notifications', 8000),
+          storedUser.companyId ? Promise.resolve([]) : fetchWithTimeout(currId ? `/api/ssr/scheduled-messages?senderId=${encodeURIComponent(currId)}` : '/api/ssr/scheduled-messages', 8000),
         ]);
 
         const postsRes = await postsPromise;
         if (!disposed && requestGeneration === sessionGenerationRef.current && postsRes && !postsRes.error && Array.isArray(postsRes)) {
           setIfChanged(setPosts, postsRes.map(normalizePost));
+          try { sessionStorage.setItem(postsCacheKey(currId), JSON.stringify(postsRes.slice(0, 40))); } catch {}
         }
         setInitialDataLoading(false);
 
@@ -388,6 +465,20 @@ export function AppProvider({ children }) {
         if (notificationsRes && !notificationsRes.error && Array.isArray(notificationsRes)) setIfChanged(setNotifications, notificationsRes);
         const normalizedRealtimeUsers = usersRes && !usersRes.error ? normalizeUsersMap(usersRes) : null;
         if (normalizedRealtimeUsers) setIfChanged(setUsers, normalizedRealtimeUsers);
+
+        // If posts are still empty (e.g. initial request aborted on cold start), fetch them now
+        setPosts(currentPosts => {
+          if (currentPosts.length === 0 && currId) {
+            fetchWithTimeout(`/api/ssr/posts?viewerId=${encodeURIComponent(currId)}`, 10000)
+              .then(res => {
+                if (Array.isArray(res) && res.length > 0) {
+                  setIfChanged(setPosts, res.map(normalizePost));
+                  try { sessionStorage.setItem(postsCacheKey(currId), JSON.stringify(res.slice(0, 40))); } catch {}
+                }
+              });
+          }
+          return currentPosts;
+        });
       } catch (e) {
         console.error('Failed to load realtime data:', e);
       } finally {
@@ -464,7 +555,7 @@ export function AppProvider({ children }) {
       window.removeEventListener('sj-live-sync', onLiveSync);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [currentUser?.id, currentUser?.companyId]);
+  }, [currentUser?.id, currentUser?.companyId, sessionRestoring]);
 
   useEffect(() => {
     if (!currentUser || canUseStaffChatAccess(currentUser)) return;
@@ -648,6 +739,7 @@ export function AppProvider({ children }) {
         sessionGenerationRef.current += 1;
         setPosts([]); setCourses([]); setMeetings([]); setMutableChats([]); setChatMessages({}); setUsers({}); setNotifications([]);
         setInitialDataLoading(true);
+        setSessionRestoring(false);
         setCurrentUser(user);
         setSelectedRole(user.role);
         persistAppUser(user);
@@ -784,6 +876,8 @@ export function AppProvider({ children }) {
     setCurrentUser(null);
     setPosts([]); setCourses([]); setMeetings([]); setMutableChats([]); setChatMessages({}); setUsers({}); setNotifications([]);
     setSelectedRole(null);
+    if (currentUser?.id) sessionStorage.removeItem(postsCacheKey(currentUser.id));
+    sessionStorage.removeItem('ssr_cached_posts');
     clearStoredAppUser();
     fetch('/api/ssr/auth', {
       method: 'POST',
@@ -1812,7 +1906,7 @@ export function AppProvider({ children }) {
       chatRequests, requestChatAccess, decideChatRequest, startDirectChat, canDirectChatWith,
       canManageChatRequests, canViewPrivateUserDetails, canUseStaffChatAccess,
       notifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications,
-      initialDataLoading,
+      initialDataLoading, sessionRestoring,
       autoDownloadMedia, setAutoDownloadMedia,
       targetChat, setTargetChat,
       uploadChatMedia, sendChatMediaInBackground, markChatRead,

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sj-info-business-solutions-cache-v2';
+const CACHE_NAME = 'sj-info-business-solutions-cache-v3';
 const URLS_TO_CACHE = [
   '/app-download',
   '/ssr-app',
@@ -33,10 +33,18 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only intercept GET requests
   if (event.request.method !== 'GET') return;
 
-  // Network first strategy: try to fetch latest from server first, fallback to cache if offline
+  const url = new URL(event.request.url);
+  const isPrivateRequest = url.origin === self.location.origin && (
+    url.pathname.startsWith('/api/') || url.pathname.startsWith('/ssr-app/')
+  );
+  if (isPrivateRequest || event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Static assets use network first; private account data is never cached here.
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {

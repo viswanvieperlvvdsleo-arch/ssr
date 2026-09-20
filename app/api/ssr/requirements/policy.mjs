@@ -1,16 +1,14 @@
 export function requirementScope(actor) {
   if (!actor || actor.restricted) return null;
-  if (['Super Admin', 'Admin', 'Employee'].includes(actor.role)) return {};
   if (actor.companyId) return { companyId: actor.companyId };
-  return { senderId: actor.id };
+  if (['Super Admin', 'Admin', 'Employee'].includes(actor.role)) return {};
+  if (actor.role === 'Participant') return { senderId: actor.id };
+  return null;
 }
 
 export function canSubmitRequirement(actor) {
   if (!actor || actor.restricted) return false;
-  if (['Super Admin', 'Admin', 'Participant', 'Trainer'].includes(actor.role)) return true;
-  if (actor.role === 'Employee') {
-    return !actor.companyId || actor.permissions?.some(permission => ['post_feeds', 'all_access'].includes(permission));
-  }
-  return true;
+  if (!actor.companyId) return actor.role === 'Participant';
+  return actor.role === 'Admin' || Boolean(actor.role === 'Employee' &&
+    actor.permissions?.some(permission => ['post_feeds', 'all_access'].includes(permission)));
 }
-

@@ -18,10 +18,11 @@ const CATEGORY_TO_ROLE = {
 
 export default function EntryPage() {
   const router = useRouter();
-  const { login, signup, users, currentUser, logout } = useApp();
+  const { login, signup, users, currentUser, logout, sessionRestoring } = useApp();
   const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
+    if (sessionRestoring) return;
     let cancelled = false;
     if (!currentUser) {
       setSessionChecked(true);
@@ -36,7 +37,7 @@ export default function EntryPage() {
       })
       .catch(() => { if (!cancelled) setSessionChecked(true); });
     return () => { cancelled = true; };
-  }, [currentUser?.id, router]);
+  }, [currentUser?.id, router, sessionRestoring]);
 
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
@@ -53,7 +54,7 @@ export default function EntryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  if (!sessionChecked || currentUser) {
+  if (sessionRestoring || !sessionChecked || currentUser) {
     return (
       <div aria-label="Loading your feed" style={{ minHeight: '100vh', background: '#F5F7FA' }}>
         <div style={{ height: 72, background: '#fff', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }}>
