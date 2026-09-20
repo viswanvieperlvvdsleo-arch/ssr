@@ -11,7 +11,7 @@ import DashboardPanel from '../DashboardPanel';
 import TaskBoard from '../TaskBoard';
 import RequirementStatus from '../RequirementStatus';
 import { CompaniesPanel, TokensPanel } from '../VendorPanels';
-import CallButton from '../DirectCall';
+import CallButton, { CallHistoryWorkspace } from '../DirectCall';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -32,6 +32,10 @@ const hasEmployeePermission = (u, permission) => {
   const permissions = Array.isArray(u.permissions) ? u.permissions : [];
   return permissions.includes('all_access') || permissions.includes(permission);
 };
+const canCreateFeedPost = (u) => Boolean(u && !u.restricted && (
+  (u.companyId && (u.role === 'Admin' || (u.role === 'Employee' && hasEmployeePermission(u, 'post_feeds')))) ||
+  (!u.companyId && (u.role === 'Super Admin' || (u.role === 'Employee' && hasEmployeePermission(u, 'post_feeds'))))
+));
 
 function chatDayKey(value) {
   const date = value ? new Date(value) : new Date();
@@ -63,6 +67,7 @@ const NavIcons = {
   courses:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>,
   meetings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   history:   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.1 13a9 9 0 1 0 2.1-5.9L3 8"/><path d="M12 7v5l3 2"/></svg>,
+  'call-history': <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg>,
   dashboard: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   'task-board': <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M7 10h10M7 14h6"/></svg>,
   tokens: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg>,
@@ -97,6 +102,7 @@ const getLeftNav = (user) => {
     nav.push({ id: 'requests', label: 'Requests' });
   }
   nav.push({ id: 'history', label: 'History' });
+  nav.push({ id: 'call-history', label: 'Call History' });
   if (user && !user.restricted) {
     nav.push({ id: 'dashboard', label: 'Dashboard' });
   }
@@ -1249,7 +1255,7 @@ function CreatePostModal({ onClose, onSubmit }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Announcements');
-  const [visibility, setVisibility] = useState('public');
+  const [visibility, setVisibility] = useState(currentUser?.companyId ? 'internal' : 'public');
   const [isRequirement, setIsRequirement] = useState(false);
 
   const [mediaUrl, setMediaUrl] = useState(null);
@@ -1309,6 +1315,9 @@ function CreatePostModal({ onClose, onSubmit }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <span style={{ display: 'block', marginBottom: 6, color: '#475569', fontSize: 12, fontWeight: 700 }}>Post visibility</span>
+            {currentUser?.companyId ? (
+              <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, background: '#F8FAFC', padding: '10px 12px' }}><strong style={{ display: 'block', color: '#334155', fontSize: 12 }}>Company internal</strong><span style={{ display: 'block', marginTop: 2, color: '#64748B', fontSize: 10 }}>Visible only to your company accounts</span></div>
+            ) : (
             <div role="group" aria-label="Post visibility" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>
               {[
                 { id: 'public', label: 'Public', description: 'Visible to every account' },
@@ -1318,6 +1327,7 @@ function CreatePostModal({ onClose, onSubmit }) {
                 return <button key={option.id} type="button" onClick={() => { setVisibility(option.id); if (option.id === 'public') setIsRequirement(false); }} aria-pressed={selected} style={{ minWidth: 0, border: 0, borderRight: option.id === 'public' ? '1px solid #CBD5E1' : 0, background: selected ? '#EAF3FF' : '#fff', color: selected ? '#0A6ED1' : '#475569', padding: '9px 8px', cursor: 'pointer', textAlign: 'left' }}><strong style={{ display: 'block', fontSize: 12 }}>{option.label}</strong><span style={{ display: 'block', marginTop: 2, color: selected ? '#315EA8' : '#94A3B8', fontSize: 10 }}>{option.description}</span></button>;
               })}
             </div>
+            )}
           </div>
           <input
             value={title}
@@ -5189,6 +5199,8 @@ function AccountManagementPanel({ currentUser, onViewEmployeeChats }) {
     { id: 'post_feeds', label: 'Post Feeds' },
     { id: 'post_services', label: 'Post Services' },
     { id: 'arrange_meetings', label: 'Arrange Meetings' },
+    { id: 'task_management', label: 'Delete and Manage Tasks' },
+    ...(!currentUser?.companyId ? [{ id: 'view_phone', label: 'View Mobile Numbers' }] : []),
     { id: 'all_access', label: 'All Access' },
   ];
 
@@ -6633,7 +6645,7 @@ export default function HomePage() {
         <ScheduleMeetingModal />
         {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
-        {showCreatePost && hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
+        {showCreatePost && canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
           <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
             setShowCreatePost(false);
             if (file) {
@@ -6753,7 +6765,7 @@ export default function HomePage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Home Feed</h2>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      {hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
+                      {canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
                         <button onClick={() => setShowCreatePost(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
                           <span style={{ fontSize: 16 }}>＋</span> Create Post
                         </button>
@@ -6847,6 +6859,7 @@ export default function HomePage() {
                   <HistoryPanel currentUser={currentUser} onNavigateToChat={(chatId) => { setTargetChat({ chatId }); setActiveNav('feed'); }} />
                 </div>
               )}
+              {activeNav === 'call-history' && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><CallHistoryWorkspace currentUser={currentUser} /></div>}
 
               {activeNav === 'dashboard' && (
                 <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
@@ -6887,7 +6900,7 @@ export default function HomePage() {
       <ScheduleMeetingModal />
       {uploadPreviewOpen && <UploadPreviewModal upload={uploadTask} onClose={() => setUploadPreviewOpen(false)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />}
 
-      {showCreatePost && hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
+      {showCreatePost && canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
         <CreatePostModal onClose={() => setShowCreatePost(false)} onSubmit={(post, file) => {
           setShowCreatePost(false);
           if (file) {
@@ -6915,7 +6928,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', dashboard: 'Dashboard', 'task-board': 'Task Board', tokens: 'Tokens', companies: 'Companies' })[mobilePage] || mobilePage}
+            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', 'call-history': 'Call History', dashboard: 'Dashboard', 'task-board': 'Task Board', tokens: 'Tokens', companies: 'Companies' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -6984,7 +6997,7 @@ export default function HomePage() {
             ))}
           </div>
 
-          {hasEmployeePermission(currentUser, 'post_feeds') && !currentUser?.isImpersonating && (
+          {canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
             <button onClick={() => setShowCreatePost(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12, boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
               ＋ Create Post
             </button>
@@ -7065,6 +7078,7 @@ export default function HomePage() {
           <HistoryPanel currentUser={currentUser} onNavigateToChat={(chatId) => { setTargetChat({ chatId }); navigateMobile('chat'); }} />
         </div>
       )}
+      {mobilePage === 'call-history' && <div style={{ height: 'calc(100dvh - 116px)', overflowY: 'auto' }}><CallHistoryWorkspace currentUser={currentUser} /></div>}
 
       {mobilePage === 'dashboard' && (
         <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -7093,6 +7107,7 @@ export default function HomePage() {
           { id: 'trainers', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>, label: 'Users' },
           { id: 'settings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, label: 'Settings' },
           { id: 'history', icon: NavIcons.history, label: 'History' },
+          { id: 'call-history', icon: NavIcons['call-history'], label: 'Calls' },
           ...(currentUser?.role === 'Participant' && !currentUser.restricted ? [{ id: 'tokens', icon: NavIcons.tokens, label: 'Requirements' }] : []),
           ...(currentUser && !currentUser.restricted ? [
             { id: 'dashboard', icon: NavIcons.dashboard, label: 'Dashboard' },

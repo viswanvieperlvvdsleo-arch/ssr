@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import { notifyUsers } from '../notify';
 import { bumpRealtimeRevision } from '../realtime';
 import { getSessionActor, SJ_USER_FILTER } from '../session';
+import { hasEmployeePermission } from '../defaults';
 
 const STAFF_ROLES = ['Admin', 'Super Admin', 'Employee'];
 
@@ -339,5 +340,37 @@ export async function POST(req) {
   } catch (error) {
     console.error('Tasks POST API Error:', error);
     return NextResponse.json({ error: error?.message || 'Could not update task' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const actor = await getSessionActor(req);
+    const canDelete = actor && !actor.restricted && (
+      ['Admin', 'Super Admin'].includes(actor.role) ||
+      (actor.role === 'Employee' && hasEmployeePermission(actor, 'task_management'))
+    );
+    if (!canDelete) return NextResponse.json({ error: 'Task management permission is required' }, { status: 403 });
+
+    const taskId = new URL(req.url).searchParams.get('id');
+    const task = taskId ? await prisma.appRequirementTask.findUnique({ where: { id: taskId } }) : null;
+    if (!task) return NextResponse.json({ error: 'Requirement task was not found' }, { status: 404 });
+    if (actor.companyId && task.companyId !== actor.companyId) {
+      return NextResponse.json({ error: 'This task belongs to another company' }, { status: 403 });
+    }
+
+    await prisma.$transaction([
+      prisma.appTaskWorker.deleteMany({ where: { taskId: task.id } }),
+      prisma.appTaskProfile.deleteMany({ where: { taskId: task.id } }),
+      prisma.appTaskEvent.deleteMany({ where: { taskId: task.id } }),
+      prisma.appRequirementSubmission.deleteMany({ where: { taskId: task.id } }),
+      prisma.appRequirementTask.delete({ where: { id: task.id } }),
+      prisma.appPost.deleteMany({ where: { id: task.postId } }),
+    ]);
+    await Promise.all([bumpRealtimeRevision('tasks'), bumpRealtimeRevision('posts')]);
+    return NextResponse.json({ success: true, id: task.id });
+  } catch (error) {
+    console.error('Tasks DELETE API Error:', error);
+    return NextResponse.json({ error: 'Could not delete task' }, { status: 500 });
   }
 }

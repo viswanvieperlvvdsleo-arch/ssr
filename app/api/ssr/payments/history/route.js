@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { getSessionActor, isSjStaff } from '../../session';
+import { hasEmployeePermission } from '../../defaults';
 
 export const runtime = 'nodejs';
 
@@ -57,11 +58,16 @@ export async function GET(req) {
         })
       : [];
     const customerById = new Map(customers.map(customer => [customer.id, customer]));
+    const canViewPhone = !actor.companyId && (
+      actor.role === 'Super Admin' || (actor.role === 'Employee' && hasEmployeePermission(actor, 'view_phone'))
+    );
 
     return NextResponse.json(payments.map(payment => ({
       ...payment,
       course: courseById.get(payment.courseId) || null,
-      customer: customerById.get(payment.userId) || null,
+      customer: customerById.has(payment.userId)
+        ? { ...customerById.get(payment.userId), phone: payment.userId === actor.id || canViewPhone ? customerById.get(payment.userId).phone : null }
+        : null,
     })));
   } catch (error) {
     console.error('Payment history API Error:', error);

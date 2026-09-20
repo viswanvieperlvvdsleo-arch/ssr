@@ -18,7 +18,7 @@ self.addEventListener('message', (event) => {
       silent: true,
       requireInteraction: true,
       data: { type: 'ongoing-call', callId, peerName },
-      actions: [{ action: 'return', title: '↩ Return to call' }],
+      actions: [{ action: 'return', title: 'Return to call' }, { action: 'end-call', title: 'End call' }],
     });
     return;
   }
@@ -37,7 +37,7 @@ self.addEventListener('message', (event) => {
       silent: true,
       requireInteraction: true,
       data: { type: 'ongoing-call', callId, peerName },
-      actions: [{ action: 'return', title: '↩ Return to call' }],
+      actions: [{ action: 'return', title: 'Return to call' }, { action: 'end-call', title: 'End call' }],
     });
     return;
   }
@@ -83,12 +83,13 @@ self.addEventListener('notificationclick', (event) => {
       return;
     }
     // 'answer' or default tap → open/focus app on the call URL
-    const callUrl = `${self.location.origin}/ssr-app/home?callId=${encodeURIComponent(data.callId)}`;
+    const action = event.action === 'answer' ? 'answer' : 'open';
+    const callUrl = `${self.location.origin}/ssr-app/home?callId=${encodeURIComponent(data.callId)}&callAction=${action}`;
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
         const existing = windowClients.find(c => c.url.includes('/ssr-app/')) || windowClients[0];
         if (existing && 'navigate' in existing) {
-          existing.postMessage({ type: 'ssr-incoming-call', callId: data.callId, callerName: data.callerName, callType: data.callType });
+          existing.postMessage({ type: 'ssr-incoming-call', action, callId: data.callId, callerName: data.callerName, callType: data.callType });
           return existing.focus();
         }
         return clients.openWindow(callUrl);
@@ -99,6 +100,14 @@ self.addEventListener('notificationclick', (event) => {
 
   // ── Tapping the persistent "Ongoing call" notification ──────────────────────
   if (data.type === 'ongoing-call') {
+    if (event.action === 'end-call') {
+      event.waitUntil(fetch('/api/ssr/direct-call', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: data.callId, action: 'end' }),
+      }).catch(() => {}));
+      return;
+    }
     const callUrl = `${self.location.origin}/ssr-app/home`;
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {

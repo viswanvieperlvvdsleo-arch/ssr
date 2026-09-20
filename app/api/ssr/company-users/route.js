@@ -4,7 +4,7 @@ import { buildUserData } from '../defaults';
 import { getSessionActor, publicAccount, SJ_USER_FILTER } from '../session';
 import { hashPassword } from '../passwords';
 
-const ALLOWED_PERMISSIONS = new Set(['view_chats', 'request_access', 'post_feeds', 'arrange_meetings', 'all_access']);
+const ALLOWED_PERMISSIONS = new Set(['view_chats', 'request_access', 'post_feeds', 'arrange_meetings', 'task_management', 'all_access']);
 
 async function companyAdmin(request) {
   const actor = await getSessionActor(request);
@@ -29,7 +29,7 @@ export async function GET(request) {
       id: user.id, name: user.name, role: user.role, initials: user.initials, color: user.color,
       avatar: user.avatar, companyId: user.companyId || null, title: user.title, experience: user.experience,
       profession: user.profession || [], mode: user.mode, location: user.location, shortDesc: user.shortDesc,
-      bio: user.bio, rating: user.rating, reviews: user.reviews, email: user.email, phone: user.phone,
+      bio: user.bio, rating: user.rating, reviews: user.reviews, email: user.email, phone: null,
     });
   }
   if (scope === 'chat') {
@@ -43,7 +43,7 @@ export async function GET(request) {
     })));
   }
   const users = await prisma.appUser.findMany({ where: { companyId: actor.companyId }, orderBy: { createdAt: 'asc' } });
-  return NextResponse.json(users.map(publicAccount));
+  return NextResponse.json(users.map(user => ({ ...publicAccount(user), phone: null })));
 }
 
 export async function POST(request) {

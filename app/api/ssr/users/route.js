@@ -9,17 +9,16 @@ const editableProfile = ['email', 'name', 'phone', 'password', 'initials', 'colo
 const editableStaff = ['permissions', 'restricted', 'teamId'];
 const isSjAdmin = actor => actor && !actor.companyId && ['Admin', 'Super Admin'].includes(actor.role);
 
-function sanitizeUserForViewer(user, viewer, canViewContact = false) {
-  const canViewPrivate = viewer && (
-    viewer.id === user.id ||
-    hasEmployeePermission(viewer, 'view_users') ||
-    hasEmployeePermission(viewer, 'request_access') ||
-    canViewContact
+function sanitizeUserForViewer(user, viewer) {
+  const canViewPrivate = viewer && (viewer.id === user.id || hasEmployeePermission(viewer, 'view_users'));
+  const canViewPhone = viewer && !viewer.companyId && (
+    viewer.role === 'Super Admin' ||
+    (viewer.role === 'Employee' && hasEmployeePermission(viewer, 'view_phone'))
   );
   return {
     ...user,
     email: canViewPrivate ? user.email : null,
-    phone: canViewPrivate ? user.phone : null,
+    phone: viewer?.id === user.id || canViewPhone ? user.phone : null,
     password: undefined,
   };
 }
@@ -32,14 +31,8 @@ export async function GET(req) {
     const viewerId = searchParams.get('viewerId');
     if (viewerId && viewerId !== actor.id) return NextResponse.json({ error: 'Account access denied' }, { status: 403 });
     const viewer = actor;
-    const sharedChatUserIds = new Set();
     if (viewerId && viewer) {
       await prisma.appUser.update({ where: { id: viewerId }, data: { online: true, lastSeen: new Date() } });
-      const sharedChats = await prisma.appChat.findMany({
-        where: { participants: { has: viewerId } },
-        select: { participants: true },
-      });
-      sharedChats.forEach(chat => (chat.participants || []).forEach(id => sharedChatUserIds.add(id)));
     }
     const users = await prisma.appUser.findMany({ where: actor.companyId ? {
       OR: [{ companyId: actor.companyId }, { ...SJ_USER_FILTER, role: { in: ['Super Admin', 'Admin', 'Employee'] }, restricted: false }],
@@ -50,8 +43,8 @@ export async function GET(req) {
     users.forEach(u => {
       const freshOnline = Boolean(u.online && u.lastSeen && new Date(u.lastSeen).getTime() >= onlineCutoff);
       const account = actor.companyId && u.companyId !== actor.companyId
-        ? { id: u.id, name: u.name, role: u.role, initials: u.initials, color: u.color, avatar: u.avatar, companyId: null, title: u.title, phone: u.phone, email: u.email }
-        : sanitizeUserForViewer(u, viewer, sharedChatUserIds.has(u.id));
+        ? { id: u.id, name: u.name, role: u.role, initials: u.initials, color: u.color, avatar: u.avatar, companyId: null, title: u.title, phone: null, email: null }
+        : sanitizeUserForViewer(u, viewer);
       usersMap[u.id] = { ...account, online: freshOnline };
     });
     return NextResponse.json(usersMap);

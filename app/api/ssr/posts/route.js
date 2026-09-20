@@ -36,7 +36,13 @@ export async function POST(req) {
   try {
     const data = await req.json();
     const author = await getSessionActor(req);
-    if (!author || author.id !== data.authorId || !hasEmployeePermission(author, 'post_feeds') || author.restricted) {
+    const canPublishCompanyInternal = Boolean(author?.companyId) && (
+      author.role === 'Admin' || (author.role === 'Employee' && hasEmployeePermission(author, 'post_feeds'))
+    );
+    const canPublishSjFeed = !author?.companyId && (
+      author?.role === 'Super Admin' || (author?.role === 'Employee' && hasEmployeePermission(author, 'post_feeds'))
+    );
+    if (!author || author.id !== data.authorId || (!canPublishCompanyInternal && !canPublishSjFeed) || author.restricted) {
       return NextResponse.json({ error: 'You do not have permission to publish posts' }, { status: 403 });
     }
     if (author.companyId && data.isRequirement) {

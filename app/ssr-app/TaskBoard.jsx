@@ -51,11 +51,6 @@ function ProfileRow({ profile, focused, taskClosed, busy, onStatusChange, curren
       <div className={styles.profileOwner}>
         <strong>{profile.addedByName}</strong>
         <small>{formatDate(profile.createdAt)}</small>
-        {currentUser && (
-          <span style={{ marginLeft: 8, display: 'inline-flex', verticalAlign: 'middle' }}>
-            <CallButton targetUserId={profile.addedById} targetUserName={profile.addedByName} callType="audio" currentUser={currentUser} />
-          </span>
-        )}
       </div>
       <p>{profile.text || 'Attached profile'}</p>
       <div className={styles.profileControls}>
@@ -74,7 +69,7 @@ function ProfileRow({ profile, focused, taskClosed, busy, onStatusChange, curren
 }
 
 
-function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, initiallyExpanded, focusProfileId }) {
+function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, onDeleted, canDelete, initiallyExpanded, focusProfileId }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const [selectedWorkerId, setSelectedWorkerId] = useState(task.workers[0]?.userId || 'all');
   const [profileText, setProfileText] = useState('');
@@ -194,6 +189,7 @@ function TaskCard({ task, users, currentUser, uploadChatMedia, onUpdated, initia
           {!isClosed && !myWorker && <button type="button" disabled={Boolean(busy)} onClick={() => action('claim')} className={styles.joinButton}>Join sourcing</button>}
           {!isClosed && myWorker && myWorker.status !== 'completed' && <button type="button" disabled={Boolean(busy)} onClick={() => action('complete')} className={styles.completeButton}>Complete my work</button>}
           {!isClosed && task.status === 'in_progress' && <button type="button" disabled={Boolean(busy)} onClick={() => { if (window.confirm('Close this requirement permanently? It cannot be reopened.')) action('close'); }} className={styles.closeButton}>Close requirement</button>}
+          {canDelete && <button type="button" disabled={Boolean(busy)} onClick={() => onDeleted(task)} className={styles.deleteButton}>Delete</button>}
         </div>
       </header>
 
@@ -273,10 +269,27 @@ export default function TaskBoard() {
 
   const visible = tasks.filter(task => filter === 'all' || (filter === 'completed' ? task.status === 'closed' : task.status !== 'closed'));
   const updateOne = updated => setTasks(list => list.map(task => task.id === updated.id ? updated : task));
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : [];
+  const canDelete = Boolean(currentUser && (
+    ['Admin', 'Super Admin'].includes(currentUser.role) ||
+    (currentUser.role === 'Employee' && (permissions.includes('task_management') || permissions.includes('all_access')))
+  ));
+  const deleteTask = async task => {
+    if (!canDelete || !window.confirm(`Delete "${task.title}" and its task history permanently?`)) return;
+    try {
+      const response = await fetch(`/api/ssr/tasks?id=${encodeURIComponent(task.id)}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not delete task');
+      setTasks(list => list.filter(item => item.id !== task.id));
+      window.dispatchEvent(new CustomEvent(TASK_EVENT, { detail: { taskId: task.id, postId: task.postId, deleted: true } }));
+    } catch (deleteError) {
+      setError(deleteError.message);
+    }
+  };
   if (!currentUser || !staffRole(currentUser.role)) return <div className={styles.denied}>The Task Board is available to employees and administrators.</div>;
   return <main className={styles.page}>
     <div className={styles.pageHeader}><div><h2>Task Board</h2><p>Requirement ownership, sourcing order, profiles, and closure.</p></div><div className={styles.filters}>{[['active', 'Active'], ['completed', 'Completed'], ['all', 'All']].map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={filter === value ? styles.activeFilter : ''}>{label}</button>)}</div></div>
     {error && <div className={styles.error}>{error}</div>}
-    {loading ? <p className={styles.loading}>Loading task board...</p> : visible.length === 0 ? <div className={styles.noTasks}>No {filter === 'all' ? '' : filter} requirements yet.</div> : <div className={styles.taskList}>{visible.map(task => <TaskCard key={task.id} task={task} users={users} currentUser={currentUser} uploadChatMedia={uploadChatMedia} onUpdated={updateOne} initiallyExpanded={focusTaskId === task.id} focusProfileId={focusTaskId === task.id ? focusProfileId : ''} />)}</div>}
+    {loading ? <p className={styles.loading}>Loading task board...</p> : visible.length === 0 ? <div className={styles.noTasks}>No {filter === 'all' ? '' : filter} requirements yet.</div> : <div className={styles.taskList}>{visible.map(task => <TaskCard key={task.id} task={task} users={users} currentUser={currentUser} uploadChatMedia={uploadChatMedia} onUpdated={updateOne} onDeleted={deleteTask} canDelete={canDelete} initiallyExpanded={focusTaskId === task.id} focusProfileId={focusTaskId === task.id ? focusProfileId : ''} />)}</div>}
   </main>;
 }

@@ -15,9 +15,13 @@ export function useCallContext() {
  * Notify the service worker about call lifecycle changes.
  * This keeps the persistent "Ongoing call" notification in sync.
  */
-function notifySW(type, payload = {}) {
-  if (typeof navigator === 'undefined' || !navigator.serviceWorker?.controller) return;
-  try { navigator.serviceWorker.controller.postMessage({ type, ...payload }); } catch {}
+async function notifySW(type, payload = {}) {
+  if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
+    const worker = registration?.active || registration?.waiting || navigator.serviceWorker.controller;
+    worker?.postMessage({ type, ...payload });
+  } catch {}
 }
 
 export function CallProvider({ children }) {
@@ -1245,18 +1249,43 @@ export function IncomingCallWatcher({ currentUser }) {
   const [activeCall, setActiveCall] = useState(null);
   const callCtx = useCallContext();
 
-  // Listen for service-worker messages (restore call from ongoing-call notification tap)
+  const acceptCall = useCallback(async call => {
+    if (!call?.id) return;
+    const res = await fetch('/api/ssr/direct-call', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId: call.id, action: 'accept' }),
+    });
+    if (!res.ok) {
+      setIncoming(null);
+      return;
+    }
+    const accepted = await res.json().catch(() => call);
+    setActiveCall({ ...call, ...accepted });
+    setIncoming(null);
+  }, []);
+
   useEffect(() => {
-    if (!navigator?.serviceWorker) return;
-    const handler = (event) => {
-      if (event.data?.type === 'ssr-restore-call') {
-        // Un-minimize the call
-        if (callCtx?.restore) callCtx.restore();
-      }
+    if (!currentUser?.id || !navigator?.serviceWorker) return undefined;
+    const openNotificationCall = async data => {
+      const res = await fetch(`/api/ssr/direct-call?callId=${encodeURIComponent(data.callId)}`).catch(() => null);
+      if (!res?.ok) return;
+      const call = await res.json();
+      if (call.status !== 'ringing') return;
+      if (data.action === 'answer') await acceptCall(call);
+      else setIncoming(call);
+    };
+    const handler = event => {
+      if (event.data?.type === 'ssr-restore-call') callCtx?.restore?.();
+      if (event.data?.type === 'ssr-incoming-call') openNotificationCall(event.data);
     };
     navigator.serviceWorker.addEventListener('message', handler);
+
+    const params = new URLSearchParams(window.location.search);
+    const callId = params.get('callId');
+    if (callId) openNotificationCall({ callId, action: params.get('callAction') });
     return () => navigator.serviceWorker.removeEventListener('message', handler);
-  }, [callCtx]);
+  }, [acceptCall, callCtx?.restore, currentUser?.id]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -1281,20 +1310,7 @@ export function IncomingCallWatcher({ currentUser }) {
     return () => clearInterval(timer);
   }, [currentUser?.id, activeCall, incoming]);
 
-  const accept = async () => {
-    if (!incoming) return;
-    const res = await fetch('/api/ssr/direct-call', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callId: incoming.id, action: 'accept' }),
-    });
-    if (!res.ok) {
-      setIncoming(null);
-      return;
-    }
-    setActiveCall(incoming);
-    setIncoming(null);
-  };
+  const accept = () => acceptCall(incoming);
 
   const decline = async () => {
     if (!incoming) return;
@@ -1330,7 +1346,7 @@ export function IncomingCallWatcher({ currentUser }) {
 }
 
 // ─── Call History Panel (shows per-user call log) ─────────────────────────────
-export function CallHistoryPanel({ targetUserId, currentUser }) {
+export function CallHistoryPanel({ targetUserId, currentUser, scope = 'my', onSummary }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -1342,15 +1358,17 @@ export function CallHistoryPanel({ targetUserId, currentUser }) {
     try {
       const params = new URLSearchParams({ limit: LIMIT, page: p });
       if (targetUserId) params.set('userId', targetUserId);
+      else params.set('scope', scope);
       const res = await fetch(`/api/ssr/call-logs?${params}`).catch(() => null);
       if (!res?.ok) { setLoading(false); return; }
       const data = await res.json();
       setLogs(p === 1 ? data.logs : prev => [...prev, ...data.logs]);
       setTotal(data.total || 0);
+      onSummary?.(data.summary || {});
     } finally {
       setLoading(false);
     }
-  }, [targetUserId]);
+  }, [targetUserId, scope, onSummary]);
 
   useEffect(() => { setPage(1); load(1); }, [load]);
 
@@ -1391,7 +1409,7 @@ export function CallHistoryPanel({ targetUserId, currentUser }) {
       )}
       {logs.map((log) => {
         const st = statusIcon(log);
-        const peerName = log.isOutgoing ? log.calleeName : log.callerName;
+        const peerName = scope === 'all' ? `${log.callerName} to ${log.calleeName}` : (log.isOutgoing ? log.calleeName : log.callerName);
         return (
           <div key={log.id} style={{
             display: 'flex', alignItems: 'center', gap: 12,
@@ -1444,6 +1462,40 @@ export function CallHistoryPanel({ targetUserId, currentUser }) {
         <div style={{ textAlign: 'center', padding: 12, color: '#94A3B8', fontSize: 13 }}>Loading…</div>
       )}
     </div>
+  );
+}
+
+export function CallHistoryWorkspace({ currentUser }) {
+  const canViewAll = ['Admin', 'Super Admin'].includes(currentUser?.role);
+  const [scope, setScope] = useState('my');
+  const [summary, setSummary] = useState({});
+  const handleSummary = useCallback(next => setSummary(next), []);
+  const duration = Number(summary.totalDuration || 0);
+  const durationLabel = duration >= 3600
+    ? `${Math.floor(duration / 3600)} hr ${Math.floor((duration % 3600) / 60)} min`
+    : `${Math.floor(duration / 60)} min`;
+  const metrics = [
+    ['Total calls', summary.total || 0],
+    ['Answered', summary.answered || 0],
+    ['Not answered', summary.notAnswered || 0],
+    ['Talk time', durationLabel],
+    ['People', summary.people || 0],
+  ];
+
+  return (
+    <main style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '22px 18px 90px', boxSizing: 'border-box' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'end', flexWrap: 'wrap', marginBottom: 18 }}>
+        <div><h2 style={{ margin: 0, fontSize: 22, color: '#0F172A' }}>Call History</h2><p style={{ margin: '5px 0 0', color: '#64748B', fontSize: 13 }}>Incoming, outgoing, answered, missed, and call duration.</p></div>
+        {canViewAll && <div style={{ display: 'flex', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>{[['my', 'My Calls'], ['all', 'All Calls']].map(([value, label]) => <button key={value} type="button" onClick={() => setScope(value)} style={{ minHeight: 36, border: 0, borderRight: value === 'my' ? '1px solid #CBD5E1' : 0, padding: '0 14px', background: scope === value ? '#0A6ED1' : '#fff', color: scope === value ? '#fff' : '#475569', fontWeight: 700, cursor: 'pointer' }}>{label}</button>)}</div>}
+      </header>
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', border: '1px solid #E2E8F0', background: '#fff', marginBottom: 16 }}>
+        {metrics.map(([label, value]) => <div key={label} style={{ padding: '15px 16px', borderRight: '1px solid #E2E8F0', minWidth: 0 }}><strong style={{ display: 'block', fontSize: 20, color: '#0F172A', overflowWrap: 'anywhere' }}>{value}</strong><span style={{ display: 'block', marginTop: 4, color: '#64748B', fontSize: 11 }}>{label}</span></div>)}
+      </section>
+      <section style={{ border: '1px solid #E2E8F0', background: '#fff' }}>
+        <div style={{ padding: '13px 16px', borderBottom: '1px solid #E2E8F0', color: '#334155', fontWeight: 800, fontSize: 13 }}>{scope === 'all' ? 'Organization calls' : 'Your calls'}</div>
+        <CallHistoryPanel key={scope} currentUser={currentUser} scope={scope} onSummary={handleSummary} />
+      </section>
+    </main>
   );
 }
 
