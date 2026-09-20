@@ -6545,7 +6545,7 @@ export default function HomePage() {
     const isInternalPost = p.visibility === 'internal';
     if (feedTab === INTERNAL_FEED_TAB) return canViewInternalFeed && isInternalPost;
     if (feedTab === REQUIREMENTS_FEED_TAB) return canViewInternalFeed && isInternalPost && p.isRequirement;
-    if (isInternalPost && !canViewInternalFeed) return false;
+    if (isInternalPost) return false;
     if (feedTab === 'All') return true;
     return p.category === feedTab;
   }).sort((a, b) => {

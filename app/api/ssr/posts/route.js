@@ -19,7 +19,8 @@ export async function GET(req) {
       where: effectiveViewer?.companyId ? {
         OR: [{ companyId: effectiveViewer.companyId }, { visibility: 'public' }],
       } : canViewInternal ? {
-        OR: [{ companyId: null }, { companyId: { not: null }, isRequirement: true }],
+        // Older SJ posts predate companyId, so include missing fields as well as null.
+        OR: [...SJ_USER_FILTER.OR, { companyId: { not: null }, isRequirement: true }],
       } : { visibility: 'public' },
       orderBy: { createdAt: 'desc' },
       take: 60,
