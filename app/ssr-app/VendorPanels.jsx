@@ -1,6 +1,82 @@
 import { useEffect, useState, useCallback } from 'react';
 import RequirementsPanel from './RequirementsPanel';
 
+function CompanyDetail({ companyId, onBack }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/ssr/company?id=${encodeURIComponent(companyId)}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not load company details');
+        if (!cancelled) setDetail(data);
+      } catch (loadError) {
+        if (!cancelled) setError(loadError.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [companyId]);
+
+  const formatDate = value => value ? new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never';
+  const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0) / 100);
+
+  if (loading) return <section style={{ padding: 24 }}><button type="button" onClick={onBack} style={{ border: 0, background: 'transparent', color: '#0A6ED1', fontWeight: 700, cursor: 'pointer' }}>Back to companies</button><p style={{ color: '#64748B' }}>Loading company details...</p></section>;
+  if (error || !detail) return <section style={{ padding: 24 }}><button type="button" onClick={onBack} style={{ border: 0, background: 'transparent', color: '#0A6ED1', fontWeight: 700, cursor: 'pointer' }}>Back to companies</button><div style={{ marginTop: 18, padding: 14, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C' }}>{error || 'Company details are unavailable'}</div></section>;
+
+  const { company, accounts = [], stats = {} } = detail;
+  const metrics = [
+    ['Accounts', stats.accounts || 0],
+    ['Active IDs', stats.activeAccounts || 0],
+    ['Requirements', stats.requirements || 0],
+    ['Open', stats.openRequirements || 0],
+    ['Completed', stats.completedRequirements || 0],
+    ['Meetings', stats.meetings || 0],
+    ['Internal posts', stats.posts || 0],
+    ['Payments', stats.payments || 0],
+    ['Paid value', money(stats.paidAmount)],
+  ];
+
+  return (
+    <section style={{ padding: 24, maxWidth: 1180, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      <button type="button" onClick={onBack} style={{ border: 0, background: 'transparent', color: '#0A6ED1', fontWeight: 800, cursor: 'pointer', padding: '6px 0', marginBottom: 12 }}>Back to companies</button>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'start', flexWrap: 'wrap', paddingBottom: 18, borderBottom: '1px solid #CBD5E1' }}>
+        <div><h1 style={{ margin: 0, color: '#0F172A', fontSize: 26 }}>{company.name}</h1><p style={{ margin: '6px 0 0', color: '#64748B', fontFamily: 'monospace' }}>{company.slug}</p></div>
+        <div style={{ minWidth: 230 }}><small style={{ color: '#64748B', fontWeight: 700 }}>REQUIREMENTS EMAIL</small><div style={{ marginTop: 5, color: '#0F172A', fontWeight: 700, overflowWrap: 'anywhere' }}>{company.requirementEmail || 'Not configured'}</div><small style={{ display: 'block', marginTop: 8, color: '#64748B' }}>Client since {formatDate(company.createdAt)}</small></div>
+      </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', border: '1px solid #E2E8F0', background: '#fff', margin: '18px 0' }}>
+        {metrics.map(([label, value]) => <div key={label} style={{ padding: 15, borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', minWidth: 0 }}><strong style={{ display: 'block', color: '#0F172A', fontSize: 20, overflowWrap: 'anywhere' }}>{value}</strong><span style={{ display: 'block', marginTop: 4, color: '#64748B', fontSize: 11 }}>{label}</span></div>)}
+      </div>
+
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', gap: 12 }}><strong style={{ color: '#0F172A' }}>Company accounts</strong><span style={{ color: '#64748B', fontSize: 12 }}>{accounts.length} IDs</span></div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, textAlign: 'left' }}>
+            <thead><tr style={{ background: '#F8FAFC', color: '#64748B', fontSize: 11 }}><th style={{ padding: 12 }}>ACCOUNT</th><th style={{ padding: 12 }}>ROLE</th><th style={{ padding: 12 }}>EMAIL</th><th style={{ padding: 12 }}>MOBILE</th><th style={{ padding: 12 }}>PERMISSIONS</th><th style={{ padding: 12 }}>LAST ACTIVE</th><th style={{ padding: 12 }}>STATUS</th></tr></thead>
+            <tbody>{accounts.map(account => <tr key={account.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+              <td style={{ padding: 12 }}><div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span style={{ width: 34, height: 34, borderRadius: '50%', background: '#334155', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11 }}>{account.initials || account.name?.slice(0, 2).toUpperCase()}</span><strong style={{ color: '#0F172A' }}>{account.name}</strong></div></td>
+              <td style={{ padding: 12, color: '#334155' }}>{account.role}</td>
+              <td style={{ padding: 12 }}><a href={`mailto:${account.email}`} style={{ color: '#0A6ED1', textDecoration: 'none' }}>{account.email}</a></td>
+              <td style={{ padding: 12 }}>{account.phone ? <a href={`tel:${String(account.phone).replace(/[^\d+]/g, '')}`} style={{ color: '#0A6ED1', textDecoration: 'none', fontWeight: 700 }}>{account.phone}</a> : <span style={{ color: '#94A3B8' }}>Not provided</span>}</td>
+              <td style={{ padding: 12 }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(account.permissions || []).length ? account.permissions.map(permission => <span key={permission} style={{ padding: '3px 6px', borderRadius: 4, background: '#EFF6FF', color: '#315EA8', fontSize: 10 }}>{permission.replaceAll('_', ' ')}</span>) : <span style={{ color: '#94A3B8' }}>Standard</span>}</div></td>
+              <td style={{ padding: 12, color: '#64748B', fontSize: 12 }}>{formatDate(account.lastSeen)}</td>
+              <td style={{ padding: 12 }}><span style={{ padding: '4px 8px', borderRadius: 4, background: account.restricted ? '#FEF2F2' : '#ECFDF5', color: account.restricted ? '#B91C1C' : '#047857', fontSize: 11, fontWeight: 800 }}>{account.restricted ? 'Restricted' : 'Active'}</span></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        {!accounts.length && <p style={{ padding: 24, color: '#64748B', textAlign: 'center' }}>No accounts created for this company.</p>}
+      </div>
+    </section>
+  );
+}
+
 export function CompaniesPanel() {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +92,7 @@ export function CompaniesPanel() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
 
   const loadCompanies = useCallback(async () => {
     try {
@@ -73,6 +150,8 @@ export function CompaniesPanel() {
   };
 
   const totalAccounts = companies.reduce((sum, c) => sum + (c.accountCount || 0), 0);
+
+  if (selectedCompanyId) return <CompanyDetail companyId={selectedCompanyId} onBack={() => setSelectedCompanyId('')} />;
 
   return (
     <section style={{ padding: '24px', maxWidth: 1080, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
@@ -256,7 +335,7 @@ export function CompaniesPanel() {
               </thead>
               <tbody>
                 {companies.map(c => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <tr key={c.id} onClick={() => setSelectedCompanyId(c.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedCompanyId(c.id); }} style={{ borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}>
                     <td style={{ padding: '14px 18px' }}>
                       <div style={{ fontWeight: 700, color: '#0F172A', fontSize: 14 }}>{c.name}</div>
                     </td>

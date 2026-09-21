@@ -18,6 +18,45 @@ export async function GET(request) {
   }
   if (actor.role !== 'Super Admin') return NextResponse.json({ error: 'Super Admin access required' }, { status: 403 });
 
+  const requestedCompanyId = new URL(request.url).searchParams.get('id');
+  if (requestedCompanyId) {
+    const company = await prisma.appCompany.findUnique({ where: { id: requestedCompanyId } });
+    if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 });
+    const accounts = await prisma.appUser.findMany({
+      where: { companyId: company.id },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true, name: true, email: true, phone: true, role: true, initials: true, avatar: true,
+        permissions: true, restricted: true, online: true, lastSeen: true, createdAt: true,
+      },
+    });
+    const accountIds = accounts.map(account => account.id);
+    const [requirements, openRequirements, completedRequirements, posts, meetings, payments, paymentTotals] = await Promise.all([
+      prisma.appRequirementTask.count({ where: { companyId: company.id } }),
+      prisma.appRequirementTask.count({ where: { companyId: company.id, status: { not: 'closed' } } }),
+      prisma.appRequirementTask.count({ where: { companyId: company.id, status: 'closed' } }),
+      prisma.appPost.count({ where: { companyId: company.id } }),
+      accountIds.length ? prisma.appMeeting.count({ where: { participants: { hasSome: accountIds } } }) : 0,
+      accountIds.length ? prisma.appServerPayment.count({ where: { userId: { in: accountIds } } }) : 0,
+      accountIds.length ? prisma.appServerPayment.aggregate({ where: { userId: { in: accountIds }, status: 'completed' }, _sum: { amount: true } }) : null,
+    ]);
+    return NextResponse.json({
+      company,
+      accounts,
+      stats: {
+        accounts: accounts.length,
+        activeAccounts: accounts.filter(account => !account.restricted).length,
+        requirements,
+        openRequirements,
+        completedRequirements,
+        posts,
+        meetings,
+        payments,
+        paidAmount: paymentTotals?._sum?.amount || 0,
+      },
+    });
+  }
+
   const companies = await prisma.appCompany.findMany({ orderBy: { createdAt: 'desc' } });
   const result = await Promise.all(companies.map(async company => ({
     ...company,

@@ -1804,6 +1804,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       setShowAllMedia(false);
 
       if (!targetChat.msgId) {
+        if (targetChat.action === 'reply') window.setTimeout(() => textareaRef.current?.focus(), 100);
         setTargetChat(null);
         return;
       }
@@ -1817,6 +1818,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
             setReplyingTo(targetMessage);
             textareaRef.current?.focus();
           }
+          if (targetChat.action === 'reply' && !targetMessage) textareaRef.current?.focus();
           if (targetChat.action === 'like') {
             reactToMessage(targetChat.chatId, targetChat.msgId, '👍');
           }
@@ -6525,7 +6527,7 @@ export default function HomePage() {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       navigateMobile('chat');
-    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(section)) {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
@@ -6576,7 +6578,7 @@ export default function HomePage() {
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
-    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(id)) {
+    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6598,7 +6600,7 @@ export default function HomePage() {
       navigateMobile('chat');
       return;
     }
-    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'dashboard', 'task-board'].includes(section)) {
+    if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'call-history', 'dashboard', 'task-board'].includes(section)) {
       window.history.replaceState(window.history.state, '', `${destination.pathname}${destination.search}${destination.hash}`);
       processedDeepLinkRef.current = destination.search;
       setActiveNav(section);

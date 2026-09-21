@@ -20,6 +20,10 @@ function actionsForType(type) {
     { action: 'dismiss', title: 'Cancel' },
     { action: 'start', title: 'Start' },
   ];
+  if (type === 'direct-call') return [
+    { action: 'decline', title: 'Decline' },
+    { action: 'answer', title: 'Answer' },
+  ];
   if (type === 'task' || type === 'task-profile' || type === 'task-mention' || type === 'task-profile-status') {
     return [{ action: 'open', title: 'View' }];
   }
@@ -83,6 +87,7 @@ export default function NotificationTrigger() {
             scope: '/firebase-cloud-messaging-push-scope',
           });
         }
+        await registration.update().catch(() => {});
         messagingRegistration = registration;
 
         // Ensure the SW is fully active before subscribing (fixes AbortError)
@@ -142,6 +147,7 @@ export default function NotificationTrigger() {
       if (title) {
         const registration = messagingRegistration || await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
         if (registration) {
+          const isCall = payload.data?.type === 'direct-call';
           await registration.showNotification(title, {
             body,
             icon: '/logo/192.png',
@@ -150,7 +156,8 @@ export default function NotificationTrigger() {
             tag: payload.data?.notificationTag || payload.messageId || `sj-${Date.now()}`,
             renotify: true,
             silent: false,
-            vibrate: [200, 100, 200],
+            requireInteraction: isCall,
+            vibrate: isCall ? [400, 100, 400, 100, 400] : [200, 100, 200],
           });
         }
       }
