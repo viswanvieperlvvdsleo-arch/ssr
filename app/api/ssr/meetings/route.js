@@ -5,6 +5,7 @@ import { notifyUsers } from '../notify';
 import { getSessionActor } from '../session';
 import { parseScheduleTime, validateScheduleFields } from '../schedule';
 import { decryptCredential, encryptCredential } from '../server-credentials/credentials';
+import { bumpRealtimeRevision } from '../realtime';
 import {
   deriveEndTime,
   generateMeetingCode,
@@ -50,11 +51,11 @@ function invitationText(meeting, joinPassword) {
   const recurrence = meeting.recurrence && meeting.recurrence !== 'none' ? ` (${meeting.recurrence})` : '';
   const external = meeting.meetingType === 'external';
   return [
-    `**Meeting Scheduled: ${meeting.title}**${recurrence}`,
-    `${meeting.date} ${meeting.time}-${meeting.endTime || ''}`,
     `[Join ${external ? meeting.externalProvider || 'External' : 'SJ'} Meeting](${meeting.link})`,
-    `Meeting ID: ${external ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
-    joinPassword ? `Password: ${joinPassword}` : '',
+    `ID: ${external ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
+    `Pass: ${joinPassword || 'Not required'}`,
+    `Meeting: ${meeting.title}${recurrence}`,
+    `Schedule: ${meeting.date} ${meeting.time}-${meeting.endTime || ''}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -257,6 +258,7 @@ export async function POST(req) {
       await prisma.appMeeting.delete({ where: { id: newMeeting.id } }).catch(() => {});
       throw deliveryError;
     }
+    await bumpRealtimeRevision('meetings');
     return NextResponse.json({ ...sanitizeMeeting(newMeeting), joinPassword });
   } catch (error) {
     console.error('Meetings POST API Error:', error);
@@ -305,6 +307,17 @@ export async function PATCH(req) {
         await prisma.appMeeting.update({ where: { id }, data: { participants: previousParticipants } }).catch(() => {});
         throw deliveryError;
       }
+      const report = await prisma.appTrainingReport.findUnique({ where: { meetingId: id } });
+      if (report) {
+        const addedMembers = newIds.filter(participantId => participantId !== report.trainerId);
+        if (addedMembers.length) {
+          await prisma.appTrainingReport.update({
+            where: { meetingId: id },
+            data: { memberIds: [...new Set([...(report.memberIds || []), ...addedMembers])] },
+          });
+        }
+      }
+      await bumpRealtimeRevision('meetings');
       return NextResponse.json(sanitizeMeeting(updated));
     }
 
@@ -318,6 +331,7 @@ export async function PATCH(req) {
       await tx.appMeetingSignal.deleteMany({ where: { meetingId: id } });
       return saved;
     });
+    await bumpRealtimeRevision('meetings');
     return NextResponse.json(sanitizeMeeting(updated));
   } catch (error) {
     console.error('Meetings PATCH API Error:', error);
@@ -353,6 +367,7 @@ export async function DELETE(req) {
       url: '/ssr-app/home?section=meetings',
       data: { type: 'meeting-cancelled', meetingId: meeting.id },
     });
+    await bumpRealtimeRevision('meetings');
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Meetings DELETE API Error:', error);

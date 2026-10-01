@@ -1,38 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
+import { getSessionActor } from '../../session';
+import { bumpRealtimeRevision } from '../../realtime';
 import { localDateTimeToUtc } from '../../schedule';
 
 const STAFF_ROLES = ['Employee', 'Admin', 'Super Admin'];
-function localDateParts(value, timezone) {
+function localDate(value, timezone) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    weekday: 'short',
   }).formatToParts(value);
   const part = type => parts.find(item => item.type === type)?.value || '';
-  return {
-    date: `${part('year')}-${part('month')}-${part('day')}`,
-    day: part('weekday'),
-  };
-}
-
-function isScheduledToday(meeting, date, day) {
-  if (date < meeting.date || date > (meeting.endDate || meeting.date)) return false;
-  const recurrence = meeting.recurrence || 'none';
-  if (recurrence === 'none') return date === meeting.date;
-  if (recurrence === 'daily') return true;
-  if (recurrence === 'weekly') return !meeting.weekdays?.length || meeting.weekdays.includes(day);
-  if (recurrence === 'monthly') {
-    const dates = String(meeting.monthlyDates || '')
-      .split(',')
-      .map(value => Number(value.trim()))
-      .filter(value => Number.isInteger(value));
-    return dates.length ? dates.includes(Number(date.slice(-2))) : date.slice(-2) === meeting.date.slice(-2);
-  }
-  return false;
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function isObjectId(value) {
@@ -47,12 +29,12 @@ export async function POST(req) {
     }
     const [meeting, user] = await Promise.all([
       prisma.appMeeting.findUnique({ where: { id: meetingId } }),
-      prisma.appUser.findUnique({ where: { id: userId } }),
+      getSessionActor(req),
     ]);
     if (!meeting || meeting.meetingType !== 'external') {
       return NextResponse.json({ error: 'External meeting not found.' }, { status: 404 });
     }
-    const canJoin = user && !user.restricted && (
+    const canJoin = user?.id === userId && !user.restricted && (
       (!user.companyId && STAFF_ROLES.includes(user.role)) || meeting.hostId === user.id || (meeting.participants || []).includes(user.id)
     );
     if (!canJoin) {
@@ -60,19 +42,14 @@ export async function POST(req) {
     }
 
     const now = new Date();
-    const timezone = meeting.timezone || 'Asia/Kolkata';
-    const local = localDateParts(now, timezone);
-    const start = localDateTimeToUtc(local.date, meeting.time, timezone);
-    const end = localDateTimeToUtc(local.date, meeting.endTime || meeting.time, timezone);
-    if (!isScheduledToday(meeting, local.date, local.day) || !start || !end || now < start || now > end) {
-      return NextResponse.json({ error: 'Attendance is recorded only while this meeting is scheduled to run.' }, { status: 409 });
-    }
     if (meeting.endedAt || meeting.status === 'completed') {
       return NextResponse.json({ error: 'This meeting has ended.' }, { status: 410 });
     }
 
-    const dayStart = localDateTimeToUtc(local.date, '00:00', timezone);
-    const dayEnd = localDateTimeToUtc(local.date, '23:59', timezone);
+    const timezone = meeting.timezone || 'Asia/Kolkata';
+    const attendanceDate = localDate(now, timezone);
+    const dayStart = localDateTimeToUtc(attendanceDate, '00:00', timezone);
+    const dayEnd = new Date(localDateTimeToUtc(attendanceDate, '23:59', timezone).getTime() + 59_999);
     const existing = await prisma.appMeetingParticipant.findFirst({
       where: {
         meetingId: meeting.id,
@@ -98,6 +75,14 @@ export async function POST(req) {
         },
       });
     }
+    const report = await prisma.appTrainingReport.findUnique({ where: { meetingId: meeting.id } });
+    if (report && report.trainerId !== user.id && !(report.memberIds || []).includes(user.id)) {
+      await prisma.appTrainingReport.update({
+        where: { meetingId: meeting.id },
+        data: { memberIds: [...(report.memberIds || []), user.id] },
+      });
+    }
+    await bumpRealtimeRevision('meetings');
     return NextResponse.json({ success: true, link: meeting.link, recordedAt: (existing?.joinedAt || now).toISOString() });
   } catch (error) {
     console.error('External meeting attendance error:', error);

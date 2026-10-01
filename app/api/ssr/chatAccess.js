@@ -35,7 +35,7 @@ export async function accessibleChats(request) {
     if ((chat.participants || []).includes(actor.id)) return true;
     if (chat.type === 'support' && staffAccess) return true;
     if ((chat.participants || []).some(id => companyIds.has(id))) return false;
-    return staffAccess;
+    return false;
   });
   return { actor, chats: visible };
 }

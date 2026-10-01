@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../prisma';
 import { getSessionActor } from '../../session';
+import { bumpRealtimeRevision } from '../../realtime';
 import {
   createRoomToken,
   meetingExpiry,
@@ -75,6 +76,14 @@ export async function POST(req) {
     if (isHost && !meeting.startedAt) {
       await prisma.appMeeting.update({ where: { id: meeting.id }, data: { startedAt: now } });
     }
+    const report = await prisma.appTrainingReport.findUnique({ where: { meetingId: meeting.id } });
+    if (report && report.trainerId !== user.id && !(report.memberIds || []).includes(user.id)) {
+      await prisma.appTrainingReport.update({
+        where: { meetingId: meeting.id },
+        data: { memberIds: [...(report.memberIds || []), user.id] },
+      });
+    }
+    await bumpRealtimeRevision('meetings');
 
     const activeAfter = new Date(now.getTime() - 35_000);
     const participants = await prisma.appMeetingParticipant.findMany({

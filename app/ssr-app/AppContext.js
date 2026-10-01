@@ -350,7 +350,7 @@ export function AppProvider({ children }) {
     let isLoading = false;
     let isCheckingContent = false;
     let disposed = false;
-    const contentRevision = { posts: null, tasks: null };
+    const contentRevision = { posts: null, tasks: null, meetings: null };
 
     async function loadStaticData() {
       // Load slow-changing data only once on mount
@@ -498,14 +498,17 @@ export function AppProvider({ children }) {
         const revision = await response.json().catch(() => ({}));
         if (!response.ok) return;
 
-        const firstCheck = contentRevision.posts === null || contentRevision.tasks === null;
+        const firstCheck = contentRevision.posts === null || contentRevision.tasks === null || contentRevision.meetings === null;
         const eventType = event?.detail?.type || '';
         const postsChanged = firstCheck ? revision.posts > 0 : revision.posts !== contentRevision.posts;
         const tasksChanged = firstCheck ? revision.tasks > 0 : revision.tasks !== contentRevision.tasks;
+        const meetingsChanged = firstCheck ? revision.meetings > 0 : revision.meetings !== contentRevision.meetings;
         const forcePosts = ['post', 'like', 'comment'].includes(eventType);
         const forceTasks = eventType === 'task' || eventType.startsWith('task-');
+        const forceMeetings = eventType === 'meeting' || eventType.startsWith('meeting-');
         contentRevision.posts = revision.posts;
         contentRevision.tasks = revision.tasks;
+        contentRevision.meetings = revision.meetings;
 
         if (postsChanged || forcePosts) {
           const postsResponse = await fetch(`/api/ssr/posts?viewerId=${encodeURIComponent(currId)}`, { cache: 'no-store' });
@@ -514,6 +517,14 @@ export function AppProvider({ children }) {
         }
         if (tasksChanged || forceTasks) {
           window.dispatchEvent(new CustomEvent('sj-task-updated', { detail: { source: 'realtime' } }));
+        }
+        if (meetingsChanged || forceMeetings) {
+          const meetingsResponse = await fetch(`/api/ssr/meetings?userId=${encodeURIComponent(currId)}`, { cache: 'no-store' });
+          const meetingsResult = await meetingsResponse.json().catch(() => []);
+          if (!disposed && requestGeneration === sessionGenerationRef.current && meetingsResponse.ok && Array.isArray(meetingsResult)) {
+            setIfChanged(setMeetings, meetingsResult);
+            window.dispatchEvent(new CustomEvent('sj-training-report-updated', { detail: { source: 'realtime' } }));
+          }
         }
       } catch (error) {
         console.error('Failed to check content updates:', error);

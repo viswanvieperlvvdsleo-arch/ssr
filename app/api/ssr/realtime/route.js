@@ -7,7 +7,7 @@ export async function GET(req) {
     if (!userId) return NextResponse.json({ error: 'User is required' }, { status: 401 });
     const revision = await prisma.appRealtimeRevision.findUnique({ where: { id: 'global' } });
     return NextResponse.json(
-      { posts: revision?.posts || 0, tasks: revision?.tasks || 0 },
+      { posts: revision?.posts || 0, tasks: revision?.tasks || 0, meetings: revision?.meetings || 0 },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } },
     );
   } catch (error) {

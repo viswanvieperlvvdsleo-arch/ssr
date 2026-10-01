@@ -454,12 +454,11 @@ export default function MeetingsWorkspace({ currentUser, meetings = [], users = 
   const copyInvitation = async meeting => {
     const credential = meetingCredentials[meeting.id];
     const invitation = [
-      meeting.title,
-      `${meeting.date} ${meeting.time} - ${meeting.endTime || ''}`,
       `Join: ${meeting.link}`,
-      `Meeting type: ${meeting.meetingType === 'external' ? meeting.externalProvider || 'External' : 'SJ Internal'}`,
-      `Meeting ID: ${meeting.meetingType === 'external' ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
-      credential ? `Password: ${credential}` : '',
+      `ID: ${meeting.meetingType === 'external' ? meeting.externalMeetingId || 'Provided by host' : meeting.meetingCode}`,
+      `Pass: ${credential || 'Not required'}`,
+      `Meeting: ${meeting.title}`,
+      `Schedule: ${meeting.date} ${meeting.time} - ${meeting.endTime || ''}`,
     ].filter(Boolean).join('\n');
     try {
       await navigator.clipboard.writeText(invitation);

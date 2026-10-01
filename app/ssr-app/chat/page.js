@@ -74,9 +74,7 @@ export default function ChatListPage() {
       if (c.type === 'support') {
         return staffAccess || c.participants?.includes(currentUser?.id);
       }
-      if (c.participants && !c.participants.includes(currentUser?.id)) {
-        return staffAccess && c.type === 'group';
-      }
+      if (c.participants && !c.participants.includes(currentUser?.id)) return false;
       return true;
     });
     if (activeTab === 'GROUPS') list = list.filter(c => c.type === 'group');

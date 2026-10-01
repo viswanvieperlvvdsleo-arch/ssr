@@ -535,6 +535,35 @@ function NotificationsPanel({ onOpenNotification = null }) {
   );
 }
 
+function ChatMessageText({ text, isMe }) {
+  const linkPattern = /\[([^\]]+)]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s]+)/g;
+  return String(text || '').split('\n').map((line, lineIndex) => {
+    const parts = [];
+    let cursor = 0;
+    let match;
+    while ((match = linkPattern.exec(line)) !== null) {
+      if (match.index > cursor) parts.push(line.slice(cursor, match.index));
+      const href = match[2] || match[3];
+      const label = match[1] || href;
+      parts.push(
+        <a
+          key={`${lineIndex}-${match.index}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={event => event.stopPropagation()}
+          style={{ color: isMe ? '#fff' : '#0A6ED1', fontWeight: 700, textDecoration: 'underline' }}
+        >
+          {label}
+        </a>,
+      );
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < line.length) parts.push(line.slice(cursor));
+    return <span key={lineIndex}>{parts.length ? parts : line}{lineIndex < String(text || '').split('\n').length - 1 && <br />}</span>;
+  });
+}
+
 function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedia, onReact, selectionMode, isSelected, onToggleSelect, onEdit, deliveryStatus, isHighlighted, onReplyClick, isMobile }) {
   const { autoDownloadMedia, currentUser, uploadTask, pauseBackgroundUpload, resumeBackgroundUpload } = useApp();
   const activeMessageUpload = uploadTask?.tempMessageId === msg.id ? uploadTask : null;
@@ -820,7 +849,7 @@ function MessageBubble({ msg, senderAvatar, onReply, onViewMedia, onDownloadMedi
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden'
                     }}>
-                      {msg.text}
+                      <ChatMessageText text={msg.text} isMe={msg.isMe} />
                     </div>
                     {(!isExpanded && msg.text.split('\n').length > 10 || (!isExpanded && msg.text.length > 400)) && (
                       <button
@@ -2037,13 +2066,8 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
       return false;
     }
 
-    // Only show chats where the user is a participant
-    if (c.participants && !c.participants.includes(currentUser.id)) {
-      // Admins and chat-access employees can see all groups, but direct chats stay participant-only.
-      if (!(hasStaffAccess && c.type === 'group')) {
-        return false;
-      }
-    }
+    // Group and direct chats are visible only to members. Staff-wide access is reserved for support threads.
+    if (c.participants && !c.participants.includes(currentUser.id)) return false;
 
     return true;
   }).sort((a, b) => {
@@ -2337,8 +2361,8 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
           </div>
         ) : (
           <div style={{ padding: '10px 12px', background: '#fff', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {isMobile && (
-              <button onClick={() => conversationOnly ? router.push('/ssr-app/chat') : setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
+            {isMobile && !conversationOnly && (
+              <button onClick={() => setMobileView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0A6ED1', marginRight: 4, display: 'flex', alignItems: 'center' }}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
               </button>
             )}
@@ -6231,16 +6255,11 @@ function ScheduleMeetingModal() {
   const copyScheduledInvitation = async () => {
     if (!scheduledMeeting) return;
     await navigator.clipboard.writeText([
-      scheduledMeeting.title,
-      `${scheduledMeeting.date} ${scheduledMeeting.time}-${scheduledMeeting.endTime}`,
       `Join: ${scheduledMeeting.link}`,
-      scheduledMeeting.meetingType === 'external'
-        ? `Provider: ${scheduledMeeting.externalProvider || 'External'}`
-        : `Meeting ID: ${scheduledMeeting.meetingCode}`,
-      scheduledMeeting.meetingType === 'external' && scheduledMeeting.externalMeetingId
-        ? `Meeting ID: ${scheduledMeeting.externalMeetingId}`
-        : '',
-      scheduledMeeting.joinPassword ? `Password: ${scheduledMeeting.joinPassword}` : '',
+      `ID: ${scheduledMeeting.meetingType === 'external' ? scheduledMeeting.externalMeetingId || 'Provided by host' : scheduledMeeting.meetingCode}`,
+      `Pass: ${scheduledMeeting.joinPassword || 'Not required'}`,
+      `Meeting: ${scheduledMeeting.title}`,
+      `Schedule: ${scheduledMeeting.date} ${scheduledMeeting.time}-${scheduledMeeting.endTime}`,
     ].filter(Boolean).join('\n'));
   };
 
@@ -6442,6 +6461,10 @@ export default function HomePage() {
       if (previous[previous.length - 1] === page) return previous;
       return [...previous, page];
     });
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('section', page);
+    window.history.replaceState(window.history.state, '', nextUrl);
+    processedDeepLinkRef.current = nextUrl.search;
     window.dispatchEvent(new Event('ssr:app-navigation'));
   }, []);
 
@@ -6491,27 +6514,36 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!currentUser?.id) return;
-    setMobileHistory(['feed']);
+    let restoredActiveNav = 'feed';
+    let restoredMobilePage = 'feed';
     try {
+      const requestedSection = new URLSearchParams(window.location.search).get('section');
       const savedView = sessionStorage.getItem(`ssr_home_view_${currentUser.id}`);
       if (savedView) {
         const parsed = JSON.parse(savedView);
-        if (parsed.activeNav) setActiveNav(parsed.activeNav);
+        restoredActiveNav = parsed.activeNav || restoredActiveNav;
+        restoredMobilePage = parsed.mobilePage || restoredActiveNav;
+      }
+      if (requestedSection) {
+        restoredActiveNav = requestedSection;
+        restoredMobilePage = requestedSection;
       }
     } catch {
       // Ignore malformed or unavailable view state.
     }
+    setActiveNav(restoredActiveNav);
+    setMobileHistory([restoredMobilePage]);
     setViewRestored(true);
   }, [currentUser?.id]);
 
   useEffect(() => {
     if (!currentUser?.id || !viewRestored) return;
     try {
-      sessionStorage.setItem(`ssr_home_view_${currentUser.id}`, JSON.stringify({ activeNav }));
+      sessionStorage.setItem(`ssr_home_view_${currentUser.id}`, JSON.stringify({ activeNav, mobilePage }));
     } catch {
       // Storage may be unavailable in a privacy-restricted browser.
     }
-  }, [currentUser?.id, activeNav, viewRestored]);
+  }, [currentUser?.id, activeNav, mobilePage, viewRestored]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -6575,6 +6607,7 @@ export default function HomePage() {
   const handleNavClick = (id) => {
     const nextUrl = new URL(window.location.href);
     ['section', 'taskId', 'profileId', 'courseId', 'meetingId', 'token', 'feed', 'postId', 'chatId', 'messageId', 'notificationAction'].forEach(key => nextUrl.searchParams.delete(key));
+    nextUrl.searchParams.set('section', id);
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
@@ -6681,7 +6714,7 @@ export default function HomePage() {
             <span style={{ fontSize: 13, fontWeight: 600, color: '#DC2626' }}>
               👁️ You are currently viewing as <strong>{currentUser.name}</strong>
             </span>
-            <button onClick={() => { endImpersonation(); setActiveNav('accounts'); }} style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={() => { endImpersonation(); handleNavClick('accounts'); }} style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
               Exit View Mode
             </button>
           </div>
@@ -6705,7 +6738,7 @@ export default function HomePage() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Notification */}
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setActiveNav('notifications')} style={{ width: 38, height: 38, background: activeNav === 'notifications' ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeNav === 'notifications' ? '#0A6ED1' : '#64748B', position: 'relative' }}>
+              <button onClick={() => handleNavClick('notifications')} style={{ width: 38, height: 38, background: activeNav === 'notifications' ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeNav === 'notifications' ? '#0A6ED1' : '#64748B', position: 'relative' }}>
                 {MenuIcons.bell}
                 {notifications?.some(notification => !notification.read) && <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, background: '#DC2626', borderRadius: '50%', border: '1.5px solid #fff' }} />}
               </button>
@@ -6724,21 +6757,21 @@ export default function HomePage() {
               {userMenuOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: 180, zIndex: 300, overflow: 'hidden' }}>
                   <UploadMenuActions upload={uploadTask} onView={() => setUploadPreviewOpen(true)} onPause={pauseBackgroundUpload} onResume={resumeBackgroundUpload} onCancel={cancelActiveUpload} />
-                  <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                  <button onClick={() => { handleNavClick('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.profile}</span>View Profile</button>
-                  <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                  <button onClick={() => { handleNavClick('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.settings}</span>Settings</button>
                   {currentUser && hasEmployeePermission(currentUser, 'request_access') && !currentUser.isImpersonating && (
-                    <button onClick={() => { setActiveNav('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                    <button onClick={() => { handleNavClick('requests'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                       onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     ><span style={{ color: '#64748B' }}>{NavIcons.requests}</span>Requests</button>
                   )}
-                  <button onClick={() => { setActiveNav('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
+                  <button onClick={() => { handleNavClick('settings'); setUserMenuOpen(false); }} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 600 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   ><span style={{ color: '#64748B' }}>{MenuIcons.help}</span>Help</button>
@@ -6771,7 +6804,7 @@ export default function HomePage() {
               </button>
             ))}
             <div style={{ flex: 1 }} />
-            <button onClick={() => setActiveNav('settings')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', fontWeight: 500, textAlign: 'left', width: '100%' }}>
+            <button onClick={() => handleNavClick('settings')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', fontWeight: 500, textAlign: 'left', width: '100%' }}>
               <span style={{ opacity: 0.5 }}>{NavIcons.help}</span> Help
             </button>
           </div>

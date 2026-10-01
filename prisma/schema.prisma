@@ -148,6 +148,7 @@ model AppRealtimeRevision {
   id        String   @id @map("_id")
   posts     Int      @default(0)
   tasks     Int      @default(0)
+  meetings  Int?     @default(0)
   updatedAt DateTime @updatedAt
 }
 
