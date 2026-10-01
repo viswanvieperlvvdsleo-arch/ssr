@@ -989,6 +989,7 @@ export function AppProvider({ children }) {
       visibility: post.visibility === 'internal' ? 'internal' : 'public',
       isRequirement: post.visibility === 'internal' && Boolean(post.isRequirement),
       teamId: post.teamId || null,
+      deadline: post.deadline || null,
     };
     try {
       const res = await fetch('/api/ssr/posts', {

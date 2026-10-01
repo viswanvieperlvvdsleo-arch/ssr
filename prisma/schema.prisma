@@ -306,6 +306,7 @@ model AppRequirementTask {
   closedById    String?
   closedByName  String?
   closedAt      DateTime?
+  dueAt         DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

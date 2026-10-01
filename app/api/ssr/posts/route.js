@@ -45,8 +45,10 @@ export async function POST(req) {
     if (!author || author.id !== data.authorId || (!canPublishCompanyInternal && !canPublishSjFeed) || author.restricted) {
       return NextResponse.json({ error: 'You do not have permission to publish posts' }, { status: 403 });
     }
+    const dueAt = data.deadline ? new Date(data.deadline) : null;
+    if (dueAt && Number.isNaN(dueAt.getTime())) return NextResponse.json({ error: 'End date and time is invalid' }, { status: 400 });
     if (author.companyId && data.isRequirement) {
-      const submissionRequest = { cookies: req.cookies, json: async () => ({ subject: data.title, body: data.content }) };
+      const submissionRequest = { cookies: req.cookies, json: async () => ({ subject: data.title, body: data.content, deadline: data.deadline }) };
       const result = await submitRequirement(submissionRequest);
       const submission = await result.json();
       if (!result.ok) return NextResponse.json(submission, { status: result.status });
@@ -65,6 +67,8 @@ export async function POST(req) {
           createdById: newPost.authorId,
           createdByName: newPost.authorName,
           teamId: data.teamId || null,
+          companyId: author.companyId || null,
+          dueAt,
         },
       });
     }

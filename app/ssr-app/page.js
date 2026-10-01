@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from './AppContext';
 import { portalHome } from './portal.mjs';
 
-const CATEGORIES = ['User', 'Trainer', 'Employee', 'Admin'];
+const CATEGORIES = ['User', 'Trainer', 'Employee', 'Client'];
 
 
 // Map category selection to mock user key
@@ -13,7 +13,7 @@ const CATEGORY_TO_ROLE = {
   'User': 'participant',
   'Trainer': 'trainer',
   'Employee': 'employee',
-  'Admin': 'admin',
+  'Client': 'admin',
 };
 
 export default function EntryPage() {
@@ -389,7 +389,7 @@ export default function EntryPage() {
           <div style={{ marginBottom: 26 }}>
             <label style={labelStyle}>Category</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {CATEGORIES.filter(c => tab === 'signup' ? !['Employee', 'Admin'].includes(c) : true).map(cat => (
+              {CATEGORIES.filter(c => tab === 'signup' ? !['Employee', 'Client'].includes(c) : true).map(cat => (
                 <button
                   key={cat}
                   type="button"

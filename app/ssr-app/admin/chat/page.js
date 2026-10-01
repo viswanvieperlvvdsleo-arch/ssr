@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../AppShell';
 import { useApp } from '../AppContext';
@@ -23,22 +23,11 @@ export default function ChatListPage() {
   const [chatActionTarget, setChatActionTarget] = useState(null);
   const [chatActionBusy, setChatActionBusy] = useState(false);
   const pressTimer = useRef(null);
+  const pressStart = useRef(null);
   const suppressNextClick = useRef(false);
   const staffAccess = canUseStaffChatAccess(currentUser);
   const canManageRequests = canManageChatRequests(currentUser);
   const visibleTabs = canManageRequests ? TABS : TABS.filter(tab => tab !== 'REQUESTS');
-
-  useEffect(() => {
-    if (!currentUser?.id || typeof window === 'undefined') return undefined;
-
-    window.history.pushState({ ...(window.history.state || {}), ssrChatListEntry: true }, '', window.location.href);
-    const handlePopState = () => {
-      window.history.replaceState({ ...(window.history.state || {}), ssrChatListReturn: true }, '', window.location.href);
-      router.replace('/ssr-app/admin/home');
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [currentUser?.id, router]);
 
   const displayChats = useMemo(() => chats.filter(chat => !chat.deletedFor?.includes(currentUser?.id)).map(chat => {
     const lastMessage = chatMessages[chat.id]?.at(-1);
@@ -138,15 +127,37 @@ export default function ChatListPage() {
     if (!result.success) alert(result.error || 'Could not update request');
   };
 
-  const beginChatPress = (chat) => {
+  const beginChatPress = (event, chat) => {
     clearTimeout(pressTimer.current);
+    pressStart.current = { x: event.clientX, y: event.clientY, moved: false };
     pressTimer.current = setTimeout(() => {
       suppressNextClick.current = true;
       setChatActionTarget(chat);
-    }, 550);
+    }, 700);
   };
 
   const endChatPress = () => {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+    if (pressStart.current?.moved) {
+      window.setTimeout(() => { suppressNextClick.current = false; }, 0);
+    }
+    pressStart.current = null;
+  };
+
+  const cancelChatPress = () => {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+    pressStart.current = null;
+    suppressNextClick.current = false;
+  };
+
+  const moveChatPress = event => {
+    if (!pressStart.current || pressStart.current.moved) return;
+    const moved = Math.hypot(event.clientX - pressStart.current.x, event.clientY - pressStart.current.y) > 12;
+    if (!moved) return;
+    pressStart.current.moved = true;
+    suppressNextClick.current = true;
     clearTimeout(pressTimer.current);
     pressTimer.current = null;
   };
@@ -227,7 +238,7 @@ export default function ChatListPage() {
             </div>
           ) : (
             filtered.map(chat => (
-              <div key={chat.id} onPointerDown={e => { if (e.pointerType === 'mouse' && e.button !== 0) return; beginChatPress(chat); }} onPointerUp={endChatPress} onPointerLeave={endChatPress} onContextMenu={e => { e.preventDefault(); setChatActionTarget(chat); }} onClick={() => { if (suppressNextClick.current) { suppressNextClick.current = false; return; } markChatRead(chat.id); router.push(`/ssr-app/admin/chat/${chat.id}`); }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#fff', borderBottom: '1px solid #F8FAFC', cursor: 'pointer', transition: 'background 0.15s' }}
+              <div key={chat.id} onPointerDown={e => { if (e.pointerType === 'mouse' && e.button !== 0) return; beginChatPress(e, chat); }} onPointerMove={moveChatPress} onPointerUp={endChatPress} onPointerCancel={cancelChatPress} onPointerLeave={cancelChatPress} onContextMenu={e => { e.preventDefault(); setChatActionTarget(chat); }} onClick={() => { if (suppressNextClick.current) { suppressNextClick.current = false; return; } markChatRead(chat.id); router.push(`/ssr-app/admin/chat/${chat.id}`); }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#fff', borderBottom: '1px solid #F8FAFC', cursor: 'pointer', transition: 'background 0.15s', touchAction: 'pan-y' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                 onMouseLeave={e => e.currentTarget.style.background = '#fff'}
               >

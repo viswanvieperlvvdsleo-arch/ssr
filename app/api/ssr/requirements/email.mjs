@@ -20,7 +20,7 @@ export async function sendRequirementEmail({ submission, task, company, toEmail 
         from, to: [to],
         ...(submission.cc.length ? { cc: submission.cc } : {}), reply_to: submission.fromEmail,
         subject: `[${submission.token}] ${task.title}`,
-        text: `Client: ${company?.name || task.createdByName}\nFrom: ${submission.fromEmail}\nToken: ${submission.token}\n\n${task.description || ''}${submission.signature ? `\n\n${submission.signature}` : ''}`,
+        text: `Client: ${company?.name || task.createdByName}\nFrom: ${submission.fromEmail}\nToken: ${submission.token}\nEnd date: ${task.dueAt ? new Date(task.dueAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not specified'}\n\n${task.description || ''}${submission.signature ? `\n\n${submission.signature}` : ''}`,
       }),
     });
     if (!response.ok) return {
@@ -34,4 +34,3 @@ export async function sendRequirementEmail({ submission, task, company, toEmail 
     return { emailStatus: 'unknown', emailError: err.message || 'Email delivery could not be confirmed.' };
   }
 }
-

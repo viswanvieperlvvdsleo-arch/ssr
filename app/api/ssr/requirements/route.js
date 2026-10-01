@@ -37,6 +37,7 @@ export async function GET(request) {
         ...item,
         title: task?.title || 'Requirement', description: task?.description || '',
         status: task?.status || 'open', postId: task?.postId || null,
+        dueAt: task?.dueAt || null,
         closedAt: task?.closedAt || null, closedByName: task?.closedByName || null,
         companyName: companies.find(company => company.id === item.companyId)?.name || 'Individual client',
         senderName: senders.find(sender => sender.id === item.senderId)?.name || item.fromEmail,
@@ -63,9 +64,11 @@ export async function POST(request) {
   const title = String(data.subject || '').trim().slice(0, 160);
   const body = String(data.body || '').trim().slice(0, 10000);
   const signature = String(data.signature || '').trim().slice(0, 1000);
+  const dueAt = data.deadline ? new Date(data.deadline) : null;
   const toEmail = String(data.to || '').trim() || null;
   const cc = [...new Set(String(data.cc || '').split(/[;,\s]+/).map(value => value.trim().toLowerCase()).filter(Boolean))];
   if (!title || !body) return NextResponse.json({ error: 'Subject and body are required' }, { status: 400 });
+  if (dueAt && Number.isNaN(dueAt.getTime())) return NextResponse.json({ error: 'End date and time is invalid' }, { status: 400 });
   if (!emailPattern.test(actor.email || '') || cc.length > 5 || cc.some(value => !emailPattern.test(value))) {
     return NextResponse.json({ error: 'A valid account email and up to five valid CC addresses are required' }, { status: 400 });
   }
@@ -80,7 +83,7 @@ export async function POST(request) {
         authorId: actor.id,
         authorName: actor.name,
         authorRole: actor.role,
-        category: 'Announcements',
+        category: 'Requirements',
         title,
         content: body,
         visibility: 'internal',
@@ -96,6 +99,7 @@ export async function POST(request) {
         createdById: actor.id,
         createdByName: actor.name,
         companyId: company?.id || null,
+        dueAt,
       },
     });
 

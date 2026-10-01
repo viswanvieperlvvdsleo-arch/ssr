@@ -12,6 +12,7 @@ import TaskBoard from '../TaskBoard';
 import RequirementStatus from '../RequirementStatus';
 import { CompaniesPanel, TokensPanel } from '../VendorPanels';
 import CallButton, { CallHistoryWorkspace } from '../DirectCall';
+import RequirementsProjectList from '../RequirementsProjectList';
 
 /* ─── helpers ─────────────────────────────────────── */
 function useWindowWidth() {
@@ -56,9 +57,8 @@ function chatDayLabel(value) {
 }
 
 /* ─── constants ───────────────────────────────────── */
-const FEED_TABS = ['All', 'Announcements', 'Training Updates', 'Discussions', 'Videos'];
-const INTERNAL_FEED_TAB = 'Internal Feed';
 const REQUIREMENTS_FEED_TAB = 'Requirements';
+const INTERNAL_FEED_TAB = 'Internal Requirement';
 
 // Monochrome SVG icons for nav
 const NavIcons = {
@@ -71,6 +71,7 @@ const NavIcons = {
   dashboard: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   'task-board': <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M7 10h10M7 14h6"/></svg>,
   tokens: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg>,
+  projects: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/><path d="M14 17h2"/></svg>,
   companies: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 21h18M5 21V6l7-3 7 3v15M9 9v2M15 9v2M9 15v2M15 15v2"/></svg>,
   bookmarks: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>,
   settings:  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
@@ -83,7 +84,7 @@ const NavIcons = {
 
 const getLeftNav = (user) => {
   const nav = [
-    { id: 'feed',      label: 'Feed' },
+    { id: 'feed',      label: 'Requirements' },
     { id: 'courses',   label: 'Services' },
     { id: 'meetings',  label: 'Meetings' },
     { id: 'trainers',  label: 'Trainers / Users' },
@@ -96,6 +97,7 @@ const getLeftNav = (user) => {
     nav.push({ id: 'data-management', label: 'Data Management' });
   }
   if (user?.role === 'Super Admin' && !user.isImpersonating) nav.push({ id: 'companies', label: 'Companies' });
+  if (user && ['Admin', 'Super Admin'].includes(user.role) && !user.isImpersonating) nav.push({ id: 'requirements-projects', label: 'Requirements / Projects' });
   if (user && ['Super Admin', 'Admin', 'Employee'].includes(user.role) && !user.companyId && !user.restricted) nav.push({ id: 'tokens', label: 'Tokens' });
   if (user?.role === 'Participant' && !user.restricted) nav.push({ id: 'tokens', label: 'Your Requirements' });
   if (user && hasEmployeePermission(user, 'request_access') && !user.isImpersonating) {
@@ -132,7 +134,7 @@ function Avatar({ initials, color, size = 38, src, online = false, shape = 'circ
   return (
     <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
       {src ? (
-        <img src={src} alt="" style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', display: 'block' }} />
+        <img src={src} alt="" style={{ width: size, height: size, borderRadius: radius, objectFit: 'contain', background: '#fff', display: 'block' }} />
       ) : (
         <div style={{ width: size, height: size, borderRadius: radius, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: size * 0.32 }}>
           {initials}
@@ -1254,9 +1256,10 @@ function CreatePostModal({ onClose, onSubmit }) {
   const { currentUser } = useApp();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [category, setCategory] = useState('Announcements');
-  const [visibility, setVisibility] = useState(currentUser?.companyId ? 'internal' : 'public');
-  const [isRequirement, setIsRequirement] = useState(false);
+  const category = 'Requirements';
+  const [visibility, setVisibility] = useState('internal');
+  const [isRequirement, setIsRequirement] = useState(true);
+  const [deadline, setDeadline] = useState('');
 
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaType, setMediaType] = useState(null);
@@ -1278,6 +1281,7 @@ function CreatePostModal({ onClose, onSubmit }) {
         category,
         visibility,
         isRequirement,
+        deadline: isRequirement && deadline ? new Date(deadline).toISOString() : null,
         teamId: currentUser.teamId || null,
         title,
         content,
@@ -1300,7 +1304,7 @@ function CreatePostModal({ onClose, onSubmit }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 540, maxHeight: 'calc(100dvh - 32px)', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Create Post</h3>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Create Requirement</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#94A3B8', cursor: 'pointer' }}>✕</button>
         </div>
         <form onSubmit={handleSubmit} style={{ padding: '20px 22px', overflowY: 'auto', minHeight: 0, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
@@ -1308,9 +1312,7 @@ function CreatePostModal({ onClose, onSubmit }) {
             <Avatar initials={currentUser?.initials} color={currentUser?.color} src={currentUser?.avatar} size={38} />
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{currentUser?.name}</p>
-              <select value={category} onChange={e => setCategory(e.target.value)} style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: '#0A6ED1', fontWeight: 600, background: '#EFF6FF', cursor: 'pointer', marginTop: 2 }}>
-                {FEED_TABS.filter(t => t !== 'All').map(t => <option key={t}>{t}</option>)}
-              </select>
+              <span style={{ display: 'inline-flex', border: '1px solid #BFDBFE', borderRadius: 6, padding: '3px 8px', fontSize: 12, color: '#0A6ED1', fontWeight: 700, background: '#EFF6FF', marginTop: 2 }}>Requirement</span>
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
@@ -1320,11 +1322,11 @@ function CreatePostModal({ onClose, onSubmit }) {
             ) : (
             <div role="group" aria-label="Post visibility" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #CBD5E1', borderRadius: 7, overflow: 'hidden' }}>
               {[
-                { id: 'public', label: 'Public', description: 'Visible to every account' },
-                { id: 'internal', label: 'Internal', description: 'Staff only' },
+                 { id: 'public', label: 'Requirements', description: 'Visible to every account' },
+                 { id: 'internal', label: 'Internal requirement', description: 'Staff only' },
               ].map(option => {
                 const selected = visibility === option.id;
-                return <button key={option.id} type="button" onClick={() => { setVisibility(option.id); if (option.id === 'public') setIsRequirement(false); }} aria-pressed={selected} style={{ minWidth: 0, border: 0, borderRight: option.id === 'public' ? '1px solid #CBD5E1' : 0, background: selected ? '#EAF3FF' : '#fff', color: selected ? '#0A6ED1' : '#475569', padding: '9px 8px', cursor: 'pointer', textAlign: 'left' }}><strong style={{ display: 'block', fontSize: 12 }}>{option.label}</strong><span style={{ display: 'block', marginTop: 2, color: selected ? '#315EA8' : '#94A3B8', fontSize: 10 }}>{option.description}</span></button>;
+                return <button key={option.id} type="button" onClick={() => { setVisibility(option.id); setIsRequirement(option.id === 'internal'); }} aria-pressed={selected} style={{ minWidth: 0, border: 0, borderRight: option.id === 'public' ? '1px solid #CBD5E1' : 0, background: selected ? '#EAF3FF' : '#fff', color: selected ? '#0A6ED1' : '#475569', padding: '9px 8px', cursor: 'pointer', textAlign: 'left' }}><strong style={{ display: 'block', fontSize: 12 }}>{option.label}</strong><span style={{ display: 'block', marginTop: 2, color: selected ? '#315EA8' : '#94A3B8', fontSize: 10 }}>{option.description}</span></button>;
               })}
             </div>
             )}
@@ -1335,7 +1337,7 @@ function CreatePostModal({ onClose, onSubmit }) {
               const val = e.target.value;
               if (val.length <= 100) setTitle(val);
             }}
-            placeholder="Post title (max 100 chars)..."
+            placeholder="Requirement title (max 100 chars)..."
             style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 14, fontWeight: 600, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }}
           />
           <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'right', marginTop: -8, marginBottom: 8 }}>{title.length}/100</div>
@@ -1346,7 +1348,7 @@ function CreatePostModal({ onClose, onSubmit }) {
               const val = e.target.value;
               if (val.length <= 1000) setContent(val);
             }}
-            placeholder="What do you want to share with the batch? (max 1000 chars)"
+            placeholder="Describe the requirement or project (max 1000 chars)"
             rows={4}
             style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.6 }}
           />
@@ -1399,14 +1401,14 @@ function CreatePostModal({ onClose, onSubmit }) {
             )}
           </div>
 
-          {visibility === 'internal' && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 16, padding: 11, border: `1px solid ${isRequirement ? '#FACC15' : '#CBD5E1'}`, borderRadius: 7, background: isRequirement ? '#FEFCE8' : '#F8FAFC', cursor: 'pointer' }}>
-            <input type="checkbox" checked={isRequirement} onChange={event => setIsRequirement(event.target.checked)} style={{ marginTop: 2 }} />
-            <span><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>Create as a requirement</strong><span style={{ display: 'block', marginTop: 3, color: '#64748B', fontSize: 11 }}>Adds the white status indicator and creates a connected Task Board record.</span></span>
-          </label>}
+          {visibility === 'internal' && <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+            <div style={{ padding: 11, border: '1px solid #94A3B8', borderRadius: 7, background: '#fff' }}><strong style={{ display: 'block', color: '#0F172A', fontSize: 12 }}>Successfully uploaded status</strong><span style={{ display: 'block', marginTop: 3, color: '#64748B', fontSize: 11 }}>A connected Task Board record will be created automatically.</span></div>
+            <label style={{ display: 'grid', gap: 6, color: '#475569', fontSize: 12, fontWeight: 700 }}>End date and time (optional)<input type="datetime-local" value={deadline} onChange={event => setDeadline(event.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #E2E8F0', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' }} /></label>
+          </div>}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1.5px solid #E2E8F0', borderRadius: 10, background: '#fff', color: '#64748B', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-            <button type="submit" disabled={!title.trim() || !content.trim()} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Publish Post</button>
+            <button type="submit" disabled={!title.trim() || !content.trim()} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: title.trim() && content.trim() ? '#0A6ED1' : '#CBD5E1', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Publish Requirement</button>
           </div>
         </form>
       </div>
@@ -1616,9 +1618,9 @@ function AddMembersModal({ users, currentUser, participants, onClose, onSave, bu
 }
 
 function ChatListRow({ children, onOpen, onLongPress, active, isMobile }) {
-  const handlers = useLongPress(onLongPress, onOpen, { delay: 550, shouldPreventDefault: false });
+  const handlers = useLongPress(onLongPress, onOpen, { delay: 700, shouldPreventDefault: false });
   return (
-    <div {...handlers} onContextMenu={e => { e.preventDefault(); onLongPress(e); }} style={{ padding: '10px 12px', cursor: 'pointer', background: active && !isMobile ? '#EFF6FF' : '#fff', borderBottom: '1px solid #F8FAFC', borderLeft: active && !isMobile ? '3px solid #0A6ED1' : '3px solid transparent', transition: 'all 0.15s' }}>
+    <div {...handlers} onContextMenu={e => { e.preventDefault(); onLongPress(e); }} style={{ padding: '10px 12px', cursor: 'pointer', background: active && !isMobile ? '#EFF6FF' : '#fff', borderBottom: '1px solid #F8FAFC', borderLeft: active && !isMobile ? '3px solid #0A6ED1' : '3px solid transparent', transition: 'all 0.15s', touchAction: 'pan-y' }}>
       {children}
     </div>
   );
@@ -2736,7 +2738,7 @@ export function ChatPanel({ currentUser, isMobile, isExpanded, onExpandToggle, c
           style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 12px', cursor: 'pointer' }}
         >
           <div style={{ width: '100%', height: '100%', background: activeChat.color, borderRadius: isGroup ? 20 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24, fontWeight: 800, overflow: 'hidden' }}>
-            {activeChat.groupImage ? <img src={activeChat.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.avatar ? <img src={activeChat.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.initials}
+            {activeChat.groupImage ? <img src={activeChat.groupImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : activeChat.avatar ? <img src={activeChat.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} /> : activeChat.initials}
           </div>
           {canEditGroup && (
             <button onClick={() => {
@@ -4348,19 +4350,25 @@ function BookmarksPanel({ currentUser }) {
 }
 
 function useLongPress(onLongPress, onClick, { shouldPreventDefault = true, delay = 500 } = {}) {
-  const [longPressTriggered, setLongPressTriggered] = useState(false);
   const timeout = useRef();
   const target = useRef();
+  const startPoint = useRef(null);
+  const moved = useRef(false);
+  const longPressTriggered = useRef(false);
 
   const start = useCallback(
     event => {
+      const point = event.touches?.[0] || event;
+      startPoint.current = { x: point.clientX, y: point.clientY };
+      moved.current = false;
+      longPressTriggered.current = false;
       if (shouldPreventDefault && event.target) {
         event.target.addEventListener("touchend", preventDefault, { passive: false });
         target.current = event.target;
       }
       timeout.current = setTimeout(() => {
         onLongPress(event);
-        setLongPressTriggered(true);
+        longPressTriggered.current = true;
       }, delay);
     },
     [onLongPress, delay, shouldPreventDefault]
@@ -4369,21 +4377,34 @@ function useLongPress(onLongPress, onClick, { shouldPreventDefault = true, delay
   const clear = useCallback(
     (event, shouldTriggerClick = true) => {
       timeout.current && clearTimeout(timeout.current);
-      shouldTriggerClick && !longPressTriggered && onClick(event);
-      setLongPressTriggered(false);
+      if (shouldTriggerClick && !longPressTriggered.current && !moved.current) onClick(event);
+      longPressTriggered.current = false;
+      startPoint.current = null;
       if (shouldPreventDefault && target.current) {
         target.current.removeEventListener("touchend", preventDefault);
+        target.current = null;
       }
     },
-    [onClick, longPressTriggered, shouldPreventDefault]
+    [onClick, shouldPreventDefault]
   );
+
+  const move = useCallback(event => {
+    if (!startPoint.current || moved.current) return;
+    const point = event.touches?.[0] || event;
+    if (Math.hypot(point.clientX - startPoint.current.x, point.clientY - startPoint.current.y) <= 12) return;
+    moved.current = true;
+    timeout.current && clearTimeout(timeout.current);
+  }, []);
 
   return {
     onMouseDown: e => start(e),
+    onMouseMove: e => move(e),
     onTouchStart: e => start(e),
+    onTouchMove: e => move(e),
     onMouseUp: e => clear(e),
     onMouseLeave: e => clear(e, false),
-    onTouchEnd: e => clear(e)
+    onTouchEnd: e => clear(e),
+    onTouchCancel: e => clear(e, false)
   };
 }
 const preventDefault = event => {
@@ -4547,7 +4568,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <div style={{ width: 90, height: 90, borderRadius: '50%', overflow: 'hidden', border: '3px solid #E8ECF0' }}>
                   {profilePic ? (
-                    <img src={profilePic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', transformOrigin: `${cropX}% ${cropY}%`, transform: `scale(${cropScale})` }} />
+                    <img src={profilePic} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: `${cropX}% ${cropY}%`, background: '#fff', transformOrigin: `${cropX}% ${cropY}%`, transform: `scale(${cropScale})` }} />
                   ) : (
                     <Avatar initials={currentUser.initials} color={currentUser.color} src={currentUser.avatar} size={90} />
                   )}
@@ -4568,7 +4589,7 @@ function SettingsPanel({ currentUser, onNavigateToChat }) {
                   <div style={{ background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E8ECF0' }}>
                     <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Adjust Photo</p>
                     {[
-                      ['Zoom', cropScale, setCropScale, 0.5, 3, 0.05],
+                      ['Zoom', cropScale, setCropScale, 1, 3, 0.05],
                       ['Horizontal', cropX, setCropX, 0, 100, 1],
                       ['Vertical', cropY, setCropY, 0, 100, 1],
                     ].map(([label, val, setter, min, max, step]) => (
@@ -6028,7 +6049,7 @@ function ProfilePicViewerModal() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 40, height: 40, position: 'relative' }}>
             <div style={{ width: 40, height: 40, background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 12 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, fontWeight: 800, overflow: 'hidden' }}>
-              {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+              {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: profilePicToView.groupImage ? 'cover' : 'contain', background: '#fff' }} /> : profilePicToView.initials}
             </div>
             {profilePicToView.online === true && (
               <span style={{ position: 'absolute', top: -1, right: -1, width: 11, height: 11, background: '#10B981', borderRadius: '50%', border: '2px solid #000', boxSizing: 'border-box' }} />
@@ -6048,7 +6069,7 @@ function ProfilePicViewerModal() {
           onClick={(e) => e.stopPropagation()}
           style={{ width: '100%', maxWidth: 500, aspectRatio: '1', background: profilePicToView.color || '#0A6ED1', borderRadius: profilePicToView.type === 'group' ? 24 : '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 140, fontWeight: 800, overflow: 'visible', boxShadow: '0 10px 40px rgba(0,0,0,0.5)', position: 'relative' }}
         >
-          {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profilePicToView.initials}
+          {profilePicToView.groupImage || profilePicToView.avatar ? <img src={profilePicToView.groupImage || profilePicToView.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: profilePicToView.groupImage ? 'cover' : 'contain', background: '#fff' }} /> : profilePicToView.initials}
           {profilePicToView.online === true && (
             <span style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, background: '#10B981', borderRadius: '50%', border: '4px solid #0a0a0a', boxSizing: 'border-box' }} />
           )}
@@ -6389,10 +6410,10 @@ export default function HomePage() {
   const isDesktop = width >= 1100;
   const unreadChatCount = (chats || []).reduce((total, chat) => total + Number(chat.unreadBy?.[currentUser?.id] || 0), 0);
   const canViewInternalFeed = Boolean(currentUser && ['Employee', 'Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.restricted);
-  const availableFeedTabs = canViewInternalFeed ? ['All', INTERNAL_FEED_TAB, REQUIREMENTS_FEED_TAB, ...FEED_TABS.slice(1)] : FEED_TABS;
+  const availableFeedTabs = canViewInternalFeed ? [REQUIREMENTS_FEED_TAB, INTERNAL_FEED_TAB] : [REQUIREMENTS_FEED_TAB];
 
   const [activeNav, setActiveNav] = useState('feed');
-  const [feedTab, setFeedTab] = useState('All');
+  const [feedTab, setFeedTab] = useState(REQUIREMENTS_FEED_TAB);
   const [mobileHistory, setMobileHistory] = useState(['feed']);
   const mobilePage = mobileHistory[mobileHistory.length - 1] || 'feed';
   const [showCreatePost, setShowCreatePost] = useState(false);
@@ -6453,7 +6474,7 @@ export default function HomePage() {
   }, [uploadTask]);
 
   useEffect(() => {
-    if (!canViewInternalFeed && feedTab === INTERNAL_FEED_TAB) setFeedTab('All');
+    if (!canViewInternalFeed && feedTab === INTERNAL_FEED_TAB) setFeedTab(REQUIREMENTS_FEED_TAB);
   }, [canViewInternalFeed, feedTab]);
 
   useEffect(() => {
@@ -6509,7 +6530,7 @@ export default function HomePage() {
       setTargetChat({ chatId, msgId: messageId, action: notificationAction || null });
       setActiveNav('feed');
       navigateMobile('chat');
-    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(section)) {
+    } else if (section && ['feed', 'courses', 'meetings', 'trainers', 'settings', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies', 'requirements-projects'].includes(section)) {
       setActiveNav(section);
       navigateMobile(section);
       setNotificationCourseId(courseId);
@@ -6539,11 +6560,8 @@ export default function HomePage() {
 
   const filteredPosts = [...posts].filter(p => {
     const isInternalPost = p.visibility === 'internal';
-    if (feedTab === INTERNAL_FEED_TAB) return canViewInternalFeed && isInternalPost;
-    if (feedTab === REQUIREMENTS_FEED_TAB) return canViewInternalFeed && isInternalPost && p.isRequirement;
-    if (isInternalPost) return false;
-    if (feedTab === 'All') return true;
-    return p.category === feedTab;
+    if (feedTab === INTERNAL_FEED_TAB) return canViewInternalFeed && isInternalPost && p.isRequirement;
+    return !isInternalPost;
   }).sort((a, b) => {
     // Engagement Score = Likes (1pt) + Comments (3pts)
     // + randomOffset to shuffle feed on refresh while keeping popular posts near top
@@ -6560,7 +6578,7 @@ export default function HomePage() {
     window.history.replaceState(window.history.state, '', nextUrl);
     processedDeepLinkRef.current = nextUrl.search;
     setActiveNav(id);
-    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies'].includes(id)) {
+    if (!['feed', 'chat', 'courses', 'meetings', 'learning', 'bookmarks', 'settings', 'trainers', 'accounts', 'data-management', 'requests', 'notifications', 'history', 'call-history', 'dashboard', 'task-board', 'tokens', 'companies', 'requirements-projects'].includes(id)) {
       alert(`${id.charAt(0).toUpperCase() + id.slice(1)} section coming soon!`);
     }
   };
@@ -6680,7 +6698,7 @@ export default function HomePage() {
           {/* Search */}
           <div style={{ flex: 1, maxWidth: 520, position: 'relative' }}>
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 13 }}>🔍</span>
-            <input placeholder="Search for posts, videos, resources..." style={{ width: '100%', padding: '9px 14px 9px 34px', border: '1.5px solid #E2E8F0', borderRadius: 22, fontSize: 13, outline: 'none', background: '#F8FAFC', boxSizing: 'border-box', color: '#0F172A' }} />
+            <input placeholder="Search requirements and projects..." style={{ width: '100%', padding: '9px 14px 9px 34px', border: '1.5px solid #E2E8F0', borderRadius: 22, fontSize: 13, outline: 'none', background: '#F8FAFC', boxSizing: 'border-box', color: '#0F172A' }} />
           </div>
 
           {/* Right controls */}
@@ -6765,11 +6783,11 @@ export default function HomePage() {
                 <div style={{ flex: 1, padding: '20px', overflowY: 'auto', minWidth: 0 }}>
                   {/* Feed header */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Home Feed</h2>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Requirements</h2>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
                         <button onClick={() => setShowCreatePost(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
-                          <span style={{ fontSize: 16 }}>＋</span> Create Post
+                          <span style={{ fontSize: 16 }}>＋</span> Create Requirement
                         </button>
                       )}
                     </div>
@@ -6788,7 +6806,7 @@ export default function HomePage() {
                   {filteredPosts.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '60px 0', color: '#CBD5E1' }}>
                       <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
-                      <p style={{ fontWeight: 600, fontSize: 15 }}>No posts in this category</p>
+                      <p style={{ fontWeight: 600, fontSize: 15 }}>No requirements in this section</p>
                     </div>
                   ) : (
                     filteredPosts.map(post => (
@@ -6826,6 +6844,7 @@ export default function HomePage() {
                 </div>
               )}
               {activeNav === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><CompaniesPanel /></div>}
+              {activeNav === 'requirements-projects' && ['Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.isImpersonating && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><RequirementsProjectList currentUser={currentUser} /></div>}
               {activeNav === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { setActiveNav('task-board'); const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); }} /></div>}
 
               {activeNav === 'data-management' && (
@@ -6930,7 +6949,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo/192.png" alt="SJ INFO BUSINESS SOLUTIONS logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', textTransform: 'capitalize' }}>
-            {({ feed: 'Home Feed', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', 'call-history': 'Call History', dashboard: 'Dashboard', 'task-board': 'Task Board', tokens: 'Tokens', companies: 'Companies' })[mobilePage] || mobilePage}
+            {({ feed: 'Requirements', chat: 'Chat', courses: 'Services', meetings: 'Live Meetings', trainers: 'Trainers / Users', settings: 'Settings', notifications: 'Notifications', requests: 'Requests', 'data-management': 'Data Management', accounts: 'Account Management', bookmarks: 'Bookmarks', history: 'Payment History', 'call-history': 'Call History', dashboard: 'Dashboard', 'task-board': 'Task Board', tokens: 'Tokens', companies: 'Companies', 'requirements-projects': 'Requirements / Projects' })[mobilePage] || mobilePage}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -7001,7 +7020,7 @@ export default function HomePage() {
 
           {canCreateFeedPost(currentUser) && !currentUser?.isImpersonating && (
             <button onClick={() => setShowCreatePost(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px', background: '#0A6ED1', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12, boxShadow: '0 2px 8px rgba(10,110,209,0.3)' }}>
-              ＋ Create Post
+              ＋ Create Requirement
             </button>
           )}
 
@@ -7012,7 +7031,7 @@ export default function HomePage() {
       )}
 
       {mobilePage === 'chat' && (
-        <div style={{ height: 'calc(100vh - 116px)', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 300 }}>
+        <div style={{ position: 'fixed', inset: 0, height: '100dvh', display: 'flex', flexDirection: 'column', zIndex: 300, background: '#fff' }}>
           <ChatPanel currentUser={currentUser} isMobile={true} />
         </div>
       )}
@@ -7036,6 +7055,7 @@ export default function HomePage() {
         </div>
       )}
       {mobilePage === 'companies' && currentUser.role === 'Super Admin' && !currentUser.isImpersonating && <div style={{ height: 'calc(100vh - 116px)', overflowY: 'auto' }}><CompaniesPanel /></div>}
+      {mobilePage === 'requirements-projects' && ['Admin', 'Super Admin'].includes(currentUser.role) && !currentUser.isImpersonating && <div style={{ height: 'calc(100dvh - 116px)', overflowY: 'auto' }}><RequirementsProjectList currentUser={currentUser} /></div>}
       {mobilePage === 'tokens' && !currentUser.companyId && ['Super Admin', 'Admin', 'Employee', 'Participant'].includes(currentUser.role) && <div style={{ height: 'calc(100dvh - 116px)', overflowY: 'auto' }}><TokensPanel currentUser={currentUser} initialToken={notificationToken} onOpenTask={currentUser.role === 'Participant' ? undefined : taskId => { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('section', 'task-board'); nextUrl.searchParams.set('taskId', taskId); window.history.replaceState(window.history.state, '', nextUrl); navigateMobile('task-board'); }} /></div>}
 
       {mobilePage === 'data-management' && isAdmin(currentUser) && !currentUser.isImpersonating && (
@@ -7102,7 +7122,7 @@ export default function HomePage() {
 
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #E8ECF0', display: 'flex', overflowX: 'auto', overscrollBehaviorX: 'contain', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.06)', scrollbarWidth: 'none' }}>
         {[
-          { id: 'feed', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Feed' },
+          { id: 'feed', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Requirements' },
           { id: 'chat', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>, label: 'Chat' },
           { id: 'courses', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>, label: 'Services' },
           { id: 'meetings', icon: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>, label: 'Meetings' },
@@ -7118,11 +7138,16 @@ export default function HomePage() {
             { id: 'task-board', icon: NavIcons['task-board'], label: 'Tasks' },
             { id: 'tokens', icon: NavIcons.tokens, label: 'Tokens' },
           ] : []),
+          ...(['Admin', 'Super Admin'].includes(currentUser?.role) && !currentUser?.isImpersonating ? [{ id: 'requirements-projects', icon: NavIcons.projects, label: 'Projects' }] : []),
         ].map(item => {
           const active = mobilePage === item.id;
           return (
             <button key={item.id} onClick={() => {
               setUserMenuOpen(false);
+              if (item.id === 'chat') {
+                router.push('/ssr-app/chat');
+                return;
+              }
               handleNavClick(item.id);
               navigateMobile(item.id);
             }} style={{ flex: '0 0 68px', minWidth: 68, padding: '10px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', borderWidth: 0, cursor: 'pointer', borderTop: `2px solid ${active ? '#0A6ED1' : 'transparent'}` }}>

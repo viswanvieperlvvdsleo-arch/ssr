@@ -24,9 +24,9 @@
 .page td:first-child span, .page td small { display: block; margin-top: 5px; }
 .page small { color: #65758b; }
 .page tr[aria-selected=true] { background: #eff6ff; }
-.status { display: inline-block; padding: 5px 8px; background: #f1f5f9; border-radius: 4px; white-space: nowrap; }
-.status[data-status=in_progress] { background: #fff3cd; color: #815306; }
-.status[data-status=closed] { background: #e5f7ed; color: #126b47; }
+.status { display: inline-block; padding: 5px 8px; background: #fff; color: #334155; border: 1px solid #94a3b8; border-radius: 4px; white-space: nowrap; }
+.status[data-status=in_progress] { background: #facc15; border-color: #ca8a04; color: #422006; }
+.status[data-status=closed] { background: #22c55e; border-color: #15803d; color: #052e16; }
 .detail { padding: 24px 0; border-top: 3px solid #15805a; margin-top: 24px; scroll-margin-top: 16px; }
 .body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .summary { margin-block: 20px; padding-block: 16px; border-block: 1px solid #dce4ee; }

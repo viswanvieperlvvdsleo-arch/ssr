@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './requirement-status.module.css';
 
 const STATUS = {
-  open: { label: 'Open requirement', color: '#FFFFFF', border: '#64748B', text: '#334155' },
-  in_progress: { label: 'In sourcing', color: '#FACC15', border: '#CA8A04', text: '#713F12' },
-  closed: { label: 'Completed', color: '#22C55E', border: '#15803D', text: '#14532D' },
+  open: { label: 'Successfully uploaded', color: '#FFFFFF', border: '#64748B', text: '#334155' },
+  in_progress: { label: 'In progress', color: '#FACC15', border: '#CA8A04', text: '#713F12' },
+  closed: { label: 'Successfully completed', color: '#22C55E', border: '#15803D', text: '#14532D' },
 };
 
 export default function RequirementStatus({ post, currentUser, compact = false }) {
